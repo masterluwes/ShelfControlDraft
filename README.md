@@ -1,6 +1,6 @@
 # guests_main
 
-A new Flutter project.
+A new Flutter project for unverified users or Guests.
 
 ## Getting Started
 
