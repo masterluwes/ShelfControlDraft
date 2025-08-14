@@ -56,7 +56,7 @@ class _OverviewPageState extends State<OverviewPage> {
             alignment: Alignment.center,
             child: Container(
               width: 4,
-              color: Colors.white,
+              color: Colors.white.withOpacity(0.6),
             ),
           ),
           SafeArea(
@@ -437,7 +437,7 @@ class _BarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Colors.white(selected ? 1 : 0.85);
+    final color = Colors.white.withOpacity(selected ? 1 : 0.85);
 
     return Expanded(
       child: InkResponse(
