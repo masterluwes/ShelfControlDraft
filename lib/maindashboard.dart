@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
 
 void main() => runApp(const ShelfControlApp());
 
@@ -89,17 +90,16 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     ),
                   ),
                   Container(
+                    width: 169,
+                    margin: const EdgeInsets.only(right: 1),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
                       color: headerGreen,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
+                      child: DropdownButton2<String>(
                         value: _selectedHousehold,
-                        iconEnabledColor: Colors.white,
-                        dropdownColor: Colors.white,
-                        style: const TextStyle(color: Color(0xFFFF0000)),
                         items: _households
                             .map(
                               (h) => DropdownMenuItem<String>(
@@ -107,17 +107,45 @@ class _OverviewScreenState extends State<OverviewScreen> {
                                 child: Text(
                                   h,
                                   style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
+                                    fontFamily: 'Roboto',
+                                    color: Colors.white, // text color
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
                               ),
                             )
                             .toList(),
                         onChanged: (v) {
-                          if (v == null) return;
-                          setState(() => _selectedHousehold = v);
+                          if (v != null) setState(() => _selectedHousehold = v);
                         },
+
+                        // ↓ ensures the popup shows BELOW the button
+                        dropdownStyleData: DropdownStyleData(
+                          width: 180, // menu width
+                          isOverButton: false, // don't overlap the button
+                          offset: const Offset(
+                            0,
+                            6,
+                          ), // small space under the button
+                          decoration: BoxDecoration(
+                            color: headerGreen, // menu background
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        buttonStyleData: const ButtonStyleData(
+                          height: 40,
+                          width: 169,
+                          padding: EdgeInsets.symmetric(horizontal: 0),
+                          elevation: 0,
+                        ),
+                        iconStyleData: const IconStyleData(
+                          iconEnabledColor: Colors.white,
+                        ),
+                        menuItemStyleData: const MenuItemStyleData(
+                          height: 40,
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                        ),
                       ),
                     ),
                   ),
