@@ -10,410 +10,261 @@ class ShelfControlApp extends StatelessWidget {
     return MaterialApp(
       title: 'Shelf Control',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'Roboto',
-      ),
-      home: const OverviewPage(),
+      home: const OverviewScreen(),
+      theme: ThemeData(useMaterial3: false, fontFamily: 'Roboto'),
     );
   }
 }
 
-class OverviewPage extends StatefulWidget {
-  const OverviewPage({super.key});
+class OverviewScreen extends StatefulWidget {
+  const OverviewScreen({super.key});
 
   @override
-  State<OverviewPage> createState() => _OverviewPageState();
+  State<OverviewScreen> createState() => _OverviewScreenState();
 }
 
-class _OverviewPageState extends State<OverviewPage> {
-  final Color green = const Color(0xFF2E7D32);
-  final Color bg = const Color(0xFFFFFBE6);
-  final Color cardFill = const Color(0xFFFFE6EA); // soft pink
-  final Color soft = const Color(0xFFFFF1D6);     // soft peach
-  int currentTab = 0;
-  String selectedHousehold = 'Household 1';
-  final households = const ['Household 1', 'Household 2', 'Household 3'];
+class _OverviewScreenState extends State<OverviewScreen> {
+  final Color headerGreen = const Color(0xFF2E7D32);
+  final Color softCream = const Color(0xFFFFFBE6);
+
+  String _selectedHousehold = 'Household 1';
+  final List<String> _households = [
+    'Household 1',
+    'Household 2',
+    'Household 3',
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: bg,
-      extendBody: true, // allows FAB notch overlap
+      backgroundColor: softCream,
+      // Top green header bar with hamburger + icons (no actions wired)
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(96),
-        child: _TopBar(
-          green: green,
-          onMenu: () {},
-          onBell: () {},
-          onPeople: () {},
+        preferredSize: const Size.fromHeight(64),
+        child: AppBar(
+          elevation: 0,
+          backgroundColor: headerGreen,
+          centerTitle: false,
+          leading: IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () {},
+          ),
+          titleSpacing: 0,
+          title: const SizedBox.shrink(),
+          actions: const [
+            Padding(
+              padding: EdgeInsets.only(right: 8.0),
+              child: Row(
+                children: [
+                  Icon(Icons.notifications_none_rounded, color: Colors.white),
+                  SizedBox(width: 16),
+                  Icon(Icons.groups, color: Colors.white),
+                  SizedBox(width: 8),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-      body: Stack(
-        children: [
-          // subtle vertical lighter strip like your mock
-          Align(
-            alignment: Alignment.center,
-            child: Container(
-              width: 4,
-              color: Colors.white.withOpacity(0.6),
-            ),
-          ),
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // "Overview" title
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
                     'Overview',
                     style: TextStyle(
-                      color: green,
+                      color: headerGreen,
+                      fontFamily: 'Inter',
                       fontSize: 32,
                       fontWeight: FontWeight.w800,
                       height: 1.0,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  _HouseholdDropdown(
-                    green: green,
-                    value: selectedHousehold,
-                    items: households,
-                    onChanged: (v) => setState(() => selectedHousehold = v!),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: headerGreen,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedHousehold,
+                        iconEnabledColor: Colors.white,
+                        dropdownColor: Colors.white,
+                        style: const TextStyle(color: Color(0xFFFF0000)),
+                        items: _households
+                            .map(
+                              (h) => DropdownMenuItem<String>(
+                                value: h,
+                                child: Text(
+                                  h,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) {
+                          if (v == null) return;
+                          setState(() => _selectedHousehold = v);
+                        },
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  _StatsGrid(cardFill: cardFill, green: green),
-                  const SizedBox(height: 16),
-                  _PantryOverviewCard(soft: soft),
                 ],
               ),
-            ),
-          ),
-        ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: FloatingActionButton(
-        elevation: 6,
-        shape: const CircleBorder(),
-        onPressed: () {},
-        backgroundColor: Colors.white,
-        child: Icon(Icons.add, color: green, size: 32),
-      ),
-      bottomNavigationBar: _RoundedBottomBar(
-        currentIndex: currentTab,
-        onTap: (i) => setState(() => currentTab = i),
-        green: green,
-      ),
-    );
-  }
-}
+              const SizedBox(height: 16),
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.green,
-    required this.onMenu,
-    required this.onBell,
-    required this.onPeople,
-  });
+              // Grid of 6 tiles
+              GridView.count(
+                physics: const NeverScrollableScrollPhysics(),
+                shrinkWrap: true,
+                crossAxisCount: 2,
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 16,
+                childAspectRatio: 1.12,
+                children: [
+                  _StatTile(
+                    icon: Icons.delete_outline,
+                    label: 'No data available yet!',
+                  ),
+                  _StatTile(
+                    icon: Icons.bar_chart,
+                    label: 'No data available yet!',
+                  ),
+                  _StatTile(
+                    icon: Icons.shopping_cart_outlined,
+                    label: 'No data available yet!',
+                  ),
+                  _StatTile(
+                    icon: Icons.stacked_bar_chart_rounded,
+                    label: 'No data available yet!',
+                  ),
+                  _StatTile(
+                    icon: Icons.access_time,
+                    label: 'No data available yet!',
+                  ),
+                  _TipTile(headerGreen: headerGreen),
+                ],
+              ),
 
-  final Color green;
-  final VoidCallback onMenu;
-  final VoidCallback onBell;
-  final VoidCallback onPeople;
+              const SizedBox(height: 16),
 
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: green,
-      elevation: 2,
-      child: SafeArea(
-        bottom: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
-          decoration: const BoxDecoration(
-            color: Colors.transparent,
-          ),
-          child: Row(
-            children: [
-              _containRipple(
-                child: IconButton(
-                  onPressed: onMenu,
-                  icon: const Icon(Icons.menu, color: Colors.white),
-                  tooltip: 'Menu',
+              // Pantry Overview card with login note
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pantry Overview',
+                      style: TextStyle(
+                        color: Colors.grey.shade800,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'No data available yet!',
+                      style: TextStyle(fontSize: 14, color: Colors.black87),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Register/Login to access this feature',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
-              Row(
-                children: [
-                  _containRipple(
-                    child: IconButton(
-                      onPressed: onBell,
-                      icon: const Icon(Icons.notifications_none, color: Colors.white),
-                      tooltip: 'Notifications',
-                    ),
-                  ),
-                  _containRipple(
-                    child: IconButton(
-                      onPressed: onPeople,
-                      icon: const Icon(Icons.group, color: Colors.white),
-                      tooltip: 'Households',
-                    ),
-                  ),
-                ],
+            ],
+          ),
+        ),
+      ),
+
+      // Center add button
+      floatingActionButton: RawMaterialButton(
+        onPressed: () {},
+        elevation: 4,
+        fillColor: Colors.white,
+        shape: const CircleBorder(),
+        constraints: const BoxConstraints.tightFor(
+          width: 70, // circle width
+          height: 70, // circle height
+        ),
+        child: Icon(Icons.add, size: 36, color: headerGreen),
+      ),
+
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+
+      // Bottom nav bar (green) with notch
+      bottomNavigationBar: BottomAppBar(
+        color: headerGreen,
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 6,
+        child: SizedBox(
+          height: 68,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _BottomItem(icon: Icons.home, label: 'Home'),
+              _BottomItem(icon: Icons.kitchen_outlined, label: 'Pantry'),
+              const SizedBox(width: 56), // space for FAB
+              _BottomItem(
+                icon: Icons.shopping_cart_outlined,
+                label: 'Shopping List',
               ),
+              _BottomItem(icon: Icons.lightbulb_outline, label: 'Tips'),
             ],
           ),
         ),
       ),
     );
   }
-
-  /// Keeps the ink ripple strictly inside the button’s rectangular bounds
-  /// (prevents it from bleeding outside the green bar).
-  static Widget _containRipple({required Widget child}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Material(color: Colors.transparent, child: child),
-    );
-  }
 }
 
-class _HouseholdDropdown extends StatelessWidget {
-  const _HouseholdDropdown({
-    required this.green,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-  });
-
-  final Color green;
-  final String value;
-  final List<String> items;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFE1F0E4),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: green, width: 1),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: value,
-            borderRadius: BorderRadius.circular(12),
-            iconEnabledColor: green,
-            style: TextStyle(
-              color: Colors.green.shade900,
-              fontWeight: FontWeight.w600,
-            ),
-            items: items
-                .map((e) => DropdownMenuItem<String>(
-                      value: e,
-                      child: Text(e),
-                    ))
-                .toList(),
-            onChanged: onChanged,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatsGrid extends StatelessWidget {
-  const _StatsGrid({required this.cardFill, required this.green});
-
-  final Color cardFill;
-  final Color green;
-
-  @override
-  Widget build(BuildContext context) {
-    final tiles = <_TileData>[
-      _TileData(icon: Icons.delete_outline),
-      _TileData(icon: Icons.bar_chart_outlined),
-      _TileData(icon: Icons.shopping_cart_outlined),
-      _TileData(icon: Icons.stacked_bar_chart_outlined),
-      _TileData(icon: Icons.av_timer_outlined),
-      _TileData(
-        icon: Icons.lightbulb_outline,
-        extraText:
-            'Put new groceries behind older ones — use the old stuff first.',
-      ),
-    ];
-
-    return GridView.builder(
-      itemCount: tiles.length,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.05,
-      ),
-      itemBuilder: (_, i) => _StatCard(
-        fill: cardFill,
-        icon: tiles[i].icon,
-        extraText: tiles[i].extraText,
-      ),
-    );
-  }
-}
-
-class _TileData {
+class _StatTile extends StatelessWidget {
   final IconData icon;
-  final String? extraText;
-  const _TileData({required this.icon, this.extraText});
-}
+  final String label;
 
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.fill,
-    required this.icon,
-    this.extraText,
-  });
-
-  final Color fill;
-  final IconData icon;
-  final String? extraText;
-
-  @override
-  Widget build(BuildContext context) {
-    final content = Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, size: 44, color: Colors.black87),
-        const SizedBox(height: 10),
-        const Text(
-          'No data available yet!',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.black87,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        if (extraText != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            extraText!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.black87,
-              fontSize: 13,
-              height: 1.2,
-            ),
-          ),
-        ],
-      ],
-    );
-
-    return Material(
-      color: fill,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: () {},
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: content,
-        ),
-      ),
-    );
-  }
-}
-
-class _PantryOverviewCard extends StatelessWidget {
-  const _PantryOverviewCard({required this.soft});
-  final Color soft;
+  const _StatTile({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: soft,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
-          Text(
-            'Pantry Overview',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Colors.black87,
-            ),
-          ),
-          SizedBox(height: 10),
-          Text(
-            'No data available yet!\nRegister/Login to access this feature',
-            style: TextStyle(
-              color: Colors.black87,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RoundedBottomBar extends StatelessWidget {
-  const _RoundedBottomBar({
-    required this.currentIndex,
-    required this.onTap,
-    required this.green,
-  });
-
-  final int currentIndex;
-  final ValueChanged<int> onTap;
-  final Color green;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      // Keeps ripple strictly inside the bar
-      borderRadius: const BorderRadius.only(
-        topLeft: Radius.circular(22),
-        topRight: Radius.circular(22),
-      ),
-      child: BottomAppBar(
-        color: green,
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        height: 70,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _BarItem(
-              icon: Icons.home_filled,
-              label: 'Home',
-              selected: currentIndex == 0,
-              onTap: () => onTap(0),
-            ),
-            _BarItem(
-              icon: Icons.kitchen_outlined,
-              label: 'Pantry',
-              selected: currentIndex == 1,
-              onTap: () => onTap(1),
-            ),
-            const SizedBox(width: 56), // space for FAB
-            _BarItem(
-              icon: Icons.list_alt_outlined,
-              label: 'Shopping List',
-              selected: currentIndex == 2,
-              onTap: () => onTap(2),
-            ),
-            _BarItem(
-              icon: Icons.tips_and_updates_outlined,
-              label: 'Tips',
-              selected: currentIndex == 3,
-              onTap: () => onTap(3),
+            Icon(icon, size: 44, color: Colors.black87),
+            const SizedBox(height: 16),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13.5, color: Colors.black87),
             ),
           ],
         ),
@@ -422,44 +273,67 @@ class _RoundedBottomBar extends StatelessWidget {
   }
 }
 
-class _BarItem extends StatelessWidget {
-  const _BarItem({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+class _TipTile extends StatelessWidget {
+  final Color headerGreen;
+  const _TipTile({required this.headerGreen});
 
   @override
   Widget build(BuildContext context) {
-    final color = Colors.white.withOpacity(selected ? 1 : 0.85);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Icon(Icons.lightbulb_outline, size: 44, color: Colors.black87),
+          const SizedBox(height: 10),
+          Text(
+            'Put new groceries behind\nolder ones — use the old\nstuff first.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.grey.shade900,
+              fontSize: 13.5,
+              height: 1.25,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
+class _BottomItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _BottomItem({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
     return Expanded(
-      child: InkResponse(
-        onTap: onTap,
-        radius: 28,
-        containedInkWell:
-            true, // ensures click animation stays inside the green bar
+      child: InkWell(
+        onTap: () {},
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+          padding: const EdgeInsets.only(top: 8, bottom: 10),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Icon(icon, color: color, size: 22),
-              const SizedBox(height: 2),
+              Icon(icon, color: Colors.white),
+              const SizedBox(height: 4),
               Text(
                 label,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 12,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
