@@ -98,14 +98,17 @@ class _OverviewScreenState extends State<OverviewScreen> {
 
       body: SafeArea(child: pages[_currentIndex]),
 
-      // Center add button
-      floatingActionButton: RawMaterialButton(
-        onPressed: () {},
-        elevation: 4,
-        fillColor: Colors.white,
-        shape: const CircleBorder(),
-        constraints: const BoxConstraints.tightFor(width: 70, height: 70),
-        child: Icon(Icons.add, size: 36, color: headerGreen),
+      // Center add button (raised a bit, custom size)
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: RawMaterialButton(
+          onPressed: () {},
+          elevation: 5,
+          fillColor: Colors.white,
+          shape: const CircleBorder(),
+          constraints: const BoxConstraints.tightFor(width: 80, height: 80),
+          child: Icon(Icons.add, size: 36, color: headerGreen),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
@@ -156,148 +159,219 @@ class _OverviewScreenState extends State<OverviewScreen> {
     );
   }
 
-  // Original "Overview" (Home) content extracted into a builder
+  // Centers the whole content block between the top AppBar and BottomAppBar (no scroll)
   Widget _homeBody(BuildContext context, List<Widget> tiles) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          // "Overview" title + dropdown
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                'Overview',
-                style: TextStyle(
-                  color: headerGreen,
-                  fontFamily: 'Inter',
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  height: 1.0,
-                ),
-              ),
-              Container(
-                width: 169,
-                margin: const EdgeInsets.only(right: 1),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  color: headerGreen,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton2<String>(
-                    value: _selectedHousehold,
-                    items: _households
-                        .map(
-                          (h) => DropdownMenuItem<String>(
-                            value: h,
-                            child: Text(
-                              h,
-                              style: const TextStyle(
-                                fontFamily: 'Roboto',
-                                color: Colors.white,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
+    final headerGreen = this.headerGreen;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Layout constants
+        const gridCols = 2;
+        const gridSpacing = 16.0;
+        const titleDropdownHeight = 40.0; // approx height of the row
+        const titleBottomGap = 16.0;
+        const bottomCardHeight = 140.0;
+        const blockSidePadding = EdgeInsets.fromLTRB(16, 12, 16, 12);
+        const blockMaxWidth = 900.0;
+
+        // How many rows does the grid need?
+        final rows = (tiles.length / gridCols).ceil();
+
+        // Available vertical space for the content block
+        final available = constraints.maxHeight;
+
+        double tileExtentToFit(double targetBlockHeight) {
+          final gridHeight =
+              targetBlockHeight.clamp(0, double.infinity) // guard
+              -
+              titleDropdownHeight -
+              titleBottomGap -
+              bottomCardHeight -
+              titleBottomGap; // same gap above bottom card
+          final raw = (gridHeight - gridSpacing * (rows - 1)) / rows;
+          return raw;
+        }
+
+        // Start from a desired tile size; shrink/expand as needed to fit.
+        double tileExtent = 140.0;
+
+        // Compute block height with current tileExtent
+        double blockHeight() =>
+            titleDropdownHeight +
+            titleBottomGap +
+            (rows * tileExtent + gridSpacing * (rows - 1)) +
+            titleBottomGap +
+            bottomCardHeight;
+
+        if (blockHeight() > available) {
+          tileExtent = tileExtentToFit(available);
+        }
+
+        // Keep it within a pleasant visual range
+        tileExtent = tileExtent.clamp(110.0, 180.0);
+
+        // Final recalculated block height (used only for understanding; centering is automatic)
+        // final finalBlockHeight = blockHeight();
+
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: blockMaxWidth),
+            child: Padding(
+              padding: blockSidePadding,
+              child: Column(
+                mainAxisSize:
+                    MainAxisSize.min, // enables true vertical centering
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Title + dropdown (≈40px tall)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Overview',
+                        style: TextStyle(
+                          color: headerGreen,
+                          fontFamily: 'Inter',
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800,
+                          height: 1.0,
+                        ),
+                      ),
+                      Container(
+                        width: 169,
+                        margin: const EdgeInsets.only(right: 1),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: headerGreen,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton2<String>(
+                            value: _selectedHousehold,
+                            items: _households
+                                .map(
+                                  (h) => DropdownMenuItem<String>(
+                                    value: h,
+                                    child: Text(
+                                      h,
+                                      style: const TextStyle(
+                                        fontFamily: 'Roboto',
+                                        color: Colors.white,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) {
+                              if (v != null)
+                                setState(() => _selectedHousehold = v);
+                            },
+                            dropdownStyleData: DropdownStyleData(
+                              width: 170,
+                              isOverButton: false,
+                              offset: const Offset(-8, -1),
+                              decoration: BoxDecoration(
+                                color: headerGreen,
+                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
+                            buttonStyleData: const ButtonStyleData(
+                              height: 40,
+                              width: 169,
+                              padding: EdgeInsets.symmetric(horizontal: 10),
+                              elevation: 0,
+                            ),
+                            iconStyleData: const IconStyleData(
+                              iconEnabledColor: Colors.white,
+                            ),
+                            menuItemStyleData: const MenuItemStyleData(
+                              height: 40,
+                              padding: EdgeInsets.symmetric(horizontal: 18),
+                            ),
                           ),
-                        )
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) setState(() => _selectedHousehold = v);
-                    },
-                    dropdownStyleData: DropdownStyleData(
-                      width: 170,
-                      isOverButton: false, // keep menu below
-                      offset: const Offset(-8, -1),
-                      decoration: BoxDecoration(
-                        color: headerGreen,
-                        borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
-                    ),
-                    buttonStyleData: const ButtonStyleData(
-                      height: 40,
-                      width: 169,
-                      padding: EdgeInsets.symmetric(horizontal: 0),
-                      elevation: 0,
-                    ),
-                    iconStyleData: const IconStyleData(
-                      iconEnabledColor: Colors.white,
-                    ),
-                    menuItemStyleData: const MenuItemStyleData(
-                      height: 40,
-                      padding: EdgeInsets.symmetric(horizontal: 8),
+                    ],
+                  ),
+
+                  const SizedBox(height: titleBottomGap),
+
+                  // Grid with fixed height from tileExtent (never scrolls)
+                  SizedBox(
+                    height: rows * tileExtent + gridSpacing * (rows - 1),
+                    child: GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: tiles.length,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: gridCols,
+                        mainAxisSpacing: gridSpacing,
+                        crossAxisSpacing: gridSpacing,
+                        mainAxisExtent: tileExtent,
+                      ),
+                      itemBuilder: (context, index) => tiles[index],
                     ),
                   ),
-                ),
+
+                  const SizedBox(height: titleBottomGap),
+
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(
+                      minHeight: 120, // won't go smaller than this
+                      maxHeight: 150, // optional: prevent it from becoming huge
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min, // shrink to fit content
+                      children: [
+                        Text(
+                          'Pantry Overview',
+                          style: TextStyle(
+                            color: Color(0xFF666666),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(height: 30),
+                        Center(
+                          child: Text(
+                            'No data available yet!',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF222222),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Center(
+                          child: Text(
+                            'Register/Login to access this feature',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF222222),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Equal-height grid
-          GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            shrinkWrap: true,
-            itemCount: tiles.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              mainAxisExtent: 140, // exact equal height
-            ),
-            itemBuilder: (context, index) => tiles[index],
-          ),
-
-          const SizedBox(height: 16),
-
-          // Pantry Overview card
-          Container(
-            width: double.infinity,
-            height: 130,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Pantry Overview',
-                  style: TextStyle(
-                    color: Color(0xFF666666),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                SizedBox(height: 30),
-                Center(
-                  child: Text(
-                    'No data available yet!',
-                    style: TextStyle(fontSize: 14, color: Color(0xFF222222)),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Center(
-                  child: Text(
-                    'Register/Login to access this feature',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF222222),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
