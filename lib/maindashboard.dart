@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
+import 'package:guests_main/pantryinventory.dart';
+import 'package:guests_main/shoppinglist.dart';
+import 'package:guests_main/tipsandsuggest.dart';
 
 void main() => runApp(const ShelfControlApp());
 
@@ -60,10 +63,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
 
     // Simple per-tab bodies (replace with your real pages later)
     final pages = <Widget>[
-      _homeBody(context, tiles), // Home
-      _placeholderPage('Pantry'), // Pantry
-      _placeholderPage('Shopping List'), // Shopping
-      _placeholderPage('Tips'), // Tips
+      _homeBody(context, tiles),
+      Pantryinventory(),
+      const Shoppinglist(),
+      const Tipsandsuggest(),
     ];
 
     return Scaffold(
@@ -266,8 +269,9 @@ class _OverviewScreenState extends State<OverviewScreen> {
                                 )
                                 .toList(),
                             onChanged: (v) {
-                              if (v != null)
+                              if (v != null) {
                                 setState(() => _selectedHousehold = v);
+                              }
                             },
                             dropdownStyleData: DropdownStyleData(
                               width: 170,
@@ -372,15 +376,6 @@ class _OverviewScreenState extends State<OverviewScreen> {
           ),
         );
       },
-    );
-  }
-
-  Widget _placeholderPage(String title) {
-    return Center(
-      child: Text(
-        '$title page',
-        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-      ),
     );
   }
 }
