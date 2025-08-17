@@ -14,7 +14,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   String sortBy = 'Category';
   String filterBy = 'All Items';
 
+  // Search state
+  bool isSearching = false;
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
+
   final items = <PantryItem>[
+    // --- Sample items (you can extend this) ---
     PantryItem(
       name: 'Orange Juice (1L)',
       category: 'Beverages',
@@ -69,10 +75,133 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/5/5a/Coca_Cola_bottle_%282012%29.png',
     ),
+    PantryItem(
+      name: 'Whole Milk (1L)',
+      category: 'Dairy',
+      qty: 2,
+      status: ItemStatus.atRisk,
+      expiresText: 'in 2 days',
+      imageUrl:
+          'https://upload.wikimedia.org/wikipedia/commons/a/a4/Glass_milk.jpg',
+    ),
+    PantryItem(
+      name: 'Pasta Penne (500g)',
+      category: 'Grains',
+      qty: 3,
+      status: ItemStatus.available,
+      expiresOn: '11/02/26',
+      imageUrl:
+          'https://upload.wikimedia.org/wikipedia/commons/7/73/Penne_pasta.jpg',
+    ),
   ];
+
+  // ---------- Helpers: filtering & sorting ----------
+  DateTime? _parseExpiry(PantryItem it) {
+    if (it.expiresOn != null && it.expiresOn!.trim().isNotEmpty) {
+      final parts = it.expiresOn!.split('/');
+      if (parts.length == 3) {
+        final mm = int.tryParse(parts[0]);
+        final dd = int.tryParse(parts[1]);
+        final yy = int.tryParse(parts[2]);
+        if (mm != null && dd != null && yy != null) {
+          final year = yy >= 80 ? (1900 + yy) : (2000 + yy);
+          return DateTime(year, mm, dd);
+        }
+      }
+    }
+    if (it.expiresText != null && it.expiresText!.trim().isNotEmpty) {
+      final reg = RegExp(r'in\s+(\d+)\s+day');
+      final m = reg.firstMatch(it.expiresText!.toLowerCase());
+      if (m != null) {
+        final d = int.tryParse(m.group(1)!);
+        if (d != null) return DateTime.now().add(Duration(days: d));
+      }
+    }
+    return null;
+  }
+
+  int _cmpString(String a, String b) =>
+      a.toLowerCase().compareTo(b.toLowerCase());
+
+  List<PantryItem> _visibleItems() {
+    // 1) Status filter
+    final filteredByStatus = items.where((it) {
+      switch (filterBy) {
+        case 'At risk':
+          return it.status == ItemStatus.atRisk;
+        case 'Active':
+          return it.status == ItemStatus.active;
+        case 'Available':
+          return it.status == ItemStatus.available;
+        default:
+          return true;
+      }
+    });
+
+    // 2) Search query (name OR category)
+    final q = _query.trim().toLowerCase();
+    final filtered = q.isEmpty
+        ? filteredByStatus.toList()
+        : filteredByStatus
+              .where(
+                (it) =>
+                    it.name.toLowerCase().contains(q) ||
+                    it.category.toLowerCase().contains(q),
+              )
+              .toList();
+
+    // 3) Sort
+    switch (sortBy) {
+      case 'Name':
+        filtered.sort((a, b) => _cmpString(a.name, b.name));
+        break;
+      case 'Category':
+        filtered.sort((a, b) {
+          final c = _cmpString(a.category, b.category);
+          return c != 0 ? c : _cmpString(a.name, b.name);
+        });
+        break;
+      case 'Quantity':
+        filtered.sort((a, b) {
+          final c = a.qty.compareTo(b.qty);
+          return c != 0 ? c : _cmpString(a.name, b.name);
+        });
+        break;
+      case 'Expiry':
+        filtered.sort((a, b) {
+          final ea = _parseExpiry(a);
+          final eb = _parseExpiry(b);
+          if (ea == null && eb == null) return _cmpString(a.name, b.name);
+          if (ea == null) return 1;
+          if (eb == null) return -1;
+          final c = ea.compareTo(eb);
+          return c != 0 ? c : _cmpString(a.name, b.name);
+        });
+        break;
+    }
+    return filtered;
+  }
+
+  void _startSearch() {
+    setState(() {
+      isSearching = true;
+      // Any open popup will close naturally once we rebuild/swipe focus.
+      // We also focus the textfield automatically via `autofocus`.
+    });
+  }
+
+  void _cancelSearch() {
+    setState(() {
+      isSearching = false;
+      _query = '';
+      _searchCtrl.clear();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final list = _visibleItems();
+
     return Container(
       color: softCream,
       child: Column(
@@ -93,30 +222,74 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             ),
           ),
 
-          // Actions row: Sort / Filter pills + search
+          // Actions row: Pills <-> Search swap
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                _PillMenu<String>(
-                  label: 'Sort by: $sortBy',
-                  color: headerGreen,
-                  items: const ['Category', 'Name', 'Expiry', 'Quantity'],
-                  onSelected: (v) => setState(() => sortBy = v),
+                // Left side switches between dropdown pills and the search field
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    switchInCurve: Curves.easeOut,
+                    switchOutCurve: Curves.easeIn,
+                    child: isSearching
+                        ? _SearchField(
+                            key: const ValueKey('search-field'),
+                            controller: _searchCtrl,
+                            color: headerGreen,
+                            onChanged: (v) => setState(() => _query = v ?? ''),
+                            onClear: () {
+                              setState(() {
+                                _query = '';
+                                _searchCtrl.clear();
+                              });
+                            },
+                          )
+                        : Row(
+                            key: const ValueKey('pills'),
+                            children: [
+                              _PillMenu<String>(
+                                label: 'Sort by: $sortBy',
+                                color: headerGreen,
+                                items: const [
+                                  'Category',
+                                  'Name',
+                                  'Expiry',
+                                  'Quantity',
+                                ],
+                                onSelected: (v) => setState(() => sortBy = v),
+                              ),
+                              const SizedBox(width: 8),
+                              _PillMenu<String>(
+                                label: 'Filter: $filterBy',
+                                color: headerGreen,
+                                items: const [
+                                  'All Items',
+                                  'At risk',
+                                  'Active',
+                                  'Available',
+                                ],
+                                onSelected: (v) => setState(() => filterBy = v),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
+
                 const SizedBox(width: 8),
-                _PillMenu<String>(
-                  label: 'Filter: $filterBy',
-                  color: headerGreen,
-                  items: const ['All Items', 'At risk', 'Active', 'Available'],
-                  onSelected: (v) => setState(() => filterBy = v),
-                ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () {},
-                  icon: Icon(Icons.search, color: headerGreen),
-                  tooltip: 'Search',
-                ),
+
+                // Right side button: Search or Cancel
+                isSearching
+                    ? TextButton(
+                        onPressed: _cancelSearch,
+                        child: const Text('Cancel'),
+                      )
+                    : IconButton(
+                        onPressed: _startSearch,
+                        icon: Icon(Icons.search, color: headerGreen),
+                        tooltip: 'Search',
+                      ),
               ],
             ),
           ),
@@ -128,10 +301,10 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.only(bottom: 16),
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemCount: list.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (context, index) {
-                final it = items[index];
+                final it = list[index];
                 return Material(
                   color: Colors.white,
                   child: InkWell(
@@ -164,7 +337,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                               width: 44,
                               height: 44,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Container(
+                              errorBuilder: (_, __, ___) => Container(
                                 width: 44,
                                 height: 44,
                                 color: const Color(0xFFEFEFEF),
@@ -234,7 +407,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                                 Text(
                                   it.expiresText != null
                                       ? 'Expires ${it.expiresText!}'
-                                      : 'Expires in: ${it.expiresOn!}',
+                                      : (it.expiresOn != null
+                                            ? 'Expires in: ${it.expiresOn!}'
+                                            : 'No expiry'),
                                   textAlign: TextAlign.right,
                                   style: const TextStyle(
                                     fontSize: 12,
@@ -373,6 +548,60 @@ class _PillMenu<T> extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final Color color;
+  final ValueChanged<String?> onChanged;
+  final VoidCallback onClear;
+
+  const _SearchField({
+    super.key,
+    required this.controller,
+    required this.color,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: color, width: 1.2),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              autofocus: true,
+              onChanged: onChanged,
+              decoration: const InputDecoration(
+                hintText: 'Search items or categories…',
+                border: InputBorder.none,
+                isCollapsed: true,
+              ),
+              textInputAction: TextInputAction.search,
+            ),
+          ),
+          if (controller.text.isNotEmpty)
+            IconButton(
+              tooltip: 'Clear',
+              onPressed: onClear,
+              icon: const Icon(Icons.close),
+              splashRadius: 18,
+            ),
+        ],
       ),
     );
   }
