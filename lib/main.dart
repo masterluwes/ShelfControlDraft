@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shelfcontrol/pages/dashboard_page.dart';
 import 'package:shelfcontrol/pages/guest_page.dart';
 import 'pages/welcome_page.dart';
 import 'pages/create_account_page.dart';
@@ -22,6 +23,7 @@ class ShelfControlApp extends StatelessWidget {
         '/create-account': (context) => const CreateAccountPage(),
         '/login': (context) => const LoginPage(),
         '/guest': (context) => const GuestPage(),
+        '/dashboard': (context) => const DashboardPage(),
       },
     );
   }

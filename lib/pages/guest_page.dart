@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shelfcontrol/pages/dashboard_page.dart';
 
 class GuestPage extends StatelessWidget {
   const GuestPage({super.key});
@@ -62,7 +63,12 @@ class GuestPage extends StatelessWidget {
               Center(
                 child: ElevatedButton(
                   onPressed: () {
-                    // To be added later po
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => DashboardPage(),
+                      ), //temporary but after clicking the proceed the next page should be the terms and condition and privacy policy.
+                    );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Color(0xFF2E7D32),
