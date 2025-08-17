@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
+import 'package:guests_main/notificationguest.dart';
 import 'package:guests_main/pantryinventory.dart';
 import 'package:guests_main/shoppinglist.dart';
 import 'package:guests_main/tipsandsuggest.dart';
+import 'package:guests_main/householdgroupguest.dart';
 
 void main() => runApp(const ShelfControlApp());
 
@@ -14,31 +16,35 @@ class ShelfControlApp extends StatelessWidget {
     return MaterialApp(
       title: 'Shelf Control',
       debugShowCheckedModeBanner: false,
-      home: const OverviewScreen(),
+      home: const MainDashboard(),
       theme: ThemeData(useMaterial3: false, fontFamily: 'Roboto'),
     );
   }
 }
 
-class OverviewScreen extends StatefulWidget {
-  const OverviewScreen({super.key});
+class MainDashboard extends StatefulWidget {
+  const MainDashboard({super.key});
 
   @override
-  State<OverviewScreen> createState() => _OverviewScreenState();
+  State<MainDashboard> createState() => _MainDashboardState();
 }
 
-class _OverviewScreenState extends State<OverviewScreen> {
+class _MainDashboardState extends State<MainDashboard> {
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
 
   String _selectedHousehold = 'Household 1';
-  final List<String> _households = [
+  final List<String> _households = const [
     'Household 1',
     'Household 2',
     'Household 3',
   ];
 
   int _currentIndex = 0;
+
+  // Momentary fill flags for icons
+  bool _isNotifActive = false;
+  bool _isGroupActive = false;
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +67,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
       _TipTile(headerGreen: headerGreen),
     ];
 
-    // Simple per-tab bodies (replace with your real pages later)
+    // Per-tab bodies
     final pages = <Widget>[
       _homeBody(context, tiles),
       Pantryinventory(),
@@ -79,19 +85,72 @@ class _OverviewScreenState extends State<OverviewScreen> {
           centerTitle: false,
           leading: IconButton(
             icon: const Icon(Icons.menu, color: Colors.white),
-            onPressed: () {},
+            onPressed: () {
+              // TODO: open a drawer/menu if you add one
+            },
           ),
           titleSpacing: 0,
           title: const SizedBox.shrink(),
-          actions: const [
+
+          // Top-right actions
+          actions: [
             Padding(
-              padding: EdgeInsets.only(right: 8.0),
+              padding: const EdgeInsets.only(right: 8.0),
               child: Row(
                 children: [
-                  Icon(Icons.notifications_none_rounded, color: Colors.white),
-                  SizedBox(width: 16),
-                  Icon(Icons.groups, color: Colors.white),
-                  SizedBox(width: 8),
+                  // Notifications: navigate + momentary filled icon
+                  IconButton(
+                    splashRadius: 22,
+                    onPressed: () async {
+                      setState(() => _isNotifActive = true);
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationsPage(),
+                        ),
+                      );
+                      if (mounted) setState(() => _isNotifActive = false);
+                    },
+                    icon: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 120),
+                      transitionBuilder: (child, anim) =>
+                          ScaleTransition(scale: anim, child: child),
+                      child: Icon(
+                        _isNotifActive
+                            ? Icons.notifications
+                            : Icons.notifications_none_rounded,
+                        key: ValueKey<bool>(_isNotifActive),
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+
+                  // Groups: momentary filled when tapped, reset after returning
+                  IconButton(
+                    splashRadius: 22,
+                    onPressed: () async {
+                      setState(() => _isGroupActive = true);
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const Householdgroupguest(),
+                        ),
+                      );
+                      if (mounted) setState(() => _isGroupActive = false);
+                    },
+                    icon: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 120),
+                      transitionBuilder: (child, anim) =>
+                          ScaleTransition(scale: anim, child: child),
+                      child: Icon(
+                        _isGroupActive ? Icons.groups : Icons.groups_outlined,
+                        key: ValueKey<bool>(_isGroupActive),
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                 ],
               ),
             ),
@@ -101,7 +160,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
 
       body: SafeArea(child: pages[_currentIndex]),
 
-      // Center add button (raised a bit, custom size)
+      // Center add button
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: RawMaterialButton(
@@ -115,12 +174,12 @@ class _OverviewScreenState extends State<OverviewScreen> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
-      // Bottom nav bar (green) with notch
+      // Bottom nav bar with notch
       bottomNavigationBar: BottomAppBar(
         color: headerGreen,
         shape: const CircularNotchedRectangle(),
         notchMargin: 6,
-        clipBehavior: Clip.hardEdge, // keep splash/ripple inside the bar
+        clipBehavior: Clip.hardEdge, // keep splash inside the bar
         child: SizedBox(
           height: 68,
           child: Row(
@@ -135,22 +194,24 @@ class _OverviewScreenState extends State<OverviewScreen> {
               ),
               _BottomItem(
                 isActive: _currentIndex == 1,
-                activeIcon: Icons.kitchen, // filled
+                activeIcon: Icons.kitchen,
                 inactiveIcon: Icons.kitchen_outlined,
                 label: 'Pantry',
-                onTap: () => setState(() => _currentIndex = 1),
+                onTap: () => setState(
+                  () => _currentIndex == 1 ? _currentIndex : _currentIndex = 1,
+                ),
               ),
               const SizedBox(width: 56), // space for FAB
               _BottomItem(
                 isActive: _currentIndex == 2,
-                activeIcon: Icons.shopping_cart, // filled
+                activeIcon: Icons.shopping_cart,
                 inactiveIcon: Icons.shopping_cart_outlined,
                 label: 'Shopping List',
                 onTap: () => setState(() => _currentIndex = 2),
               ),
               _BottomItem(
                 isActive: _currentIndex == 3,
-                activeIcon: Icons.lightbulb, // filled
+                activeIcon: Icons.lightbulb,
                 inactiveIcon: Icons.lightbulb_outline,
                 label: 'Tips',
                 onTap: () => setState(() => _currentIndex = 3),
@@ -162,13 +223,12 @@ class _OverviewScreenState extends State<OverviewScreen> {
     );
   }
 
-  // Centers the whole content block between the top AppBar and BottomAppBar (no scroll)
+  // Home body content
   Widget _homeBody(BuildContext context, List<Widget> tiles) {
     final headerGreen = this.headerGreen;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Layout constants
         const gridCols = 2;
         const gridSpacing = 16.0;
         const titleDropdownHeight = 40.0; // approx height of the row
@@ -177,28 +237,22 @@ class _OverviewScreenState extends State<OverviewScreen> {
         const blockSidePadding = EdgeInsets.fromLTRB(16, 12, 16, 12);
         const blockMaxWidth = 900.0;
 
-        // How many rows does the grid need?
         final rows = (tiles.length / gridCols).ceil();
-
-        // Available vertical space for the content block
         final available = constraints.maxHeight;
 
         double tileExtentToFit(double targetBlockHeight) {
           final gridHeight =
-              targetBlockHeight.clamp(0, double.infinity) // guard
-              -
+              targetBlockHeight -
               titleDropdownHeight -
               titleBottomGap -
               bottomCardHeight -
-              titleBottomGap; // same gap above bottom card
+              titleBottomGap;
           final raw = (gridHeight - gridSpacing * (rows - 1)) / rows;
           return raw;
         }
 
-        // Start from a desired tile size; shrink/expand as needed to fit.
         double tileExtent = 140.0;
 
-        // Compute block height with current tileExtent
         double blockHeight() =>
             titleDropdownHeight +
             titleBottomGap +
@@ -210,11 +264,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
           tileExtent = tileExtentToFit(available);
         }
 
-        // Keep it within a pleasant visual range
         tileExtent = tileExtent.clamp(110.0, 180.0);
-
-        // Final recalculated block height (used only for understanding; centering is automatic)
-        // final finalBlockHeight = blockHeight();
 
         return Center(
           child: ConstrainedBox(
@@ -226,7 +276,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     MainAxisSize.min, // enables true vertical centering
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title + dropdown (≈40px tall)
+                  // Title + dropdown
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -303,7 +353,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
 
                   const SizedBox(height: titleBottomGap),
 
-                  // Grid with fixed height from tileExtent (never scrolls)
+                  // Grid
                   SizedBox(
                     height: rows * tileExtent + gridSpacing * (rows - 1),
                     child: GridView.builder(
@@ -321,11 +371,12 @@ class _OverviewScreenState extends State<OverviewScreen> {
 
                   const SizedBox(height: titleBottomGap),
 
+                  // Bottom card
                   Container(
                     width: double.infinity,
                     constraints: const BoxConstraints(
-                      minHeight: 120, // won't go smaller than this
-                      maxHeight: 150, // optional: prevent it from becoming huge
+                      minHeight: 120,
+                      maxHeight: 150,
                     ),
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -334,7 +385,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                     child: const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min, // shrink to fit content
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           'Pantry Overview',
@@ -473,7 +524,6 @@ class _BottomItem extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              // Smoothly swap icons and slightly scale when active
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 150),
                 transitionBuilder: (child, anim) =>

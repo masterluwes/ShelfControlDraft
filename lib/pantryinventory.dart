@@ -129,7 +129,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             child: ListView.separated(
               padding: const EdgeInsets.only(bottom: 16),
               itemCount: items.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final it = items[index];
                 return Material(
@@ -164,7 +164,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                               width: 44,
                               height: 44,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
+                              errorBuilder: (_, _, _) => Container(
                                 width: 44,
                                 height: 44,
                                 color: const Color(0xFFEFEFEF),
