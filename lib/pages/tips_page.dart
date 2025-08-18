@@ -1,8 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:shelfcontrol/pages/notification_settings_page.dart';
-import 'package:shelfcontrol/pages/profile_page.dart';
-import 'package:shelfcontrol/pages/user_guide_page.dart';
-import 'package:shelfcontrol/pages/dashboard_page.dart'; // for Home nav
 
 class TipsPage extends StatelessWidget {
   const TipsPage({super.key});
@@ -47,114 +43,37 @@ class TipsPage extends StatelessWidget {
       },
     ];
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFFFFBE6),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF2E7D32),
-        elevation: 0,
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu, color: Colors.white),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications, color: Colors.white),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.group, color: Colors.white),
-            onPressed: () {},
-          ),
-        ],
-      ),
-
-      drawer: _buildSidePanel(context),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 16, 20, 15),
-            child: Text(
-              'Tips & Suggestions',
-              style: TextStyle(
-                fontSize: 33,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF2E7D32),
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 16, 20, 15),
+          child: Text(
+            'Tips & Suggestions',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2E7D32),
             ),
           ),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              itemCount: tips.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final t = tips[index];
-                return _buildTipCard(
-                  context,
-                  t['title']!,
-                  t['subtitle']!,
-                  t['details']!,
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: BottomAppBar(
-        color: const Color(0xFF2E7D32),
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 10.0,
-        child: SizedBox(
-          height: 60,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _navBarItem(Icons.home, "Home", () {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (_) => const DashboardPage()),
-                  (route) => false,
-                );
-              }),
-              _navBarItem(Icons.kitchen, "Pantry", () {}),
-              const SizedBox(width: 49), // space for the FAB
-              _navBarItem(Icons.shopping_cart, "Shopping List", () {}),
-              _navBarItem(Icons.lightbulb, "Tips", () {}),
-            ],
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            itemCount: tips.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final t = tips[index];
+              return _buildTipCard(
+                context,
+                t['title']!,
+                t['subtitle']!,
+                t['details']!,
+              );
+            },
           ),
         ),
-      ),
-      floatingActionButton: SizedBox(
-        width: 80,
-        height: 80,
-        child: FloatingActionButton(
-          onPressed: () {},
-          backgroundColor: Colors.white,
-          shape: const CircleBorder(),
-          child: const Icon(Icons.add, size: 36, color: Color(0xFF2E7D32)),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-    );
-  }
-
-  Widget _navBarItem(IconData icon, String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: Colors.white, size: 26),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white, fontSize: 11),
-          ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -198,96 +117,6 @@ class TipsPage extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildSidePanel(BuildContext context) {
-    return Drawer(
-      backgroundColor: const Color(0xFF2E7D32),
-      child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-          children: [
-            const Text(
-              "ShelfControl",
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 30),
-            _drawerItem(Icons.person, "Profile", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ProfilePage()),
-              );
-            }),
-            _drawerItem(Icons.notifications, "Notification Settings", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const NotificationSettingsPage(),
-                ),
-              );
-            }),
-            _drawerItem(Icons.delete, "Waste Tracker", () {}),
-            _drawerItem(Icons.info, "User Guide", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const UserGuidePage()),
-              );
-            }),
-            const SizedBox(height: 10),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.feedback, color: Colors.white),
-              title: const Text(
-                "Feedback",
-                style: TextStyle(color: Colors.white),
-              ),
-              subtitle: const Text(
-                "We would love to hear from you.",
-                style: TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-              onTap: () {},
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
-                shape: const StadiumBorder(),
-              ),
-              child: const Text("Email Us"),
-            ),
-            const SizedBox(height: 16),
-            _drawerItem(Icons.description, "Terms and Conditions", () {}),
-            _drawerItem(Icons.privacy_tip, "Privacy Policy", () {}),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                shape: const StadiumBorder(),
-              ),
-              child: const Text(
-                "Log Out",
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _drawerItem(IconData icon, String title, VoidCallback onTap) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.white),
-      title: Text(title, style: const TextStyle(color: Colors.white)),
-      onTap: onTap,
     );
   }
 }
