@@ -4,6 +4,7 @@ import 'package:shelfcontrol/pages/profile_page.dart';
 import 'package:shelfcontrol/pages/tips_page.dart';
 import 'package:shelfcontrol/pages/user_guide_page.dart';
 import 'package:shelfcontrol/pages/notification_page.dart';
+import 'package:shelfcontrol/pages/household_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -21,6 +22,7 @@ class _DashboardPageState extends State<DashboardPage> {
     const Center(child: Text("Shopping List Page")),
     const TipsPage(),
     const NotificationPage(),
+    const HouseholdPage(),
   ];
 
   void _onItemTapped(int index) {
@@ -57,7 +59,12 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           IconButton(
             icon: const Icon(Icons.group, color: Colors.white),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HouseholdPage()),
+              );
+            },
           ),
         ],
       ),
