@@ -70,7 +70,7 @@ class _MainDashboardState extends State<MainDashboard> {
     // Per-tab bodies
     final pages = <Widget>[
       _homeBody(context, tiles),
-      Pantryinventory(),
+      const Pantryinventory(),
       const Shoppinglist(),
       const Tipsandsuggest(),
     ];
@@ -286,8 +286,8 @@ class _MainDashboardState extends State<MainDashboard> {
                         style: TextStyle(
                           color: headerGreen,
                           fontFamily: 'Inter',
-                          fontSize: 32,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
                           height: 1.0,
                         ),
                       ),
