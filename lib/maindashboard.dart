@@ -284,7 +284,7 @@ class _MainDashboardState extends State<MainDashboard> {
                       Text(
                         'Overview',
                         style: TextStyle(
-                          color: headerGreen,
+                          color: Color(0xFF347928),
                           fontFamily: 'Inter',
                           fontSize: 34,
                           fontWeight: FontWeight.w900,

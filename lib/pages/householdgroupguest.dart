@@ -4,7 +4,6 @@ class Householdgroupguest extends StatelessWidget {
   const Householdgroupguest({super.key});
 
   // Keep colors consistent with your main file
-  static const Color _headerGreen = Color(0xFF2E7D32);
   static const Color _softCream = Color(0xFFFFFBE6);
 
   @override
@@ -25,7 +24,7 @@ class Householdgroupguest extends StatelessWidget {
               'You need to Register/Login\nto access this feature.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _headerGreen,
+                color: Color(0xFF347928),
                 fontFamily: 'Inter',
                 fontSize: 24,
                 fontWeight: FontWeight.w900,

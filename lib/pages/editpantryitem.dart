@@ -222,7 +222,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
                 Text(
                   'Edit Pantry Item',
                   style: TextStyle(
-                    color: headerGreen,
+                    color: Color(0xFF347928),
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w900,
                     fontSize: 32,
