@@ -40,13 +40,12 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   final Color rowColor = Color.fromARGB(255, 255, 254, 250);
   final Color sep = const Color.fromARGB(255, 230, 230, 230); // divider
 
-  // Type scale
-  static const double nameSize = 18; // Item title
   static const double metaSize = 13; // Category / Qty / Expires labels & values
   static const double pillSize = 13; // Status chip text
 
   TextStyle get nameStyle => const TextStyle(
-    fontSize: nameSize,
+    fontFamily: 'Roboto',
+    fontSize: 18,
     fontWeight: FontWeight.w900,
     color: Color(0xFF20451F),
   );
@@ -59,7 +58,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
   TextStyle get chipTextStyle => const TextStyle(
     fontSize: pillSize,
-    fontWeight: FontWeight.w700,
+    fontWeight: FontWeight.w500,
     color: Colors.white,
   );
 
@@ -99,19 +98,19 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   TextStyle get pillLabelStyle => const TextStyle(
     fontFamily: 'Roboto',
     fontSize: 13,
-    fontWeight: FontWeight.bold,
+    fontWeight: FontWeight.w500,
     color: kPillTextColor,
   );
   TextStyle get pillValueStyle => const TextStyle(
     fontFamily: 'Roboto',
     fontSize: 13,
-    fontWeight: FontWeight.bold,
+    fontWeight: FontWeight.w500,
     color: kPillTextColor,
   );
   TextStyle get menuItemTextStyle => const TextStyle(
     fontFamily: 'Roboto',
     fontSize: 14,
-    fontWeight: FontWeight.bold,
+    fontWeight: FontWeight.w500,
     color: Color(0xFFFDFDFC),
   );
 
@@ -690,7 +689,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               'Pantry Inventory',
               style: TextStyle(
                 color: Color(0xFF347928),
-                fontFamily: 'Inter', // ensure this is in pubspec.yaml
+                fontFamily: 'Inter',
                 fontSize: 34,
                 fontWeight: FontWeight.w900,
               ),

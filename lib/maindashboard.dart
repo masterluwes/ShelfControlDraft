@@ -312,7 +312,7 @@ class _MainDashboardState extends State<MainDashboard> {
                                         fontFamily: 'Roboto',
                                         color: Colors.white,
                                         fontSize: 15,
-                                        fontWeight: FontWeight.w800,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ),
@@ -391,7 +391,7 @@ class _MainDashboardState extends State<MainDashboard> {
                           'Pantry Overview',
                           style: TextStyle(
                             color: Color(0xFF666666),
-                            fontSize: 13,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
