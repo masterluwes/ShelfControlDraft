@@ -2,15 +2,11 @@
 
 A new Flutter project for unverified users or Guests.
 
-## Getting Started
+maindashboard = dashboard for guests
+  connected to:
+  - notificationguests - blank page notification for guests
+  - householdgroupguests - blank page page for guests
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+pantryinventory = pantry inventory for each households
+  connected to:
+  - editpantryitem = page that can edit a specific pantry item from the pantry inventory
