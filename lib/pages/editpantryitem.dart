@@ -12,7 +12,7 @@ class EditPantryItem extends StatefulWidget {
     this.initialPurchaseDate,
     this.initialNotes = '',
     this.categories,
-    required PantryItem item,
+    required PantryItem item, // kept as in your signature
   });
 
   final String initialName;
@@ -28,7 +28,7 @@ class EditPantryItem extends StatefulWidget {
 }
 
 class _EditPantryItemState extends State<EditPantryItem> {
-  // Palette to match screenshot
+  // Palette
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
 
@@ -44,6 +44,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
   DateTime? _expiry;
   DateTime? _purchase;
 
+  // Category options
   List<String> get _categoryOptions =>
       widget.categories ??
       const [
@@ -88,6 +89,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
     super.dispose();
   }
 
+  // ---- Date helpers / validator ----
   String _friendlyDate(DateTime d) =>
       '${_monthNames[d.month - 1]} ${d.day}, ${d.year}';
 
@@ -118,9 +120,13 @@ class _EditPantryItemState extends State<EditPantryItem> {
       firstDate: DateTime(now.year - 5),
       lastDate: DateTime(now.year + 5),
       builder: (ctx, child) => Theme(
-        data: Theme.of(
-          ctx,
-        ).copyWith(colorScheme: ColorScheme.fromSeed(seedColor: headerGreen)),
+        data: Theme.of(ctx).copyWith(
+          // Calendar theming lives here
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(foregroundColor: headerGreen),
+          ),
+        ),
         child: child!,
       ),
     );
@@ -131,8 +137,36 @@ class _EditPantryItemState extends State<EditPantryItem> {
     }
   }
 
+  String? _validateExpiryField(String? _) {
+    DateTime toDayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+    final now = toDayOnly(DateTime.now());
+
+    if (_expiry == null || _expiryCtrl.text.trim().isEmpty) {
+      return 'Required';
+    }
+
+    final exp = toDayOnly(_expiry!);
+
+    if (exp.isBefore(now)) {
+      return 'Expiration date can’t be in the past';
+    }
+
+    if (_purchase != null && exp.isBefore(toDayOnly(_purchase!))) {
+      return 'Expiration must be after purchase date';
+    }
+
+    return null;
+  }
+
+  // ---- Field decoration / label ----
   InputDecoration _fieldDecoration(String hint) => InputDecoration(
     hintText: hint,
+    hintStyle: const TextStyle(
+      fontFamily: 'Inter',
+      fontSize: 14,
+      color: Color.fromARGB(255, 105, 105, 105),
+    ),
     filled: true,
     fillColor: const Color(0xFFE9E9E9),
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -150,10 +184,15 @@ class _EditPantryItemState extends State<EditPantryItem> {
     padding: const EdgeInsets.only(bottom: 6),
     child: Text(
       text,
-      style: const TextStyle(fontSize: 12.5, color: Colors.black87),
+      style: const TextStyle(
+        fontFamily: 'Roboto',
+        fontSize: 15,
+        color: Color(0xFF000000),
+      ),
     ),
   );
 
+  // ---- UI ----
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -184,13 +223,15 @@ class _EditPantryItemState extends State<EditPantryItem> {
                   'Edit Pantry Item',
                   style: TextStyle(
                     color: headerGreen,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 26,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w900,
+                    fontSize: 32,
                     height: 1.1,
                   ),
                 ),
                 const SizedBox(height: 22),
 
+                // Item Name
                 _label('Item Name'),
                 TextFormField(
                   controller: _nameCtrl,
@@ -200,15 +241,28 @@ class _EditPantryItemState extends State<EditPantryItem> {
                 ),
                 const SizedBox(height: 16),
 
+                // Item Category
                 _label('Item Category'),
-                // --- Green pill dropdown using DropdownButton2
                 DropdownButtonHideUnderline(
                   child: DropdownButton2<String>(
                     isExpanded: true,
                     value: _category,
                     hint: const Text(
                       'Select Category',
-                      style: TextStyle(color: Colors.white, fontSize: 14),
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        backgroundColor: Color(0xFF2E7D32),
+                      ),
+                    ),
+                    // Style for the selected value (closed button text)
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
                     ),
                     items: _categoryOptions
                         .map(
@@ -217,25 +271,25 @@ class _EditPantryItemState extends State<EditPantryItem> {
                             child: Text(
                               c,
                               style: const TextStyle(
-                                color: Colors.black87,
+                                fontFamily: 'Inter',
+                                color: Color(0xFFFFFFFF),
                                 fontSize: 14,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
                         )
                         .toList(),
                     onChanged: (val) => setState(() => _category = val),
-                    // Ensure the menu ONLY shows below the button
                     dropdownStyleData: DropdownStyleData(
                       maxHeight: 240,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: const Color(0xFF2E7D32),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       elevation: 2,
                       offset: const Offset(0, 4),
                     ),
-                    // Style the green "main dropdown" button
                     buttonStyleData: ButtonStyleData(
                       height: 42,
                       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -252,6 +306,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
                 ),
                 const SizedBox(height: 16),
 
+                // Quantity
                 _label('Quantity'),
                 TextFormField(
                   controller: _qtyCtrl,
@@ -266,6 +321,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
                 ),
                 const SizedBox(height: 16),
 
+                // Expiration Date
                 _label('Expiration Date'),
                 TextFormField(
                   controller: _expiryCtrl,
@@ -276,9 +332,11 @@ class _EditPantryItemState extends State<EditPantryItem> {
                     onPicked: (d) => _expiry = d,
                   ),
                   decoration: _fieldDecoration('June 30, 2025'),
+                  validator: _validateExpiryField,
                 ),
                 const SizedBox(height: 16),
 
+                // Date of Purchase
                 _label('Date of Purchase'),
                 TextFormField(
                   controller: _purchaseCtrl,
@@ -292,6 +350,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
                 ),
                 const SizedBox(height: 16),
 
+                // Notes
                 _label('Notes (Optional)'),
                 TextFormField(
                   controller: _notesCtrl,
@@ -300,6 +359,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
                 ),
                 const SizedBox(height: 24),
 
+                // Actions
                 Row(
                   children: [
                     Expanded(
@@ -342,10 +402,27 @@ class _EditPantryItemState extends State<EditPantryItem> {
     );
   }
 
+  // ---- Save ----
   void _save() {
+    // Run field validators first
     if (!_formKey.currentState!.validate()) return;
 
-    final qty = int.parse(_qtyCtrl.text);
+    // Category required (since DropdownButton2 isn’t a FormField by default)
+    if (_category == null || _category!.trim().isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please select a category')));
+      return;
+    }
+
+    // Parse quantity safely
+    final qty = int.tryParse(_qtyCtrl.text.trim());
+    if (qty == null || qty <= 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Enter a valid quantity')));
+      return;
+    }
 
     Navigator.of(context).pop({
       'name': _nameCtrl.text.trim(),

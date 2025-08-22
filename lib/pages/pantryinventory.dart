@@ -37,7 +37,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   // Palette
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
-  final Color rowColor = Color.fromARGB(255, 255, 254, 250);
+  final Color rowColor = const Color.fromARGB(255, 255, 254, 250);
   final Color sep = const Color.fromARGB(255, 230, 230, 230); // divider
 
   static const double metaSize = 13; // Category / Qty / Expires labels & values
@@ -300,7 +300,75 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ),
   ];
 
-  // Actions
+  // ---- Helpers for editing round-trip ----
+  DateTime? _tryParseExpiryFromText(String t) {
+    // Supports MM/DD/YY or MM/DD/YYYY only. Returns null for phrases like "in 3 days".
+    final mmddyy = RegExp(r'^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$');
+    final m = mmddyy.firstMatch(t.trim());
+    if (m == null) return null;
+    final mm = int.parse(m.group(1)!);
+    final dd = int.parse(m.group(2)!);
+    final yraw = m.group(3)!;
+    final yyyy = yraw.length == 2 ? (2000 + int.parse(yraw)) : int.parse(yraw);
+    return DateTime(yyyy, mm, dd);
+  }
+
+  String _mmddyy(DateTime d) {
+    final mm = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    final yy = (d.year % 100).toString().padLeft(2, '0');
+    return '$mm/$dd/$yy';
+  }
+
+  Future<void> _openEditor(PantryItem item) async {
+    final initialExpiry = _tryParseExpiryFromText(item.expiresText);
+
+    final res = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => Material(
+          child: EditPantryItem(
+            item: item, // keeps your constructor signature
+            initialName: item.name,
+            initialCategory: item.category,
+            initialQuantity: item.qty,
+            initialExpiry: initialExpiry,
+            initialNotes: '', // plug your stored notes here if you have them
+            categories: const [
+              'Beverages',
+              'Canned Goods',
+              'Dairy',
+              'Snacks',
+              'Produce',
+              'Meat',
+              'Bakery',
+              'Household',
+              'Other',
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (res == null) return;
+
+    setState(() {
+      item.name = (res['name'] as String).trim();
+      final newCat = res['category'] as String?;
+      if (newCat != null && newCat.trim().isNotEmpty) {
+        item.category = newCat.trim();
+      }
+      item.qty = res['quantity'] as int;
+
+      final iso = res['expiry'] as String?;
+      if (iso != null) {
+        final dt = DateTime.tryParse(iso);
+        if (dt != null) item.expiresText = _mmddyy(dt);
+      }
+      // if you later add notes/purchaseDate to PantryItem, update them here.
+    });
+  }
+
+  // ---- Actions ----
   void _toggleSearch() {
     setState(() {
       isSearching = !isSearching;
@@ -334,7 +402,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  //  Filtering & Sorting
+  // ---- Filtering & Sorting ----
   List<PantryItem> _filteredAndSorted() {
     List<PantryItem> list = _items.where((it) {
       switch (filterBy) {
@@ -387,18 +455,18 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     return list;
   }
 
-  //  UI
+  // ---- UI ----
   // Status → label + color
   MapEntry<String, Color> _statusMeta(ItemStatus status) {
     switch (status) {
       case ItemStatus.active:
-        return MapEntry('Active', const Color(0xFFF2DE7E));
+        return const MapEntry('Active', Color(0xFFF2DE7E));
       case ItemStatus.atRisk:
-        return MapEntry('At risk', const Color(0xFFF1A648));
+        return const MapEntry('At risk', Color(0xFFF1A648));
       case ItemStatus.available:
-        return MapEntry('Available', const Color(0xFF58A66A));
+        return const MapEntry('Available', Color(0xFF58A66A));
       case ItemStatus.consumed:
-        return MapEntry('Consumed', Colors.grey);
+        return const MapEntry('Consumed', Colors.grey);
     }
   }
 
@@ -429,7 +497,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   Color _rowBgFor(PantryItem it) {
     switch (it.status) {
       case ItemStatus.atRisk:
-        return rowColor; // keep row base; change to a tint if desired
+        return rowColor;
       case ItemStatus.consumed:
         return rowColor;
       default:
@@ -442,7 +510,6 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     final meta = _statusMeta(item.status);
 
     return Theme(
-      // This Theme only affects the popup menu
       data: Theme.of(context).copyWith(dividerTheme: kStatusMenuDividerTheme),
       child: PopupMenuButton<ItemStatus>(
         tooltip: 'Change status',
@@ -452,7 +519,6 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         shape: kStatusMenuShape,
         constraints: kStatusMenuMinSize,
         position: PopupMenuPosition.under,
-
         onSelected: (choice) {
           setState(() {
             if (choice == ItemStatus.consumed) {
@@ -465,34 +531,27 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             }
           });
         },
-
-        // Add lines between items using PopupMenuDivider
-        itemBuilder: (context) => [
-          const PopupMenuItem(
+        itemBuilder: (context) => const [
+          PopupMenuItem(
             value: ItemStatus.active,
             child: Text('Active', style: kStatusMenuTextStyle),
           ),
-          const PopupMenuDivider(height: 0), // line
-
-          const PopupMenuItem(
+          PopupMenuDivider(height: 0),
+          PopupMenuItem(
             value: ItemStatus.available,
             child: Text('Available', style: kStatusMenuTextStyle),
           ),
-          const PopupMenuDivider(height: 0), // line
-
-          const PopupMenuItem(
+          PopupMenuDivider(height: 0),
+          PopupMenuItem(
             value: ItemStatus.atRisk,
             child: Text('At risk', style: kStatusMenuTextStyle),
           ),
-          const PopupMenuDivider(height: 0), // line
-
-          const PopupMenuItem(
+          PopupMenuDivider(height: 0),
+          PopupMenuItem(
             value: ItemStatus.consumed,
             child: Text('Consumed', style: kStatusMenuTextStyle),
           ),
         ],
-
-        // Closed state chip
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
@@ -510,14 +569,17 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     final bool isConsumed = item.status == ItemStatus.consumed;
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: kTileHPad, vertical: kTileVPad),
+      padding: const EdgeInsets.symmetric(
+        horizontal: kTileHPad,
+        vertical: kTileVPad,
+      ),
       child: Row(
         crossAxisAlignment: rowCrossAxis,
         mainAxisAlignment: rowMainAxis,
         children: [
           // Checkbox (consume / revert)
           Padding(
-            padding: EdgeInsets.only(top: kCheckboxNudgeTop),
+            padding: const EdgeInsets.only(top: kCheckboxNudgeTop),
             child: Checkbox(
               value: isConsumed,
               onChanged: (v) {
@@ -537,7 +599,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             ),
           ),
 
-          SizedBox(width: kCheckboxTextGap),
+          const SizedBox(width: kCheckboxTextGap),
 
           // Left block: name, category + qty
           Expanded(
@@ -546,7 +608,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               children: [
                 // Name (nudged down a bit)
                 Padding(
-                  padding: EdgeInsets.only(top: kTitleTopNudge),
+                  padding: const EdgeInsets.only(top: kTitleTopNudge),
                   child: Text(
                     item.name,
                     style: nameStyle.copyWith(color: _nameColorFor(item)),
@@ -556,8 +618,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                   ),
                 ),
 
-                // space between title and category/qty
-                SizedBox(height: kTitleMetaGap),
+                const SizedBox(height: kTitleMetaGap),
 
                 // Category + Qty
                 Row(
@@ -574,13 +635,11 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                       ),
                     ),
 
-                    // space between category and "Qty:"
-                    SizedBox(width: kCatQtyGap),
+                    const SizedBox(width: kCatQtyGap),
 
                     Text('Qty: ', style: metaLabelStyle),
 
-                    // space between "Qty:" and numeric value
-                    SizedBox(width: kQtyValueGap),
+                    const SizedBox(width: kQtyValueGap),
 
                     Text('${item.qty}', style: metaValueStyle),
                   ],
@@ -589,7 +648,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             ),
           ),
 
-          SizedBox(width: kLeftRightGap),
+          const SizedBox(width: kLeftRightGap),
 
           // Right block: status chip and "Expires in ..."
           Column(
@@ -660,12 +719,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           _deleteFromViewIndex(idx);
           return true;
         } else {
-          // LEFT → go to edit (only way to open editor)
-          await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => Material(child: EditPantryItem(item: item)),
-            ),
-          );
+          // LEFT → open editor, apply result, do not dismiss
+          await _openEditor(item);
           return false;
         }
       },
