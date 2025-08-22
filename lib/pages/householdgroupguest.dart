@@ -12,7 +12,6 @@ class Householdgroupguest extends StatelessWidget {
     return Scaffold(
       backgroundColor: _softCream,
 
-      // AppBar same visual height as previous (64)
       appBar: const PreferredSize(
         preferredSize: Size.fromHeight(64),
         child: _GuestAppBar(),
@@ -27,8 +26,9 @@ class Householdgroupguest extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _headerGreen,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
+                fontFamily: 'Inter',
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
                 height: 1.25,
               ),
             ),

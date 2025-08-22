@@ -31,7 +31,7 @@ class NotificationsPage extends StatelessWidget {
                   color: _headerGreen,
                   fontFamily: 'Inter',
                   fontSize: 24,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w900,
                   height: 1.0,
                 ),
               ),
@@ -42,7 +42,8 @@ class NotificationsPage extends StatelessWidget {
                 'Today',
                 style: TextStyle(
                   color: Color(0xFF222222),
-                  fontSize: 13,
+                  fontFamily: 'Roboto',
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
               ),
