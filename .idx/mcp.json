@@ -1,0 +1,10 @@
+{
+  "mcp_tool": "0.0.1",
+  "servers": [
+    {
+      "name": "firebase",
+      "host": "firebase.googleapis.com",
+      "api_version": "v1"
+    }
+  ]
+}

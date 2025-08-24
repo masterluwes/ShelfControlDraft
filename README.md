@@ -1,6 +1,6 @@
-# shelfcontrol
+# myapp
 
-Capstone Project
+A new Flutter project.
 
 ## Getting Started
 
