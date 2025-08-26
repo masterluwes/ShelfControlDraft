@@ -1,6 +1,6 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android") // <- prefer this id
+    id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
 }
@@ -8,27 +8,22 @@ plugins {
 android {
     namespace = "com.example.shelfcontrol"
 
-    // Use Flutter-provided versions
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    compileSdk = 36   
+    ndkVersion = "27.0.12077973"  
 
-    // Toolchains (Kotlin 2.x prefers Java 17)
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
         jvmTarget = "17"
-        // (Optional) remove this: it's a Java compiler flag, not Kotlin.
-        // freeCompilerArgs += "-Xlint:deprecation"
     }
 
     defaultConfig {
         applicationId = "com.example.shelfcontrol"
 
-        // ✅ Kotlin DSL properties (not Groovy functions)
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 23   
+        targetSdk = 35
 
         versionCode = flutter.versionCode
         versionName = flutter.versionName

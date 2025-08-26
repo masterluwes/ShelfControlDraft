@@ -11,6 +11,7 @@ import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/pantryinventory.dart';
 import 'package:shelf_control/screens/addpantryitem.dart';
 import 'package:shelf_control/screens/editpantryitem.dart';
+import 'package:shelf_control/screens/household_page.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -108,43 +109,51 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _showPantryInventory() {
-    _showPage(Pantryinventory(
-      items: _pantryItems,
-      onEdit: _showEditPantryItem,
-      onDelete: (item) {
-        setState(() {
-          _pantryItems.removeWhere((element) => element.id == item.id);
-        });
-      },
-    ));
+    _showPage(
+      Pantryinventory(
+        items: _pantryItems,
+        onEdit: _showEditPantryItem,
+        onDelete: (item) {
+          setState(() {
+            _pantryItems.removeWhere((element) => element.id == item.id);
+          });
+        },
+      ),
+    );
   }
 
   void _showAddPantryItem() {
-    _showPage(AddPantryItem(
-      onAddItem: (newItem) {
-        setState(() {
-          _pantryItems.add(newItem);
-        });
-        _showPantryInventory();
-      },
-      onBack: _showPantryInventory, // Add the onBack parameter
-    ));
+    _showPage(
+      AddPantryItem(
+        onAddItem: (newItem) {
+          setState(() {
+            _pantryItems.add(newItem);
+          });
+          _showPantryInventory();
+        },
+        onBack: _showPantryInventory, // Add the onBack parameter
+      ),
+    );
   }
 
   void _showEditPantryItem(PantryItem item) {
-    _showPage(EditPantryItem(
-      item: item,
-      onBack: _showPantryInventory,
-      onSave: (updatedItem) {
-        setState(() {
-          final index = _pantryItems.indexWhere((element) => element.id == updatedItem.id);
-          if (index != -1) {
-            _pantryItems[index] = updatedItem;
-          }
-        });
-        _showPantryInventory();
-      },
-    ));
+    _showPage(
+      EditPantryItem(
+        item: item,
+        onBack: _showPantryInventory,
+        onSave: (updatedItem) {
+          setState(() {
+            final index = _pantryItems.indexWhere(
+              (element) => element.id == updatedItem.id,
+            );
+            if (index != -1) {
+              _pantryItems[index] = updatedItem;
+            }
+          });
+          _showPantryInventory();
+        },
+      ),
+    );
   }
 
   @override
@@ -169,7 +178,12 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           IconButton(
             icon: const Icon(Icons.group, color: Colors.white),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HouseholdPage()),
+              );
+            },
           ),
         ],
       ),
@@ -184,16 +198,32 @@ class _DashboardPageState extends State<DashboardPage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _navBarItem(Icons.home, Icons.home_outlined, "Home", () => _showPage(DashboardHome(pantryItems: _pantryItems))),
-              _navBarItem(Icons.kitchen, Icons.kitchen_outlined, "Pantry", _showPantryInventory),
+              _navBarItem(
+                Icons.home,
+                Icons.home_outlined,
+                "Home",
+                () => _showPage(DashboardHome(pantryItems: _pantryItems)),
+              ),
+              _navBarItem(
+                Icons.kitchen,
+                Icons.kitchen_outlined,
+                "Pantry",
+                _showPantryInventory,
+              ),
               const SizedBox(width: 49),
               _navBarItem(
                 Icons.shopping_cart,
                 Icons.shopping_cart_outlined,
                 "Shopping",
-                () => _showPage(const Center(child: Text("Shopping List Page"))),
+                () =>
+                    _showPage(const Center(child: Text("Shopping List Page"))),
               ),
-              _navBarItem(Icons.lightbulb, Icons.lightbulb_outline, "Tips", () => _showPage(const TipsPage())),
+              _navBarItem(
+                Icons.lightbulb,
+                Icons.lightbulb_outline,
+                "Tips",
+                () => _showPage(const TipsPage()),
+              ),
             ],
           ),
         ),
@@ -243,10 +273,16 @@ class _DashboardPageState extends State<DashboardPage> {
     String label,
     VoidCallback onTap,
   ) {
-    final isActive = (_currentBodyWidget is DashboardHome && label == "Home") ||
-                     (_currentBodyWidget is Pantryinventory && label == "Pantry") ||
-                     ((_currentBodyWidget is Center && (_currentBodyWidget as Center).child is Text && ((_currentBodyWidget as Center).child as Text).data == "Shopping List Page") && label == "Shopping") ||
-                     (_currentBodyWidget is TipsPage && label == "Tips");
+    final isActive =
+        (_currentBodyWidget is DashboardHome && label == "Home") ||
+        (_currentBodyWidget is Pantryinventory && label == "Pantry") ||
+        ((_currentBodyWidget is Center &&
+                (_currentBodyWidget as Center).child is Text &&
+                ((_currentBodyWidget as Center).child as Text).data ==
+                    "Shopping List Page") &&
+            label == "Shopping") ||
+        (_currentBodyWidget is TipsPage && label == "Tips");
+    (_currentBodyWidget is HouseholdPage && label == "Households");
     return InkWell(
       onTap: onTap,
       child: Column(
@@ -338,13 +374,17 @@ class _DashboardPageState extends State<DashboardPage> {
             _drawerItem(Icons.description, "Terms and Conditions", () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const TermsAndConditionsScreen(),
+                ),
               );
             }),
             _drawerItem(Icons.privacy_tip, "Privacy Policy", () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const PrivacyPolicyScreen(),
+                ),
               );
             }),
             const SizedBox(height: 10),
