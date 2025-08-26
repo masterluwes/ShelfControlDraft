@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:guests_main/pages/notificationguest.dart';
 import 'package:guests_main/pages/pantryinventory.dart';
-import 'package:guests_main/pages/shoppinglist.dart';
+import 'package:guests_main/pages/shoppinglist.dart' show Shoppinglist;
 import 'package:guests_main/pages/tipsandsuggest.dart';
 import 'package:guests_main/pages/householdgroupguest.dart';
 
