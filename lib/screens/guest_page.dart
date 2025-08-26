@@ -100,7 +100,7 @@ class GuestPage extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    "Sign In",
+                    "Sign Up",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF2E7D32),
