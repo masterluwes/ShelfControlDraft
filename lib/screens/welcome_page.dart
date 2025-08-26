@@ -95,7 +95,7 @@ class _WelcomePageState extends State<WelcomePage> {
                     );
                   },
                   child: const Text(
-                    'Create account/Continue as a guest',
+                    'Create account / Continue as a guest',
                     style: TextStyle(color: Color(0xFF4E9E52)),
                   ),
                 ),
