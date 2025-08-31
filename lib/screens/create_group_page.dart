@@ -26,7 +26,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   @override
   void initState() {
     super.initState();
-    _generatedCode = _generateCode(8);
+    _generatedCode = _generateCode();
     _codeCtrl = TextEditingController(text: _generatedCode);
   }
 
@@ -37,14 +37,25 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     super.dispose();
   }
 
-  String _generateCode(int length) {
+  String _generateCode() {
     const chars =
         'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     final rand = Random();
-    return List.generate(
-      length,
-      (_) => chars[rand.nextInt(chars.length)],
-    ).join();
+
+    while (true) {
+      int length = 6 + rand.nextInt(3);
+
+      String code = List.generate(
+        length,
+        (_) => chars[rand.nextInt(chars.length)],
+      ).join();
+
+      if (RegExp(r'^0+$').hasMatch(code)) {
+        continue;
+      }
+
+      return code;
+    }
   }
 
   Future<void> _pickImage() async {
