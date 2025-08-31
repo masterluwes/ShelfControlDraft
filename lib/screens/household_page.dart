@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'household_detail_page.dart';
 import 'create_group_page.dart';
@@ -28,7 +29,7 @@ class _HouseholdPageState extends State<HouseholdPage> {
 
     if (result != null) {
       setState(() {
-        result['default'] = households.isEmpty;
+        result['default'] = false;
         households.add(result);
       });
       Navigator.push(
@@ -40,9 +41,11 @@ class _HouseholdPageState extends State<HouseholdPage> {
             members: (result['members'] as List).cast<String>(),
             isAdmin: result['isAdmin'] as bool? ?? true,
             onLeaveGroup: () => _leaveGroupByCode(result['code'] as String),
+            onDeleteGroup: () => _deleteGroupByCode(result['code'] as String),
             showWelcome: true,
             welcomeTitle: 'Success!',
             welcomeMessage: 'You created the group.',
+            profileImage: result['profileImage'],
           ),
         ),
       );
@@ -51,13 +54,14 @@ class _HouseholdPageState extends State<HouseholdPage> {
 
   void _showJoinDialog() {
     final codeController = TextEditingController();
+    String? errorText;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
-          builder: (context, setState) {
+          builder: (context, dialogSetState) {
             return Dialog(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -83,7 +87,15 @@ class _HouseholdPageState extends State<HouseholdPage> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: codeController,
-                      onChanged: (_) => setState(() {}),
+                      onChanged: (value) {
+                        dialogSetState(() {
+                          if (value.length > 8) {
+                            errorText = "Maximum of 8 characters.";
+                          } else {
+                            errorText = null;
+                          }
+                        });
+                      },
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.black),
                       decoration: InputDecoration(
@@ -91,6 +103,7 @@ class _HouseholdPageState extends State<HouseholdPage> {
                         hintStyle: const TextStyle(color: Colors.black),
                         filled: true,
                         fillColor: Colors.grey[400],
+                        errorText: errorText,
                         contentPadding: const EdgeInsets.symmetric(
                           vertical: 10,
                           horizontal: 20,
@@ -119,11 +132,18 @@ class _HouseholdPageState extends State<HouseholdPage> {
                           ),
                         ),
                         ElevatedButton(
-                          onPressed: codeController.text.trim().isEmpty
-                              ? null
-                              : () {
+                          onPressed:
+                              (codeController.text.trim().length >= 6 &&
+                                  codeController.text.trim().length <= 8)
+                              ? () {
                                   final code = codeController.text.trim();
-                                  Navigator.pop(context);
+
+                                  if (code.length > 8) {
+                                    dialogSetState(() {
+                                      errorText = "Maximum of 8 characters";
+                                    });
+                                    return;
+                                  }
 
                                   final joined = {
                                     "name": "Household 1",
@@ -135,10 +155,11 @@ class _HouseholdPageState extends State<HouseholdPage> {
                                       "Angel",
                                     ],
                                     "isAdmin": false,
-                                    "default": households.isEmpty,
+                                    "default": false,
                                   };
 
                                   setState(() => households.add(joined));
+                                  Navigator.pop(context);
 
                                   Navigator.push(
                                     context,
@@ -159,7 +180,8 @@ class _HouseholdPageState extends State<HouseholdPage> {
                                       ),
                                     ),
                                   );
-                                },
+                                }
+                              : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2E7D32),
                             shape: RoundedRectangleBorder(
@@ -181,6 +203,12 @@ class _HouseholdPageState extends State<HouseholdPage> {
         );
       },
     );
+  }
+
+  void _deleteGroupByCode(String code) {
+    setState(() {
+      households.removeWhere((g) => g['code'] == code);
+    });
   }
 
   @override
@@ -237,11 +265,14 @@ class _HouseholdPageState extends State<HouseholdPage> {
               itemBuilder: (context, index) {
                 final h = households[index];
                 return ListTile(
-                  leading: const Icon(
-                    Icons.group,
-                    size: 40,
-                    color: Colors.black,
-                  ),
+                  leading:
+                      (h['profileImage'] != null &&
+                          File(h['profileImage']).existsSync())
+                      ? CircleAvatar(
+                          radius: 20,
+                          backgroundImage: FileImage(File(h['profileImage'])),
+                        )
+                      : const Icon(Icons.group, size: 40, color: Colors.black),
                   title: Text.rich(
                     TextSpan(
                       children: [
@@ -266,8 +297,32 @@ class _HouseholdPageState extends State<HouseholdPage> {
                     ),
                   ),
                   subtitle: Text((h["members"] as List<String>).join(", ")),
-                  onTap: () {
-                    Navigator.push(
+                  trailing: IconButton(
+                    icon: Icon(
+                      h["default"] == true ? Icons.star : Icons.star_border,
+                      color: h["default"] == true ? Colors.amber : Colors.grey,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        // Clear all defaults
+                        for (final g in households) {
+                          g["default"] = false;
+                        }
+                        // Set this one as default
+                        h["default"] = true;
+                      });
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            "${h['name']} set as default household",
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  onTap: () async {
+                    final updatedData = await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => HouseholdDetailPage(
@@ -277,10 +332,26 @@ class _HouseholdPageState extends State<HouseholdPage> {
                           isAdmin: h['isAdmin'] as bool? ?? false,
                           onLeaveGroup: () =>
                               _leaveGroupByCode(h['code'] as String),
+                          onDeleteGroup: () =>
+                              _deleteGroupByCode(h['code'] as String),
                           showWelcome: false,
+                          profileImage: h['profileImage'],
+                          onUpdate: (updated) {
+                            setState(() {
+                              h['name'] = updated['name'];
+                              h['profileImage'] = updated['profileImage'];
+                            });
+                          },
                         ),
                       ),
                     );
+
+                    if (updatedData != null) {
+                      setState(() {
+                        h['name'] = updatedData['name'];
+                        h['profileImage'] = updatedData['profileImage'];
+                      });
+                    }
                   },
                 );
               },

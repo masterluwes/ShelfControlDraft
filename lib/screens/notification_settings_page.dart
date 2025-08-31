@@ -212,28 +212,28 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     SwitchListTile(
                       title: const Text('"Expired" Items'),
                       value: expiredItems,
-                      activeColor: const Color(0xFF2E7D32),
+                      activeThumbColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
                       onChanged: (val) => setState(() => expiredItems = val),
                     ),
                     SwitchListTile(
                       title: const Text('"At risk" Items'),
                       value: atRiskItems,
-                      activeColor: const Color(0xFF2E7D32),
+                      activeThumbColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
                       onChanged: (val) => setState(() => atRiskItems = val),
                     ),
                     SwitchListTile(
                       title: const Text("App Updates"),
                       value: appUpdates,
-                      activeColor: const Color(0xFF2E7D32),
+                      activeThumbColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
                       onChanged: (val) => setState(() => appUpdates = val),
                     ),
                     SwitchListTile(
                       title: const Text("Item recommendations"),
                       value: itemRecommendations,
-                      activeColor: const Color(0xFF2E7D32),
+                      activeThumbColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
                       onChanged: (val) =>
                           setState(() => itemRecommendations = val),
@@ -241,7 +241,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     SwitchListTile(
                       title: const Text("Tips and Suggestions"),
                       value: tipsSuggestions,
-                      activeColor: const Color(0xFF2E7D32),
+                      activeThumbColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
                       onChanged: (val) => setState(() => tipsSuggestions = val),
                     ),
