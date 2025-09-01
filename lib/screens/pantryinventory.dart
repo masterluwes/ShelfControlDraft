@@ -416,7 +416,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                   width: 44,
                   height: 44,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.image),
+                  errorBuilder: (_, _ , _ ) => const Icon(Icons.image),
                 ),
               ),
               const SizedBox(width: 12),
@@ -546,7 +546,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         Expanded(
           child: ListView.separated(
             itemCount: view.length,
-            separatorBuilder: (_, __) =>
+            separatorBuilder: (_, _ ) =>
                 Divider(height: 1, thickness: 1, color: sep),
             itemBuilder: (_, i) => _dismissibleRow(view, i),
           ),
