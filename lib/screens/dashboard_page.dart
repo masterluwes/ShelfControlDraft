@@ -8,10 +8,11 @@ import 'package:shelf_control/screens/user_guide_page.dart';
 import 'package:shelf_control/screens/notification_page.dart';
 import 'package:shelf_control/services/auth_service.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
-import 'package:shelf_control/screens/pantryinventory.dart';
+import 'package:shelf_control/screens/pantryinventory.dart'; // Import for PantryItem and ItemStatus
 import 'package:shelf_control/screens/addpantryitem.dart';
 import 'package:shelf_control/screens/editpantryitem.dart';
 import 'package:shelf_control/screens/household_page.dart';
+import 'package:shelf_control/screens/shoppinglist.dart'; // Import for ShoppingListPage
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -215,8 +216,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 Icons.shopping_cart,
                 Icons.shopping_cart_outlined,
                 "Shopping",
-                () =>
-                    _showPage(const Center(child: Text("Shopping List Page"))),
+                () => _showPage(const Shoppinglist()),
               ),
               _navBarItem(
                 Icons.lightbulb,
@@ -276,11 +276,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final isActive =
         (_currentBodyWidget is DashboardHome && label == "Home") ||
         (_currentBodyWidget is Pantryinventory && label == "Pantry") ||
-        ((_currentBodyWidget is Center &&
-                (_currentBodyWidget as Center).child is Text &&
-                ((_currentBodyWidget as Center).child as Text).data ==
-                    "Shopping List Page") &&
-            label == "Shopping") ||
+        (_currentBodyWidget is Shoppinglist && label == "Shopping") ||
         (_currentBodyWidget is TipsPage && label == "Tips");
     (_currentBodyWidget is HouseholdPage && label == "Households");
     return InkWell(
