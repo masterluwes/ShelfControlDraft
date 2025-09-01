@@ -32,6 +32,7 @@ class _HouseholdPageState extends State<HouseholdPage> {
         result['default'] = false;
         households.add(result);
       });
+      if (!mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(

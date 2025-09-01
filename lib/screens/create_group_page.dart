@@ -204,7 +204,10 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: Colors.black.withOpacity(0.15)),
+          child: Container(
+            height: 1,
+            color: Colors.black.withAlpha((255 * 0.15).round()),
+          ),
         ),
       ),
       body: SingleChildScrollView(
