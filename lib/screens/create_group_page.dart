@@ -169,23 +169,23 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 
     Future.delayed(const Duration(milliseconds: 1500), () {
       if (!mounted) return;
-      Navigator.of(context)
-        ..pop()
-        ..pop();
+      Navigator.of(context).pop();
     });
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
 
-    Navigator.of(context).pop({
+    final newHousehold = {
       "name": _nameCtrl.text.trim(),
       "code": _generatedCode,
-      "members": ["You (Admin)"],
+      "members": ["You"],
       "isAdmin": true,
       "default": true,
       "profileImage": _pickedImage?.path,
-    });
+    };
+
+    Navigator.of(context).pop(newHousehold);
   }
 
   @override
