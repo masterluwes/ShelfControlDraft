@@ -61,7 +61,7 @@ class TipsPage extends StatelessWidget {
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             itemCount: tips.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            separatorBuilder: (_, _ ) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final t = tips[index];
               return _buildTipCard(

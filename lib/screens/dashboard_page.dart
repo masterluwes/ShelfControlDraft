@@ -14,6 +14,7 @@ import 'package:shelf_control/screens/editpantryitem.dart';
 import 'package:shelf_control/screens/household_page.dart';
 import 'package:shelf_control/screens/shoppinglist.dart'; // Import for ShoppingListPage
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
+import 'package:shelf_control/screens/scan_item_screen.dart'; // Import for ScanItemScreen
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -252,7 +253,13 @@ class _DashboardPageState extends State<DashboardPage> {
             backgroundColor: Colors.white,
             label: 'Add by Camera',
             labelStyle: const TextStyle(fontSize: 18.0, color: Colors.black),
-            onTap: () => debugPrint('Add by Camera'),
+            onTap: () {
+              debugPrint('Add by Camera tapped! Navigating to ScanItemScreen.');
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ScanItemScreen()),
+              );
+            },
           ),
           SpeedDialChild(
             child: const Icon(Icons.edit, color: Color(0xFF2E7D32)),
