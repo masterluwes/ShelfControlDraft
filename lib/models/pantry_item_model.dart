@@ -10,6 +10,12 @@ class PantryItemModel {
   String? barcode;
   String? brand;
   String? quantityUnit; // e.g., "1L", "397g"
+  Map<String, dynamic>? nutritionFacts; // New field for nutrition information
+  int? shelfLifeDays;
+  int? shelfLifeWeeks;
+  int? shelfLifeMonths;
+  DateTime? manufacturedDate;
+  DateTime? expirationDate;
 
   PantryItemModel({
     this.id,
@@ -21,6 +27,12 @@ class PantryItemModel {
     this.barcode,
     this.brand,
     this.quantityUnit,
+    this.nutritionFacts,
+    this.shelfLifeDays,
+    this.shelfLifeWeeks,
+    this.shelfLifeMonths,
+    this.manufacturedDate,
+    this.expirationDate,
   });
 
   // Factory constructor to create a PantryItemModel from a Firestore document
@@ -36,6 +48,12 @@ class PantryItemModel {
       barcode: data['barcode'],
       brand: data['brand'],
       quantityUnit: data['quantityUnit'],
+      nutritionFacts: data['nutritionFacts'] is Map ? Map<String, dynamic>.from(data['nutritionFacts']) : null,
+      shelfLifeDays: data['shelfLifeDays'],
+      shelfLifeWeeks: data['shelfLifeWeeks'],
+      shelfLifeMonths: data['shelfLifeMonths'],
+      manufacturedDate: (data['manufacturedDate'] as Timestamp?)?.toDate(),
+      expirationDate: (data['expirationDate'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -50,6 +68,12 @@ class PantryItemModel {
       'barcode': barcode,
       'brand': brand,
       'quantityUnit': quantityUnit,
+      'nutritionFacts': nutritionFacts,
+      'shelfLifeDays': shelfLifeDays,
+      'shelfLifeWeeks': shelfLifeWeeks,
+      'shelfLifeMonths': shelfLifeMonths,
+      'manufacturedDate': manufacturedDate != null ? Timestamp.fromDate(manufacturedDate!) : null,
+      'expirationDate': expirationDate != null ? Timestamp.fromDate(expirationDate!) : null,
       'timestamp': FieldValue.serverTimestamp(), // Add a timestamp for creation
     };
   }
