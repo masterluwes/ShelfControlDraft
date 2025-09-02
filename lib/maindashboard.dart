@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:guests_main/pages/notificationguest.dart';
 import 'package:guests_main/pages/pantryinventory.dart';
-import 'package:guests_main/pages/shoppinglist.dart' show Shoppinglist;
+import 'package:guests_main/pages/shoppinglist.dart';
 import 'package:guests_main/pages/tipsandsuggest.dart';
 import 'package:guests_main/pages/householdgroupguest.dart';
 
@@ -207,7 +207,9 @@ class _MainDashboardState extends State<MainDashboard> {
                 activeIcon: Icons.shopping_cart,
                 inactiveIcon: Icons.shopping_cart_outlined,
                 label: 'Shopping List',
-                onTap: () => setState(() => _currentIndex = 2),
+                onTap: () {
+                  setState(() => _currentIndex = 2);
+                },
               ),
               _BottomItem(
                 isActive: _currentIndex == 3,

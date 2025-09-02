@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:guests_main/pages/editpantryitem.dart';
 
 class Pantryinventory extends StatefulWidget {
@@ -14,6 +15,8 @@ enum ItemStatus { active, atRisk, available, consumed }
 class PantryItem {
   final String id;
   String name;
+  String brand;
+  String size; // e.g., "1L", "397g", "500ml"
   String category;
   final String imageUrl;
   int qty;
@@ -24,6 +27,8 @@ class PantryItem {
   PantryItem({
     required this.id,
     required this.name,
+    required this.brand,
+    required this.size,
     required this.category,
     required this.imageUrl,
     required this.qty,
@@ -31,6 +36,15 @@ class PantryItem {
     required this.status,
     this.prevStatus,
   });
+
+  String get subline {
+    final b = brand.trim();
+    final s = size.trim();
+    if (b.isNotEmpty && s.isNotEmpty) return '$b · $s';
+    if (b.isNotEmpty) return b;
+    if (s.isNotEmpty) return s;
+    return '';
+  }
 }
 
 class _PantryInventoryBodyState extends State<Pantryinventory> {
@@ -40,14 +54,26 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   final Color rowColor = const Color.fromARGB(255, 255, 254, 250);
   final Color sep = const Color.fromARGB(255, 230, 230, 230); // divider
 
-  static const double metaSize = 13; // Category / Qty / Expires labels & values
-  static const double pillSize = 13; // Status chip text
+  // Keys to anchor floating SnackBars so the UI never shifts
+  final GlobalKey _titleKey = GlobalKey();
+  final GlobalKey _controlsKey = GlobalKey();
+
+  // Typography
+  static const double metaSize = 13;
+  static const double pillSize = 13;
 
   TextStyle get nameStyle => const TextStyle(
     fontFamily: 'Roboto',
     fontSize: 18,
     fontWeight: FontWeight.w900,
     color: Color(0xFF20451F),
+  );
+
+  TextStyle get subStyle => const TextStyle(
+    fontFamily: 'Roboto',
+    fontSize: 13,
+    fontWeight: FontWeight.w500,
+    color: Color(0xFF6F6F6F),
   );
 
   TextStyle get metaLabelStyle =>
@@ -62,9 +88,10 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     color: Colors.white,
   );
 
-  //Spacing knobs
-  static const double kTitleTopNudge = 4; // push the title line down a bit
-  static const double kTitleMetaGap = 6; // Title ↔ Category/Qty
+  // Spacing knobs
+  static const double kTitleTopNudge = 4; // push title down a bit
+  static const double kTitleMetaGap = 6; // Title ↔ subline (brand · size)
+  static const double kSubMetaGap = 6; // subline ↔ Category/Qty row
   static const double kCatQtyGap = 12; // Category ↔ "Qty:"
   static const double kQtyValueGap = 4; // "Qty:" ↔ value
 
@@ -72,23 +99,20 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   static const double kTileHPad = 12; // whole item: left/right padding
   static const double kTileVPad = 10; // whole item: top/bottom padding
   static const double kCheckboxTextGap = 12; // gap after checkbox
-  static const double kLeftRightGap = 12; // gap between left and right blocks
   static const double kCheckboxNudgeTop = 4; // vertical nudge for the checkbox
+  static const double kLeftRightGap = 12; // gap between left & right blocks
 
-  // Row alignment for the whole item row
-  CrossAxisAlignment rowCrossAxis = CrossAxisAlignment.start;
-  MainAxisAlignment rowMainAxis = MainAxisAlignment.start;
+  // Row alignment
+  final CrossAxisAlignment rowCrossAxis = CrossAxisAlignment.start;
+  final MainAxisAlignment rowMainAxis = MainAxisAlignment.start;
 
-  // Left text block alignment
-  CrossAxisAlignment leftColAlign = CrossAxisAlignment.start;
+  // Left block alignment
+  final CrossAxisAlignment leftColAlign = CrossAxisAlignment.start;
+  final TextAlign nameTextAlign = TextAlign.left;
 
-  // Right status block alignment
-  CrossAxisAlignment rightColCross = CrossAxisAlignment.end;
-  MainAxisAlignment rightColMain = MainAxisAlignment.start;
-
-  // Text alignment inside the left block
-  TextAlign nameTextAlign = TextAlign.left;
-  TextAlign categoryTextAlign = TextAlign.left;
+  // Right block alignment
+  final CrossAxisAlignment rightColCross = CrossAxisAlignment.end;
+  final MainAxisAlignment rightColMain = MainAxisAlignment.start;
 
   // Dropdown pill styling
   static const Color kPillBg = Color(0xFF2E7D32);
@@ -114,7 +138,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     color: Color(0xFFFDFDFC),
   );
 
-  // Status dropdown (PopupMenu) styling knobs
+  // Status dropdown (PopupMenu) styling
   static const Offset kStatusMenuOffset = Offset(0, 8); // push menu below chip
   static const double kStatusMenuElevation = 8;
   static const ShapeBorder kStatusMenuShape = RoundedRectangleBorder(
@@ -128,11 +152,10 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     fontWeight: FontWeight.w600,
     color: Color(0XFF347928),
   );
-
   static const DividerThemeData kStatusMenuDividerTheme = DividerThemeData(
-    color: Color(0xFFBDBDBD), // line color
-    thickness: 1, // line thickness
-    space: 0, // vertical padding around the line
+    color: Color(0xFFBDBDBD),
+    thickness: 1,
+    space: 0,
   );
 
   // Search / Filters
@@ -156,11 +179,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   String sortBy = 'Category';
   String filterBy = 'All Items';
 
-  // Sample items
+  // Sample items (shoppinglist-style info + status/expiry on right)
   final List<PantryItem> _items = [
     PantryItem(
       id: 'oj1',
-      name: 'Orange Juice (1L)',
+      name: 'Orange Juice',
+      brand: 'Fruit Soda Orange',
+      size: '1L',
       category: 'Beverages',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/0/0b/Orange_juice_1.jpg',
@@ -170,7 +195,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ),
     PantryItem(
       id: 'ketch397',
-      name: 'Ketchup (397g)',
+      name: 'Ketchup',
+      brand: 'Heinz',
+      size: '397g',
       category: 'Condiments',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/9/9b/Tomato_ketchup.jpg',
@@ -180,7 +207,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ),
     PantryItem(
       id: 'onion50',
-      name: 'Onion Powder (50g)',
+      name: 'Onion Powder',
+      brand: 'McCormick',
+      size: '50g',
       category: 'Herbs/Spices',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/2/2a/Onion_Powder.jpg',
@@ -190,17 +219,21 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ),
     PantryItem(
       id: 'soy300',
-      name: 'Soy Sauce (300ml)',
+      name: 'Soy Sauce',
+      brand: 'Silver Swan',
+      size: '300ml',
       category: 'Condiments',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/1/13/Soy_sauce.jpg',
-      qty: 1,
+      qty: 2,
       expiresText: '07/15/25',
       status: ItemStatus.available,
     ),
     PantryItem(
       id: 'sardines',
       name: 'Canned Sardines',
+      brand: '555',
+      size: '155g',
       category: 'Canned Goods',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/2/27/Conserva_de_sardinas.jpg',
@@ -210,7 +243,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ),
     PantryItem(
       id: 'coke500',
-      name: 'Coca Cola (500ml)',
+      name: 'Coca-Cola',
+      brand: 'Coke',
+      size: '500ml',
       category: 'Beverages',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/4/4f/Coca-Cola_bottle.jpg',
@@ -220,7 +255,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ),
     PantryItem(
       id: 'pasta1',
-      name: 'Spaghetti Pasta (1kg)',
+      name: 'Spaghetti Pasta',
+      brand: 'Del Monte',
+      size: '1kg',
       category: 'Grains',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/f/fd/Spaghetti_500g.jpg',
@@ -230,7 +267,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ),
     PantryItem(
       id: 'milk1L',
-      name: 'Fresh Milk (1L)',
+      name: 'Fresh Milk',
+      brand: 'Cowhead',
+      size: '1L',
       category: 'Dairy',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/a/a4/Milk_glass.jpg',
@@ -240,7 +279,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ),
     PantryItem(
       id: 'egg12',
-      name: 'Eggs (Dozen)',
+      name: 'Eggs',
+      brand: 'Farm Fresh',
+      size: '1 dozen',
       category: 'Dairy',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/2/2f/12eggs.jpg',
@@ -251,6 +292,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     PantryItem(
       id: 'bread1',
       name: 'Loaf Bread',
+      brand: 'Gardenia',
+      size: '600g',
       category: 'Bakery',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/6/61/Sliced_bread.jpg',
@@ -261,6 +304,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     PantryItem(
       id: 'chips1',
       name: 'Potato Chips',
+      brand: 'Piattos',
+      size: 'Large',
       category: 'Snacks',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/6/69/Potato-Chips.jpg',
@@ -270,7 +315,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ),
     PantryItem(
       id: 'coffee200',
-      name: 'Coffee (200g)',
+      name: 'Coffee',
+      brand: 'Nescafé',
+      size: '200g',
       category: 'Beverages',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/4/45/A_small_cup_of_coffee.JPG',
@@ -280,7 +327,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ),
     PantryItem(
       id: 'icecream',
-      name: 'Vanilla Ice Cream (1L)',
+      name: 'Vanilla Ice Cream',
+      brand: 'Selecta',
+      size: '1L',
       category: 'Frozen',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/b/bb/Ice_Cream_dessert_02.jpg',
@@ -290,7 +339,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ),
     PantryItem(
       id: 'butter200',
-      name: 'Butter (200g)',
+      name: 'Butter',
+      brand: 'Anchor',
+      size: '200g',
       category: 'Dairy',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/7/7c/Butter.jpg',
@@ -327,12 +378,12 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       MaterialPageRoute(
         builder: (_) => Material(
           child: EditPantryItem(
-            item: item, // keeps your constructor signature
+            item: item,
             initialName: item.name,
             initialCategory: item.category,
             initialQuantity: item.qty,
             initialExpiry: initialExpiry,
-            initialNotes: '', // plug your stored notes here if you have them
+            initialNotes: '',
             categories: const [
               'Beverages',
               'Canned Goods',
@@ -353,6 +404,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
     setState(() {
       item.name = (res['name'] as String).trim();
+
       final newCat = res['category'] as String?;
       if (newCat != null && newCat.trim().isNotEmpty) {
         item.category = newCat.trim();
@@ -364,11 +416,15 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         final dt = DateTime.tryParse(iso);
         if (dt != null) item.expiresText = _mmddyy(dt);
       }
-      // if you later add notes/purchaseDate to PantryItem, update them here.
+
+      // If you extend EditPantryItem to return brand/size:
+      if (res.containsKey('brand'))
+        item.brand = (res['brand'] as String).trim();
+      if (res.containsKey('size')) item.size = (res['size'] as String).trim();
     });
   }
 
-  // ---- Actions ----
+  // ---- Search / filter actions ----
   void _toggleSearch() {
     setState(() {
       isSearching = !isSearching;
@@ -381,6 +437,38 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
   void _onQueryChanged(String v) => setState(() => _query = v.trim());
 
+  // ---------- Floating (top) SnackBar helpers ----------
+  double _topSnackMargin() {
+    final topSafe = MediaQuery.of(context).padding.top;
+    final titleH = _titleKey.currentContext?.size?.height ?? 0;
+    final controlsH = _controlsKey.currentContext?.size?.height ?? 0;
+    return topSafe + titleH + controlsH + 8; // little breathing room
+  }
+
+  void _showTopSnackWithAction({
+    required String message,
+    String? actionLabel,
+    VoidCallback? onAction,
+    Duration duration = const Duration(seconds: 3),
+  }) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: duration,
+        behavior: SnackBarBehavior.floating,
+        dismissDirection: DismissDirection.up,
+        margin: EdgeInsets.fromLTRB(16, _topSnackMargin(), 16, 0),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        action: (actionLabel != null && onAction != null)
+            ? SnackBarAction(label: actionLabel, onPressed: onAction)
+            : null,
+      ),
+    );
+  }
+
+  // ---- Delete with UNDO (top-anchored, no layout shift) ----
   void _deleteFromViewIndex(int viewIndex) {
     final view = _filteredAndSorted();
     if (viewIndex < 0 || viewIndex >= view.length) return;
@@ -390,15 +478,11 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
     final backup = _items.removeAt(originalIndex);
     setState(() {});
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Deleted "${backup.name}"'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () => setState(() => _items.insert(originalIndex, backup)),
-        ),
-      ),
+
+    _showTopSnackWithAction(
+      message: 'Deleted "${backup.name}"',
+      actionLabel: 'Undo',
+      onAction: () => setState(() => _items.insert(originalIndex, backup)),
     );
   }
 
@@ -423,10 +507,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       }
       if (_query.isNotEmpty) {
         final q = _query.toLowerCase();
-        if (!it.name.toLowerCase().contains(q) &&
-            !it.category.toLowerCase().contains(q)) {
-          return false;
-        }
+        final hay = '${it.name} ${it.brand} ${it.size} ${it.category}'
+            .toLowerCase();
+        if (!hay.contains(q)) return false;
       }
       return true;
     }).toList();
@@ -441,9 +524,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         list.sort((a, b) => b.qty.compareTo(a.qty));
         break;
       case 'Expiry':
-        list.sort(
-          (a, b) => a.expiresText.compareTo(b.expiresText),
-        ); // demo-friendly
+        list.sort((a, b) => a.expiresText.compareTo(b.expiresText));
         break;
       case 'Category':
       default:
@@ -455,8 +536,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     return list;
   }
 
-  // ---- UI ----
-  // Status → label + color
+  // ---- UI helpers ----
   MapEntry<String, Color> _statusMeta(ItemStatus status) {
     switch (status) {
       case ItemStatus.active:
@@ -470,42 +550,31 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     }
   }
 
-  // Per-item dynamic colors
   Color _nameColorFor(PantryItem it) {
     switch (it.status) {
       case ItemStatus.atRisk:
-        return const Color(0xFFD32F2F); // red-ish for at risk
+        return const Color(0xFFD32F2F);
       case ItemStatus.consumed:
-        return Colors.grey.shade600; // dim when consumed
+        return Colors.grey.shade600;
       default:
-        return const Color(0xFF000000); // default title color
+        return const Color(0xFF000000);
     }
   }
 
   Color _categoryColorFor(PantryItem it) {
     return it.status == ItemStatus.available
-        ? const Color(0xFF1B5E20) // deeper green when available
-        : const Color(0xFF6F6F6F); // default
+        ? const Color(0xFF1B5E20)
+        : const Color(0xFF6F6F6F);
   }
 
   Color _expiresValueColorFor(PantryItem it) {
     return it.status == ItemStatus.atRisk
-        ? const Color(0xFFF57C00) // orange when at risk
-        : Colors.black87; // default strong text
+        ? const Color(0xFFF57C00)
+        : Colors.black87;
   }
 
-  Color _rowBgFor(PantryItem it) {
-    switch (it.status) {
-      case ItemStatus.atRisk:
-        return rowColor;
-      case ItemStatus.consumed:
-        return rowColor;
-      default:
-        return rowColor;
-    }
-  }
+  Color _rowBgFor(PantryItem it) => rowColor;
 
-  // Status chip with custom menu adjustments
   Widget _statusChipButton(PantryItem item) {
     final meta = _statusMeta(item.status);
 
@@ -515,7 +584,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         tooltip: 'Change status',
         offset: kStatusMenuOffset,
         elevation: kStatusMenuElevation,
-        color: const Color(0xFFFDFDFC), // menu background
+        color: const Color(0xFFFDFDFC),
         shape: kStatusMenuShape,
         constraints: kStatusMenuMinSize,
         position: PopupMenuPosition.under,
@@ -564,7 +633,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  // One row, using positioning + spacing knobs
+  // Base row (content) — left like shoppinglist, right = status + expiration
   Widget _rowBaseContent(PantryItem item) {
     final bool isConsumed = item.status == ItemStatus.consumed;
 
@@ -601,12 +670,12 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
           const SizedBox(width: kCheckboxTextGap),
 
-          // Left block: name, category + qty
+          // Left block (matches shoppinglist.dart)
           Expanded(
             child: Column(
               crossAxisAlignment: leftColAlign,
               children: [
-                // Name (nudged down a bit)
+                // Name
                 Padding(
                   padding: const EdgeInsets.only(top: kTitleTopNudge),
                   child: Text(
@@ -618,7 +687,18 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                   ),
                 ),
 
-                const SizedBox(height: kTitleMetaGap),
+                // Subline: brand · size
+                if (item.subline.isNotEmpty) ...[
+                  const SizedBox(height: kTitleMetaGap),
+                  Text(
+                    item.subline,
+                    style: subStyle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+
+                const SizedBox(height: kSubMetaGap),
 
                 // Category + Qty
                 Row(
@@ -629,18 +709,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                         style: metaLabelStyle.copyWith(
                           color: _categoryColorFor(item),
                         ),
-                        textAlign: categoryTextAlign,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-
                     const SizedBox(width: kCatQtyGap),
-
                     Text('Qty: ', style: metaLabelStyle),
-
                     const SizedBox(width: kQtyValueGap),
-
                     Text('${item.qty}', style: metaValueStyle),
                   ],
                 ),
@@ -650,7 +725,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
           const SizedBox(width: kLeftRightGap),
 
-          // Right block: status chip and "Expires in ..."
+          // Right block: status chip + "Expires in ..."
           Column(
             crossAxisAlignment: rightColCross,
             mainAxisAlignment: rightColMain,
@@ -676,55 +751,51 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  Widget _rowTile(PantryItem item, int visualIndex) {
+  // Row with overlay for consumed & slidable actions (Edit/Delete)
+  Widget _slidableRow(List<PantryItem> view, int idx) {
+    final item = view[idx];
     final bool isConsumed = item.status == ItemStatus.consumed;
 
-    return Material(
-      color: _rowBgFor(item),
-      child: Stack(
+    return Slidable(
+      key: ValueKey(item.id),
+      closeOnScroll: true,
+      endActionPane: ActionPane(
+        motion: const DrawerMotion(),
+        extentRatio: 0.40, // space for Edit + Delete
         children: [
-          _rowBaseContent(item),
-          if (isConsumed)
-            Positioned.fill(
-              child: IgnorePointer(
-                ignoring: true,
-                child: Container(color: Colors.white.withOpacity(0.45)),
-              ),
-            ),
+          SlidableAction(
+            onPressed: (_) => _openEditor(item),
+            icon: Icons.edit,
+            label: 'Edit',
+            backgroundColor: headerGreen,
+            foregroundColor: Colors.white,
+            borderRadius: BorderRadius.circular(0),
+          ),
+          SlidableAction(
+            onPressed: (_) => _deleteFromViewIndex(idx),
+            icon: Icons.delete_outline,
+            label: 'Delete',
+            backgroundColor: Colors.red.shade600,
+            foregroundColor: Colors.white,
+            borderRadius: BorderRadius.circular(0),
+          ),
         ],
       ),
-    );
-  }
-
-  Widget _dismissibleRow(List<PantryItem> view, int idx) {
-    final item = view[idx];
-    return Dismissible(
-      key: ValueKey(item.id),
-      direction: DismissDirection.horizontal,
-      background: Container(
-        color: Colors.red.shade700,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        alignment: Alignment.centerLeft,
-        child: const Icon(Icons.delete, color: Colors.white, size: 28),
+      child: Material(
+        color: _rowBgFor(item),
+        child: Stack(
+          children: [
+            _rowBaseContent(item),
+            if (isConsumed)
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: true,
+                  child: Container(color: Colors.white.withOpacity(0.45)),
+                ),
+              ),
+          ],
+        ),
       ),
-      secondaryBackground: Container(
-        color: Colors.green.shade700,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        alignment: Alignment.centerRight,
-        child: const Icon(Icons.edit, color: Colors.white, size: 28),
-      ),
-      confirmDismiss: (direction) async {
-        if (direction == DismissDirection.startToEnd) {
-          // RIGHT → delete with Undo
-          _deleteFromViewIndex(idx);
-          return true;
-        } else {
-          // LEFT → open editor, apply result, do not dismiss
-          await _openEditor(item);
-          return false;
-        }
-      },
-      child: _rowTile(view[idx], idx),
     );
   }
 
@@ -734,13 +805,14 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
     return Scaffold(
       backgroundColor: softCream,
-      // No AppBar here (keeps only your main/top app bar elsewhere)
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(15, 12, 12, 6),
-            child: Text(
+          // Title area (keyed for measuring)
+          Padding(
+            key: _titleKey,
+            padding: const EdgeInsets.fromLTRB(15, 12, 12, 6),
+            child: const Text(
               'Pantry Inventory',
               style: TextStyle(
                 color: Color(0xFF347928),
@@ -750,14 +822,15 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               ),
             ),
           ),
-          _controlsRow(),
+          // Controls/search area (keyed)
+          KeyedSubtree(key: _controlsKey, child: _controlsRow()),
           Divider(height: 1, thickness: 1, color: sep),
           Expanded(
             child: ListView.separated(
               itemCount: view.length,
               separatorBuilder: (_, __) =>
                   Divider(height: 1, thickness: 1, color: sep),
-              itemBuilder: (_, i) => _dismissibleRow(view, i),
+              itemBuilder: (_, i) => _slidableRow(view, i),
             ),
           ),
         ],
@@ -777,7 +850,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             onChanged: _onQueryChanged,
             autofocus: true,
             decoration: InputDecoration(
-              hintText: 'Search items or categories...',
+              hintText: 'Search name, brand, size, or category...',
               filled: true,
               fillColor: Colors.white,
               contentPadding: const EdgeInsets.symmetric(
@@ -869,13 +942,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('$label: ', style: pillLabelStyle), // label style
-                Text(value, style: pillValueStyle), // value style
+                Text('$label: ', style: pillLabelStyle),
+                Text(value, style: pillValueStyle),
                 const SizedBox(width: 6),
                 const Icon(
                   Icons.keyboard_arrow_down_rounded,
                   size: 20,
-                  color: kPillTextColor, // icon color
+                  color: kPillTextColor,
                 ),
               ],
             ),
@@ -886,7 +959,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               .map(
                 (e) => DropdownMenuItem<String>(
                   value: e,
-                  child: Text(e, style: menuItemTextStyle), // option style
+                  child: Text(e, style: menuItemTextStyle),
                 ),
               )
               .toList(),
@@ -895,7 +968,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           dropdownStyleData: DropdownStyleData(
             maxHeight: 260,
             decoration: BoxDecoration(
-              color: kMenuBg, // menu background
+              color: kMenuBg,
               borderRadius: BorderRadius.circular(12),
             ),
             elevation: 6,
