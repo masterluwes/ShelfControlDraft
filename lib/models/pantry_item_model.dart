@@ -16,6 +16,8 @@ class PantryItemModel {
   int? shelfLifeMonths;
   DateTime? manufacturedDate;
   DateTime? expirationDate;
+  String? netWeight; // New field for net weight
+  bool selected; // New field for selection in UI
 
   PantryItemModel({
     this.id,
@@ -33,6 +35,8 @@ class PantryItemModel {
     this.shelfLifeMonths,
     this.manufacturedDate,
     this.expirationDate,
+    this.netWeight, // Add netWeight to constructor
+    this.selected = false, // Default to false
   });
 
   // Factory constructor to create a PantryItemModel from a Firestore document
@@ -54,6 +58,8 @@ class PantryItemModel {
       shelfLifeMonths: data['shelfLifeMonths'],
       manufacturedDate: (data['manufacturedDate'] as Timestamp?)?.toDate(),
       expirationDate: (data['expirationDate'] as Timestamp?)?.toDate(),
+      netWeight: data['netWeight'], // Add netWeight to fromFirestore
+      selected: data['selected'] ?? false, // Add selected to fromFirestore
     );
   }
 
@@ -74,6 +80,8 @@ class PantryItemModel {
       'shelfLifeMonths': shelfLifeMonths,
       'manufacturedDate': manufacturedDate != null ? Timestamp.fromDate(manufacturedDate!) : null,
       'expirationDate': expirationDate != null ? Timestamp.fromDate(expirationDate!) : null,
+      'netWeight': netWeight, // Add netWeight to toFirestore
+      'selected': selected, // Add selected to toFirestore
       'timestamp': FieldValue.serverTimestamp(), // Add a timestamp for creation
     };
   }

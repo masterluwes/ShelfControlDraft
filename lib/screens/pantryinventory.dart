@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
-// Update to your actual path:
+import 'package:shelf_control/models/pantry_item_model.dart'; // Import the new model
+import 'package:intl/intl.dart'; // For date formatting
 
 class Pantryinventory extends StatefulWidget {
-  final List<PantryItem> items;
-  final Function(PantryItem) onEdit;
-  final Function(PantryItem) onDelete;
+  final List<PantryItemModel> items;
+  final Function(PantryItemModel) onEdit;
+  final Function(PantryItemModel) onDelete;
+  final Function(List<PantryItemModel>) onAddItems; // New callback for adding multiple items
 
   const Pantryinventory({
     super.key,
     required this.items,
     required this.onEdit,
     required this.onDelete,
+    required this.onAddItems, // Add to constructor
   });
 
   @override
@@ -19,28 +22,6 @@ class Pantryinventory extends StatefulWidget {
 }
 
 enum ItemStatus { active, atRisk, available, consumed }
-
-class PantryItem {
-  final String id;
-  String name;
-  String category;
-  final String imageUrl;
-  int qty;
-  String expiresText;
-  ItemStatus status;
-  bool selected;
-
-  PantryItem({
-    required this.id,
-    required this.name,
-    required this.category,
-    required this.imageUrl,
-    required this.qty,
-    required this.expiresText,
-    required this.status,
-    this.selected = false,
-  });
-}
 
 class _PantryInventoryBodyState extends State<Pantryinventory> {
   // Palette to match your UI
@@ -71,7 +52,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   String sortBy = 'Category';
   String filterBy = 'All Items';
 
-  List<PantryItem> _items = [];
+  List<PantryItemModel> _items = [];
 
   @override
   void initState() {
@@ -79,7 +60,47 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     _items = List.from(widget.items); // Initialize with items passed from parent
   }
 
+  @override
+  void didUpdateWidget(covariant Pantryinventory oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.items != oldWidget.items) {
+      _items = List.from(widget.items);
+    }
+  }
+
   bool get _inSelectMode => _items.any((e) => e.selected);
+
+  // Helper to determine item status based on expiration date
+  ItemStatus _getItemStatus(PantryItemModel item) {
+    if (item.expirationDate == null) return ItemStatus.available; // No expiry, assume available
+
+    final now = DateTime.now();
+    final difference = item.expirationDate!.difference(now).inDays;
+
+    if (difference <= 0) {
+      return ItemStatus.consumed; // Expired or expiring today
+    } else if (difference <= 7) {
+      return ItemStatus.atRisk; // Expiring within 7 days
+    } else {
+      return ItemStatus.active; // More than 7 days
+    }
+  }
+
+  String _getExpiresText(PantryItemModel item) {
+    if (item.expirationDate == null) {
+      return 'No expiry date';
+    }
+    final now = DateTime.now();
+    final difference = item.expirationDate!.difference(now).inDays;
+
+    if (difference == 0) {
+      return 'Expires today';
+    } else if (difference > 0) {
+      return 'Expires in $difference days';
+    } else {
+      return 'Expired ${difference.abs()} days ago';
+    }
+  }
 
   // ---------- Actions ----------
   void _toggleSearch() {
@@ -121,20 +142,21 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   }
 
   // ---------- Filtering & Sorting ----------
-  List<PantryItem> _filteredAndSorted() {
-    List<PantryItem> list = _items.where((it) {
+  List<PantryItemModel> _filteredAndSorted() {
+    List<PantryItemModel> list = _items.where((it) {
+      final status = _getItemStatus(it);
       switch (filterBy) {
         case 'Active':
-          if (it.status != ItemStatus.active) return false;
+          if (status != ItemStatus.active) return false;
           break;
         case 'At risk':
-          if (it.status != ItemStatus.atRisk) return false;
+          if (status != ItemStatus.atRisk) return false;
           break;
         case 'Available':
-          if (it.status != ItemStatus.available) return false;
+          if (status != ItemStatus.available) return false;
           break;
         case 'Consumed':
-          if (it.status != ItemStatus.consumed) return false;
+          if (status != ItemStatus.consumed) return false;
           break;
         default:
           break;
@@ -143,7 +165,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         final q = _query.toLowerCase();
         final hit =
             it.name.toLowerCase().contains(q) ||
-            it.category.toLowerCase().contains(q);
+            it.category.toLowerCase().contains(q) ||
+            (it.brand?.toLowerCase().contains(q) ?? false);
         if (!hit) return false;
       }
       return true;
@@ -159,11 +182,11 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         list.sort((a, b) => b.qty.compareTo(a.qty));
         break;
       case 'Expiry':
-        int rank(String s) => s.startsWith('in ') ? 0 : 1; // simple heuristic
         list.sort((a, b) {
-          final r = rank(a.expiresText).compareTo(rank(b.expiresText));
-          if (r != 0) return r;
-          return a.expiresText.compareTo(b.expiresText);
+          if (a.expirationDate == null && b.expirationDate == null) return 0;
+          if (a.expirationDate == null) return 1; // Nulls last
+          if (b.expirationDate == null) return -1; // Nulls last
+          return a.expirationDate!.compareTo(b.expirationDate!);
         });
         break;
       case 'Category':
@@ -178,25 +201,26 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
   // ---------- UI ----------
 
-  Widget _statusChip(ItemStatus status) {
+  Widget _statusChip(PantryItemModel item) {
     String text;
     Color bg;
+    final status = _getItemStatus(item);
     switch (status) {
       case ItemStatus.active:
         text = 'Active';
-        bg = const Color(0xFFF2DE7E);
+        bg = const Color(0xFF58A66A); // Green for active
         break;
       case ItemStatus.atRisk:
         text = 'At risk';
-        bg = const Color(0xFFF1A648);
+        bg = const Color(0xFFF1A648); // Orange for at risk
         break;
       case ItemStatus.available:
         text = 'Available';
-        bg = const Color(0xFF58A66A);
+        bg = const Color(0xFFF2DE7E); // Yellow for available (no expiry)
         break;
       case ItemStatus.consumed:
         text = 'Consumed';
-        bg = Colors.grey.shade500;
+        bg = Colors.grey.shade500; // Grey for consumed/expired
         break;
     }
     return Container(
@@ -393,7 +417,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  Widget _rowTile(PantryItem item, int visualIndex) {
+  Widget _rowTile(PantryItemModel item, int visualIndex) {
     return Material(
       color: visualIndex.isEven ? Colors.white : rowAlt,
       child: InkWell(
@@ -412,7 +436,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Image.network(
-                  item.imageUrl,
+                  item.imageUrl ?? 'https://via.placeholder.com/150', // Placeholder if no image
                   width: 44,
                   height: 44,
                   fit: BoxFit.cover,
@@ -479,7 +503,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                         ),
                         Flexible(
                           child: Text(
-                            item.expiresText,
+                            _getExpiresText(item),
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
@@ -493,7 +517,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                 ),
               ),
               const SizedBox(width: 12),
-              _statusChip(item.status),
+              _statusChip(item),
             ],
           ),
         ),
@@ -501,7 +525,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  Widget _dismissibleRow(List<PantryItem> view, int idx) {
+  Widget _dismissibleRow(List<PantryItemModel> view, int idx) {
     final item = view[idx];
     return Dismissible(
       key: ValueKey(item.id),
