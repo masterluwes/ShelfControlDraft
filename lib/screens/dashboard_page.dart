@@ -8,7 +8,8 @@ import 'package:shelf_control/screens/user_guide_page.dart';
 import 'package:shelf_control/screens/notification_page.dart';
 import 'package:shelf_control/services/auth_service.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
-import 'package:shelf_control/screens/pantryinventory.dart'; // Import for PantryItem and ItemStatus
+import 'package:shelf_control/screens/pantryinventory.dart'; // Import for Pantryinventory
+import 'package:shelf_control/models/pantry_item_model.dart'; // Import for PantryItemModel
 import 'package:shelf_control/screens/addpantryitem.dart';
 import 'package:shelf_control/screens/editpantryitem.dart';
 import 'package:shelf_control/screens/household_page.dart';
@@ -25,76 +26,69 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   Widget? _currentBodyWidget;
-  final List<PantryItem> _pantryItems = [
-    PantryItem(
+  final List<PantryItemModel> _pantryItems = [
+    PantryItemModel(
       id: 'oj1',
       name: 'Orange Juice (1L)',
       category: 'Beverages',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/0/0b/Orange_juice_1.jpg',
       qty: 1,
-      expiresText: 'in 3 days',
-      status: ItemStatus.atRisk,
+      expirationDate: DateTime.now().add(const Duration(days: 3)),
     ),
-    PantryItem(
+    PantryItemModel(
       id: 'ketch397',
       name: 'Ketchup (397g)',
       category: 'Condiments',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/9/9b/Tomato_ketchup.jpg',
       qty: 1,
-      expiresText: '06/30/25',
-      status: ItemStatus.active,
+      expirationDate: DateTime(2025, 6, 30),
     ),
-    PantryItem(
+    PantryItemModel(
       id: 'onion50',
       name: 'Onion Powder (50g)',
       category: 'Herbs/Spices',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/2/2a/Onion_Powder.jpg',
       qty: 1,
-      expiresText: '07/03/25',
-      status: ItemStatus.active,
+      expirationDate: DateTime(2025, 7, 3),
     ),
-    PantryItem(
+    PantryItemModel(
       id: 'soy300',
       name: 'Soy Sauce (300ml)',
       category: 'Condiments',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/1/13/Soy_sauce.jpg',
       qty: 1,
-      expiresText: '07/15/25',
-      status: ItemStatus.active,
+      expirationDate: DateTime(2025, 7, 15),
     ),
-    PantryItem(
+    PantryItemModel(
       id: 'sardines',
       name: 'Sardines',
       category: 'Canned Goods',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/2/27/Conserva_de_sardinas.jpg',
       qty: 2,
-      expiresText: '09/19/25',
-      status: ItemStatus.available,
+      expirationDate: DateTime(2025, 9, 19),
     ),
-    PantryItem(
+    PantryItemModel(
       id: 'coke500',
       name: 'Coca Cola (500ml)',
       category: 'Beverages',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/4/4f/Coca-Cola_bottle.jpg',
       qty: 1,
-      expiresText: '12/19/26',
-      status: ItemStatus.available,
+      expirationDate: DateTime(2026, 12, 19),
     ),
-    PantryItem(
+    PantryItemModel(
       id: 'oj2',
       name: 'Orange Juice (1L)',
       category: 'Beverages',
       imageUrl:
           'https://upload.wikimedia.org/wikipedia/commons/0/0b/Orange_juice_1.jpg',
       qty: 1,
-      expiresText: 'in 3 days',
-      status: ItemStatus.atRisk,
+      expirationDate: DateTime.now().add(const Duration(days: 3)),
     ),
   ];
 
@@ -120,6 +114,12 @@ class _DashboardPageState extends State<DashboardPage> {
             _pantryItems.removeWhere((element) => element.id == item.id);
           });
         },
+        onAddItems: (newItems) {
+          setState(() {
+            _pantryItems.addAll(newItems);
+          });
+          _showPantryInventory();
+        },
       ),
     );
   }
@@ -138,7 +138,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  void _showEditPantryItem(PantryItem item) {
+  void _showEditPantryItem(PantryItemModel item) {
     _showPage(
       EditPantryItem(
         item: item,
@@ -253,12 +253,18 @@ class _DashboardPageState extends State<DashboardPage> {
             backgroundColor: Colors.white,
             label: 'Add by Camera',
             labelStyle: const TextStyle(fontSize: 18.0, color: Colors.black),
-            onTap: () {
+            onTap: () async {
               debugPrint('Add by Camera tapped! Navigating to ScanItemScreen.');
-              Navigator.push(
+              final List<PantryItemModel>? scannedItems = await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const ScanItemScreen()),
               );
+              if (scannedItems != null && scannedItems.isNotEmpty) {
+                setState(() {
+                  _pantryItems.addAll(scannedItems);
+                });
+                _showPantryInventory(); // Refresh pantry inventory to show new items
+              }
             },
           ),
           SpeedDialChild(
@@ -285,7 +291,7 @@ class _DashboardPageState extends State<DashboardPage> {
         (_currentBodyWidget is Pantryinventory && label == "Pantry") ||
         (_currentBodyWidget is Shoppinglist && label == "Shopping") ||
         (_currentBodyWidget is TipsPage && label == "Tips");
-    (_currentBodyWidget is HouseholdPage && label == "Households");
+    // (_currentBodyWidget is HouseholdPage && label == "Households"); // This line was commented out and caused an error
     return InkWell(
       onTap: onTap,
       child: Column(
@@ -426,7 +432,7 @@ class _DashboardPageState extends State<DashboardPage> {
 }
 
 class DashboardHome extends StatelessWidget {
-  final List<PantryItem> pantryItems;
+  final List<PantryItemModel> pantryItems;
   const DashboardHome({super.key, required this.pantryItems});
 
   @override
@@ -551,7 +557,7 @@ class DashboardHome extends StatelessWidget {
     );
   }
 
-  static Widget _buildPantryOverview(List<PantryItem> items) {
+  static Widget _buildPantryOverview(List<PantryItemModel> items) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),

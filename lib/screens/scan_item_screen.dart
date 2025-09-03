@@ -15,7 +15,7 @@ class ScanItemScreen extends StatefulWidget {
 class _ScanItemScreenState extends State<ScanItemScreen> {
   bool _isLoading = false;
   final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  // Removed Firestore instance as saving will be local first
   final Logger _logger = Logger(); // Initialize logger
   late MobileScannerController _scannerController; // Declare controller
   final DraggableScrollableController _sheetController = DraggableScrollableController();
@@ -28,7 +28,15 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
   final TextEditingController _productNameController = TextEditingController();
   final TextEditingController _brandController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
+  final TextEditingController _netWeightController = TextEditingController(); // New controller for net weight
   String _selectedCategory = 'Uncategorized'; // Default category
+
+  // Shelf-life related fields
+  bool _useManufacturedAndShelfLife = false;
+  String _selectedShelfLifeUnit = 'days'; // 'days', 'weeks', 'months'
+  final TextEditingController _shelfLifeController = TextEditingController();
+  DateTime? _manufacturedDate;
+  DateTime? _expirationDate;
 
   @override
   void initState() {
@@ -56,6 +64,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     _productNameController.dispose();
     _brandController.dispose();
     _quantityController.dispose();
+    _netWeightController.dispose(); // Dispose net weight controller
+    _shelfLifeController.dispose(); // Dispose shelf life controller
     _scannerController.dispose(); // Dispose the scanner controller
     _sheetController.removeListener(_onSheetScrolled);
     _sheetController.dispose();
@@ -93,6 +103,13 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         brand: product['brands'] ?? 'Unknown Brand',
         quantityUnit: product['quantity'],
         nutritionFacts: product['nutriments'] is Map ? Map<String, dynamic>.from(product['nutriments']) : null,
+        // Re-adding shelf-life and date fields
+        shelfLifeDays: null, // Will be set by user in sheet
+        shelfLifeWeeks: null,
+        shelfLifeMonths: null,
+        manufacturedDate: null,
+        expirationDate: null,
+        netWeight: null, // Will be set by user in sheet
       );
 
       setState(() {
@@ -122,7 +139,25 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     _productNameController.text = item.name;
     _brandController.text = item.brand ?? '';
     _quantityController.text = item.qty.toString();
+    _netWeightController.text = item.netWeight ?? ''; // Update net weight controller
     _selectedCategory = item.category;
+
+    // Update shelf-life and date fields
+    _useManufacturedAndShelfLife = item.manufacturedDate != null || item.expirationDate != null || item.shelfLifeDays != null || item.shelfLifeWeeks != null || item.shelfLifeMonths != null;
+    if (item.shelfLifeDays != null) {
+      _selectedShelfLifeUnit = 'days';
+      _shelfLifeController.text = item.shelfLifeDays.toString();
+    } else if (item.shelfLifeWeeks != null) {
+      _selectedShelfLifeUnit = 'weeks';
+      _shelfLifeController.text = item.shelfLifeWeeks.toString();
+    } else if (item.shelfLifeMonths != null) {
+      _selectedShelfLifeUnit = 'months';
+      _shelfLifeController.text = item.shelfLifeMonths.toString();
+    } else {
+      _shelfLifeController.clear();
+    }
+    _manufacturedDate = item.manufacturedDate;
+    _expirationDate = item.expirationDate;
   }
 
   Future<void> _saveAllItems() async {
@@ -133,32 +168,25 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       return;
     }
 
-    try {
-      final batch = _firestore.batch();
-      for (var item in _scannedItems) {
-        final docRef = _firestore.collection('pantryItems').doc();
-        batch.set(docRef, item.toFirestore());
-      }
-      await batch.commit();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${_scannedItems.length} items added to pantry successfully!')),
-        );
-        setState(() {
-          _scannedItems.clear();
-          _currentItemIndex = 0;
-        });
-        Navigator.pop(context); // Go back to the dashboard
-      }
-    } catch (e) {
-      _logger.e('Error saving items to Firestore: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to add products: $e')),
-        );
-      }
+    // Instead of saving to Firestore, return the list of items
+    if (mounted) {
+      Navigator.pop(context, _scannedItems);
     }
+  }
+
+  void _clearCurrentItemControllers() {
+    _productNameController.clear();
+    _brandController.clear();
+    _quantityController.clear();
+    _netWeightController.clear();
+    _shelfLifeController.clear();
+    setState(() {
+      _selectedCategory = 'Uncategorized';
+      _useManufacturedAndShelfLife = false;
+      _selectedShelfLifeUnit = 'days';
+      _manufacturedDate = null;
+      _expirationDate = null;
+    });
   }
 
   @override
@@ -169,12 +197,12 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
           'Scan a Barcode',
           style: TextStyle(color: Colors.white),
         ),
-        backgroundColor: Colors.transparent,
+        backgroundColor: const Color(0xFF2E7D32), // Keep green header
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
+      // extendBodyBehindAppBar: true, // Removed to keep green header
       body: Stack(
         children: [
           // Camera View
@@ -238,20 +266,22 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
             ),
 
           // Bottom Sheet
-          DraggableScrollableSheet(
-            controller: _sheetController,
-            initialChildSize: 0.1,
-            minChildSize: 0.1,
-            maxChildSize: 0.9,
-            expand: true,
-            builder: (BuildContext context, ScrollController scrollController) {
-              return Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-                child: Column(
-                  children: [
+          Positioned.fill(
+            top: kToolbarHeight + MediaQuery.of(context).padding.top, // Position below AppBar
+            child: DraggableScrollableSheet(
+              controller: _sheetController,
+              initialChildSize: 0.07, // Adjusted for smaller collapsed state
+              minChildSize: 0.07,    // Adjusted for smaller collapsed state
+              maxChildSize: 0.9,
+              expand: true,
+              builder: (BuildContext context, ScrollController scrollController) {
+                return Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Column(
+                    children: [
                     // Custom Top Bar
                     GestureDetector(
                       onTap: () {
@@ -289,9 +319,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                 IconButton(
                                   icon: const Icon(Icons.add, color: Colors.white),
                                   onPressed: () {
-                                    setState(() {
-                                      _scannerController.start();
-                                    });
+                                    _clearCurrentItemControllers();
+                                    _scannerController.start();
                                     _sheetController.animateTo(0.1, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
                                   },
                                 ),
@@ -305,6 +334,25 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                         ),
                       ),
                     ),
+                    // Pagination Dots
+                    if (_scannedItems.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(_scannedItems.length, (index) {
+                            return Container(
+                              width: 8.0,
+                              height: 8.0,
+                              margin: const EdgeInsets.symmetric(horizontal: 4.0),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _currentItemIndex == index ? const Color(0xFF2E7D32) : Colors.grey,
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
                     // Product Details Content
                     Expanded(
                       child: _scannedItems.isEmpty
@@ -374,6 +422,17 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                         onChanged: (value) => _scannedItems[_currentItemIndex].qty = int.tryParse(value) ?? 1,
                                       ),
                                       const SizedBox(height: 10),
+                                      TextFormField(
+                                        controller: _netWeightController,
+                                        decoration: InputDecoration(
+                                          labelText: 'Net Weight',
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        onChanged: (value) => _scannedItems[_currentItemIndex].netWeight = value,
+                                      ),
+                                      const SizedBox(height: 10),
                                       DropdownButtonFormField<String>(
                                         value: _selectedCategory,
                                         decoration: InputDecoration(
@@ -397,6 +456,208 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                         },
                                       ),
                                       const SizedBox(height: 20),
+                                      // Shelf-life and Dates
+                                      Row(
+                                        children: [
+                                          Checkbox(
+                                            value: _useManufacturedAndShelfLife,
+                                            onChanged: (bool? newValue) {
+                                              setState(() {
+                                                _useManufacturedAndShelfLife = newValue!;
+                                              });
+                                            },
+                                            activeColor: const Color(0xFF2E7D32),
+                                          ),
+                                          const Text('Use Manufactured Date & Shelf-life'),
+                                        ],
+                                      ),
+                                      if (_useManufacturedAndShelfLife) ...[
+                                        Row(
+                                          children: [
+                                            Radio<String>(
+                                              value: 'days',
+                                              groupValue: _selectedShelfLifeUnit,
+                                              onChanged: (String? value) {
+                                                setState(() {
+                                                  _selectedShelfLifeUnit = value!;
+                                                });
+                                              },
+                                              activeColor: const Color(0xFF2E7D32),
+                                            ),
+                                            const Text('Shelf-life days'),
+                                            Radio<String>(
+                                              value: 'weeks',
+                                              groupValue: _selectedShelfLifeUnit,
+                                              onChanged: (String? value) {
+                                                setState(() {
+                                                  _selectedShelfLifeUnit = value!;
+                                                });
+                                              },
+                                              activeColor: const Color(0xFF2E7D32),
+                                            ),
+                                            const Text('Week'),
+                                            Radio<String>(
+                                              value: 'months',
+                                              groupValue: _selectedShelfLifeUnit,
+                                              onChanged: (String? value) {
+                                                setState(() {
+                                                  _selectedShelfLifeUnit = value!;
+                                                });
+                                              },
+                                              activeColor: const Color(0xFF2E7D32),
+                                            ),
+                                            const Text('Month'),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: InkWell(
+                                                onTap: () async {
+                                                  DateTime? pickedDate = await showDatePicker(
+                                                    context: context,
+                                                    initialDate: _manufacturedDate ?? DateTime.now(),
+                                                    firstDate: DateTime(2000),
+                                                    lastDate: DateTime.now(),
+                                                    builder: (context, child) {
+                                                      return Theme(
+                                                        data: Theme.of(context).copyWith(
+                                                          colorScheme: const ColorScheme.light(
+                                                            primary: Color(0xFF2E7D32), // Header background color
+                                                            onPrimary: Colors.white, // Header text color
+                                                            onSurface: Colors.black, // Body text color
+                                                          ),
+                                                          textButtonTheme: TextButtonThemeData(
+                                                            style: TextButton.styleFrom(
+                                                              foregroundColor: const Color(0xFF2E7D32), // Button text color
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        child: child!,
+                                                      );
+                                                    },
+                                                  );
+                                                  if (pickedDate != null) {
+                                                    setState(() {
+                                                      _manufacturedDate = pickedDate;
+                                                      _scannedItems[_currentItemIndex].manufacturedDate = pickedDate;
+                                                    });
+                                                  }
+                                                },
+                                                child: InputDecorator(
+                                                  decoration: InputDecoration(
+                                                    labelText: 'Manufactured Date',
+                                                    border: OutlineInputBorder(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                    ),
+                                                    focusedBorder: OutlineInputBorder(
+                                                      borderSide: const BorderSide(color: Color(0xFF2E7D32)),
+                                                      borderRadius: BorderRadius.circular(8),
+                                                    ),
+                                                    suffixIcon: const Icon(Icons.calendar_today),
+                                                  ),
+                                                  child: Text(
+                                                    _manufacturedDate == null
+                                                        ? 'Select Date'
+                                                        : '${_manufacturedDate!.toLocal()}'.split(' ')[0],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: TextFormField(
+                                                controller: _shelfLifeController,
+                                                keyboardType: TextInputType.number,
+                                                decoration: InputDecoration(
+                                                  labelText: 'Shelf-life',
+                                                  border: OutlineInputBorder(
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  focusedBorder: OutlineInputBorder(
+                                                    borderSide: const BorderSide(color: Color(0xFF2E7D32)),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                ),
+                                                onChanged: (value) {
+                                                  int? shelfLifeValue = int.tryParse(value);
+                                                  if (shelfLifeValue != null) {
+                                                    setState(() {
+                                                      if (_selectedShelfLifeUnit == 'days') {
+                                                        _scannedItems[_currentItemIndex].shelfLifeDays = shelfLifeValue;
+                                                        _scannedItems[_currentItemIndex].shelfLifeWeeks = null;
+                                                        _scannedItems[_currentItemIndex].shelfLifeMonths = null;
+                                                      } else if (_selectedShelfLifeUnit == 'weeks') {
+                                                        _scannedItems[_currentItemIndex].shelfLifeWeeks = shelfLifeValue;
+                                                        _scannedItems[_currentItemIndex].shelfLifeDays = null;
+                                                        _scannedItems[_currentItemIndex].shelfLifeMonths = null;
+                                                      } else if (_selectedShelfLifeUnit == 'months') {
+                                                        _scannedItems[_currentItemIndex].shelfLifeMonths = shelfLifeValue;
+                                                        _scannedItems[_currentItemIndex].shelfLifeDays = null;
+                                                        _scannedItems[_currentItemIndex].shelfLifeWeeks = null;
+                                                      }
+                                                    });
+                                                  }
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 10),
+                                        InkWell(
+                                          onTap: () async {
+                                            DateTime? pickedDate = await showDatePicker(
+                                              context: context,
+                                              initialDate: _expirationDate ?? DateTime.now(),
+                                              firstDate: DateTime.now(),
+                                              lastDate: DateTime(2100),
+                                              builder: (context, child) {
+                                                return Theme(
+                                                  data: Theme.of(context).copyWith(
+                                                    colorScheme: const ColorScheme.light(
+                                                      primary: Color(0xFF2E7D32), // Header background color
+                                                      onPrimary: Colors.white, // Header text color
+                                                      onSurface: Colors.black, // Body text color
+                                                    ),
+                                                    textButtonTheme: TextButtonThemeData(
+                                                      style: TextButton.styleFrom(
+                                                        foregroundColor: const Color(0xFF2E7D32), // Button text color
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  child: child!,
+                                                );
+                                              },
+                                            );
+                                            if (pickedDate != null) {
+                                              setState(() {
+                                                _expirationDate = pickedDate;
+                                                _scannedItems[_currentItemIndex].expirationDate = pickedDate;
+                                              });
+                                            }
+                                          },
+                                          child: InputDecorator(
+                                            decoration: InputDecoration(
+                                              labelText: 'Expiration Date',
+                                              border: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              focusedBorder: OutlineInputBorder(
+                                                borderSide: const BorderSide(color: Color(0xFF2E7D32)),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              suffixIcon: const Icon(Icons.calendar_today),
+                                            ),
+                                            child: Text(
+                                              _expirationDate == null
+                                                  ? 'Select Date'
+                                                  : '${_expirationDate!.toLocal()}'.split(' ')[0],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 20),
                                       if (item.nutritionFacts != null)
                                         ExpansionTile(
                                           title: const Text('Nutrition Facts'),
@@ -418,7 +679,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                 ),
               );
             },
-          ),
+          ), // Closing DraggableScrollableSheet
+        ), // Closing Positioned.fill
         ],
       ),
     );
