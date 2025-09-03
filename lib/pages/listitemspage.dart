@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
 
-/// In-memory singleton store to hold the "current/main" shopping list.
+/// ===== Shared store to broadcast the currently selected shopping list =====
+/// (shoppinglist.dart listens to this and refreshes automatically)
 class MainShoppingListStore extends ChangeNotifier {
   MainShoppingListStore._();
   static final MainShoppingListStore instance = MainShoppingListStore._();
@@ -11,17 +13,64 @@ class MainShoppingListStore extends ChangeNotifier {
 
   void setMainList({required String title, required List<_Item> items}) {
     currentListTitle = title;
-    // Deep(ish) copy so edits on the source page don’t mutate the main list
+    // deep copy so edits on this page won’t mutate the active list
     currentItems = items.map((e) => e.copy()).toList(growable: false);
+    notifyListeners();
+  }
+
+  /// Public way to clear without touching protected notifyListeners externally.
+  void clearMain() {
+    currentListTitle = null;
+    currentItems = const [];
     notifyListeners();
   }
 
   bool get hasMain => currentListTitle != null && currentItems.isNotEmpty;
 }
 
+/// ===== Internal model used by both pages =====
+class _Item {
+  _Item({
+    required this.id,
+    required this.name,
+    required this.category,
+    this.brand,
+    this.sizeText,
+    this.qty = 1,
+    this.inCart = false,
+    this.bookmarked = false,
+    this.incPulse = false,
+    this.decPulse = false,
+  });
+
+  final String id;
+  String name;
+  String category;
+  String? brand; // e.g. Gardenia
+  String? sizeText; // e.g. 1L, 600g
+  int qty;
+  bool inCart; // checkbox (purchased) state
+  bool bookmarked; // “pin” to top
+  bool incPulse;
+  bool decPulse;
+
+  _Item copy() => _Item(
+    id: id,
+    name: name,
+    category: category,
+    brand: brand,
+    sizeText: sizeText,
+    qty: qty,
+    inCart: inCart,
+    bookmarked: bookmarked,
+    incPulse: incPulse,
+    decPulse: decPulse,
+  );
+}
+
+/// ===== Page =====
 class ListItemsPage extends StatefulWidget {
   const ListItemsPage({super.key, required this.listTitle});
-
   final String listTitle;
 
   @override
@@ -29,40 +78,12 @@ class ListItemsPage extends StatefulWidget {
 }
 
 class _ListItemsPageState extends State<ListItemsPage> {
+  // Palette
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
 
-  // Protects against double navigations
-  bool _navBusy = false;
-
-  /// Safely pop after dialogs/animations without hitting !debugLocked.
-  /// - Defers to next frame.
-  /// - Pops if possible; else tries maybePop.
-  /// - ALWAYS clears _navBusy, even if nothing popped.
-  void _safePop([Object? result]) {
-    if (_navBusy) return;
-    _navBusy = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        if (!mounted) return;
-        final navigator = Navigator.of(context);
-        bool popped = false;
-        if (navigator.canPop()) {
-          navigator.pop(result);
-          popped = true;
-        } else {
-          popped = await navigator.maybePop(result);
-        }
-      } finally {
-        if (mounted) {
-          Future.microtask(() => _navBusy = false);
-        }
-      }
-    });
-  }
-
-  // Simple categories for editing dialog
+  // Categories (same set as Shoppinglist)
   final List<String> _categories = const [
     'Beverages',
     'Baked Goods',
@@ -74,10 +95,10 @@ class _ListItemsPageState extends State<ListItemsPage> {
     'Other',
   ];
 
-  // Items use the same shape as the Shopping List format (brand + sizeText are optional)
-  final items = <_Item>[
+  // Demo content (replace with your data source if needed)
+  final List<_Item> _items = [
     _Item(
-      id: 'oj1',
+      id: 'oj',
       name: 'Orange Juice',
       brand: 'Fruit Soda Orange',
       sizeText: '1L',
@@ -85,14 +106,14 @@ class _ListItemsPageState extends State<ListItemsPage> {
       qty: 2,
     ),
     _Item(
-      id: 'wb1',
+      id: 'bread',
       name: 'Bread',
       brand: 'Gardenia Wheat Bread',
       category: 'Baked Goods',
       qty: 1,
     ),
     _Item(
-      id: 'mayo1',
+      id: 'mayo',
       name: 'Mayonnaise',
       brand: 'Ladies Choice Mayonnaise',
       category: 'Condiments',
@@ -100,308 +121,54 @@ class _ListItemsPageState extends State<ListItemsPage> {
     ),
   ];
 
-  // --- Bookmark priority (same behavior as Shopping List) ---
-  void _reorderByBookmark() {
-    final bookmarked = <_Item>[];
-    final others = <_Item>[];
-    for (final it in items) {
-      (it.bookmarked ? bookmarked : others).add(it);
+  // ===== Helpers =====
+  void _resort() {
+    // Bookmarked items first, then the rest. Keep original relative order.
+    setState(() {
+      final bookmarked = _items.where((e) => e.bookmarked).toList();
+      final others = _items.where((e) => !e.bookmarked).toList();
+      _items
+        ..clear()
+        ..addAll(bookmarked)
+        ..addAll(others);
+    });
+  }
+
+  Future<void> _pulseButton(_Item item, {required bool isInc}) async {
+    if (isInc) {
+      item.incPulse = true;
+    } else {
+      item.decPulse = true;
     }
-    items
-      ..clear()
-      ..addAll(bookmarked)
-      ..addAll(others);
+    if (mounted) setState(() {});
+    await Future.delayed(const Duration(milliseconds: 160));
+    if (isInc) {
+      item.incPulse = false;
+    } else {
+      item.decPulse = false;
+    }
+    if (mounted) setState(() {});
   }
 
-  // ---------------- LIST-LEVEL DELETE POPUPS ----------------
-  Future<bool?> _showDeleteListConfirmDialog() async {
-    return showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) {
-        return Center(
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              width: 320,
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE6E6E6),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: headerGreen, width: 5),
-                boxShadow: [
-                  BoxShadow(
-                    color: headerGreen.withOpacity(.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Delete list',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: headerGreen,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Are you sure you want to delete this list?',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14.5, color: Colors.black87),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Yes
-                      InkWell(
-                        onTap: () => Navigator.of(context).pop(true),
-                        borderRadius: BorderRadius.circular(24),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: headerGreen,
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: const Text(
-                            'Yes',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      // No
-                      InkWell(
-                        onTap: () => Navigator.of(context).pop(false),
-                        borderRadius: BorderRadius.circular(24),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF9E9E9E),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: const Text(
-                            'No',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
+  void _inc(int i) {
+    setState(() => _items[i].qty++);
+    _pulseButton(_items[i], isInc: true);
   }
 
-  Future<void> _showListDeleteSuccessDialog() async {
-    await showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) {
-        return Center(
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              width: 320,
-              padding: const EdgeInsets.fromLTRB(16, 22, 16, 18),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE6E6E6),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: headerGreen, width: 5),
-                boxShadow: [
-                  BoxShadow(
-                    color: headerGreen.withOpacity(.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Success!',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: headerGreen,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'List deleted.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14.5, color: Colors.black87),
-                  ),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(
-                      'OK',
-                      style: TextStyle(
-                        color: headerGreen,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _confirmAndDeleteList() async {
-    final ok = await _showDeleteListConfirmDialog();
-    if (ok == true) {
-      items.clear();
-      setState(() {});
-      await _showListDeleteSuccessDialog();
-      _safePop(true); // return true = list deleted
+  void _dec(int i) {
+    if (_items[i].qty > 0) {
+      setState(() => _items[i].qty--);
+      _pulseButton(_items[i], isInc: false);
     }
   }
 
-  // ---------- NEW: Set-as-Main flow ----------
-  Future<void> _confirmUseAsMain() async {
-    final makeMain = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) {
-        return Center(
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              width: 320,
-              padding: const EdgeInsets.fromLTRB(16, 22, 16, 18),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE6E6E6),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: headerGreen, width: 5),
-                boxShadow: [
-                  BoxShadow(
-                    color: headerGreen.withOpacity(.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Use as current shopping list?',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: headerGreen,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'This will replace your existing main shopping list.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14.5, color: Colors.black87),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      InkWell(
-                        onTap: () => Navigator.of(context).pop(true),
-                        borderRadius: BorderRadius.circular(24),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: headerGreen,
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: const Text(
-                            'Yes',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      InkWell(
-                        onTap: () => Navigator.of(context).pop(false),
-                        borderRadius: BorderRadius.circular(24),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF9E9E9E),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: const Text(
-                            'No',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    if (makeMain == true) {
-      MainShoppingListStore.instance.setMainList(
-        title: widget.listTitle,
-        items: items,
-      );
-      _showSnack('“${widget.listTitle}” is now your current shopping list');
-      _safePop({'setMain': true, 'title': widget.listTitle});
-    }
-  }
-
-  // ---------- Edit Item Dialog (lightweight, standard Dropdown) ----------
-  Future<void> _showEditItemDialog(_Item item) async {
+  // ---------- Add Item Dialog (same form/feel as Shoppinglist) ----------
+  Future<void> _showAddItemDialog() async {
     final formKey = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController(text: item.name);
-    final brandCtrl = TextEditingController(text: item.brand ?? '');
-    final sizeCtrl = TextEditingController(text: item.sizeText ?? '');
-    String? selectedCategory = item.category;
+    final nameCtrl = TextEditingController();
+    final brandCtrl = TextEditingController();
+    final sizeCtrl = TextEditingController();
+    String? selectedCategory;
 
     InputDecoration deco() => InputDecoration(
       filled: true,
@@ -451,16 +218,6 @@ class _ListItemsPageState extends State<ListItemsPage> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          'Edit Item',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: headerGreen,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 18,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
                           'Product Name',
                           style: TextStyle(
                             color: headerGreen,
@@ -494,7 +251,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Size / Weight (optional)',
+                          'Size / Weight (e.g., 150g, 1L) – optional',
                           style: TextStyle(
                             color: headerGreen,
                             fontWeight: FontWeight.w800,
@@ -517,23 +274,79 @@ class _ListItemsPageState extends State<ListItemsPage> {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        DropdownButtonFormField<String>(
+                        DropdownButtonFormField2<String>(
                           value: selectedCategory,
-                          decoration: deco(),
                           isExpanded: true,
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                color: Colors.black.withOpacity(.15),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                color: headerGreen,
+                                width: 1.5,
+                              ),
+                            ),
+                          ),
+                          hint: const Text('Select a category'),
                           items: _categories
                               .map(
                                 (c) => DropdownMenuItem<String>(
                                   value: c,
-                                  child: Text(c),
+                                  child: Text(
+                                    c,
+                                    style: const TextStyle(fontSize: 14.5),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               )
                               .toList(),
                           onChanged: (v) =>
                               setLocal(() => selectedCategory = v),
                           validator: (v) => (v == null || v.isEmpty)
-                              ? 'Select a category'
+                              ? 'Please select a category'
                               : null,
+                          buttonStyleData: const ButtonStyleData(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                          iconStyleData: IconStyleData(
+                            icon: Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: headerGreen,
+                            ),
+                            iconSize: 22,
+                          ),
+                          dropdownStyleData: DropdownStyleData(
+                            maxHeight: 260,
+                            elevation: 2,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(.06),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            offset: const Offset(0, 12),
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                          ),
+                          menuItemStyleData: const MenuItemStyleData(
+                            height: 44,
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Row(
@@ -542,19 +355,35 @@ class _ListItemsPageState extends State<ListItemsPage> {
                             InkWell(
                               onTap: () {
                                 if (!formKey.currentState!.validate()) return;
+                                final id =
+                                    'id_${DateTime.now().millisecondsSinceEpoch}';
                                 setState(() {
-                                  item
-                                    ..name = nameCtrl.text.trim()
-                                    ..brand = brandCtrl.text.trim().isEmpty
-                                        ? null
-                                        : brandCtrl.text.trim()
-                                    ..sizeText = sizeCtrl.text.trim().isEmpty
-                                        ? null
-                                        : sizeCtrl.text.trim()
-                                    ..category = selectedCategory!;
+                                  _items.insert(
+                                    0,
+                                    _Item(
+                                      id: id,
+                                      name: nameCtrl.text.trim(),
+                                      brand: brandCtrl.text.trim().isEmpty
+                                          ? null
+                                          : brandCtrl.text.trim(),
+                                      sizeText: sizeCtrl.text.trim().isEmpty
+                                          ? null
+                                          : sizeCtrl.text.trim(),
+                                      category: selectedCategory!,
+                                      qty: 1,
+                                    ),
+                                  );
+                                  _resort();
                                 });
                                 Navigator.of(ctx).pop();
-                                _showSnack('Item updated');
+                                ScaffoldMessenger.of(context)
+                                  ..hideCurrentSnackBar()
+                                  ..showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Item added'),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
                               },
                               borderRadius: BorderRadius.circular(24),
                               child: Container(
@@ -567,7 +396,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
                                   borderRadius: BorderRadius.circular(24),
                                 ),
                                 child: const Text(
-                                  'Save',
+                                  'Add',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w800,
@@ -615,36 +444,257 @@ class _ListItemsPageState extends State<ListItemsPage> {
     );
   }
 
-  void _showSnack(String msg) {
-    final m = ScaffoldMessenger.of(context);
-    m.hideCurrentSnackBar();
-    m.showSnackBar(SnackBar(content: Text(msg)));
+  Future<void> _editItem(int index) async {
+    final it = _items[index];
+    final nameCtrl = TextEditingController(text: it.name);
+    final brandCtrl = TextEditingController(text: it.brand ?? '');
+    final sizeCtrl = TextEditingController(text: it.sizeText ?? '');
+    String category = it.category;
+    int qty = it.qty;
+
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              title: Text(
+                'Edit Item',
+                style: TextStyle(
+                  color: headerGreen,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Item name',
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: sep),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: brandCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Brand (optional)',
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: sep),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: sizeCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Size (e.g. 1L, 600g)',
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: sep),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Category',
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: sep),
+                        ),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: category,
+                          isExpanded: true,
+                          items: _categories
+                              .map(
+                                (c) =>
+                                    DropdownMenuItem(value: c, child: Text(c)),
+                              )
+                              .toList(),
+                          onChanged: (v) =>
+                              setLocal(() => category = v ?? category),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Text(
+                          'Quantity',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const Spacer(),
+                        _EditQtyButton(
+                          icon: Icons.remove,
+                          enabled: qty > 0,
+                          onTap: () =>
+                              setLocal(() => qty = (qty > 0) ? qty - 1 : qty),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$qty',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(width: 8),
+                        _EditQtyButton(
+                          icon: Icons.add,
+                          enabled: true,
+                          onTap: () => setLocal(() => qty++),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () =>
+                      Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                  child: Text('Cancel', style: TextStyle(color: headerGreen)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: headerGreen,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      it.name = nameCtrl.text.trim().isEmpty
+                          ? it.name
+                          : nameCtrl.text.trim();
+                      it.brand = brandCtrl.text.trim().isEmpty
+                          ? null
+                          : brandCtrl.text.trim();
+                      it.sizeText = sizeCtrl.text.trim().isEmpty
+                          ? null
+                          : sizeCtrl.text.trim();
+                      it.category = category;
+                      it.qty = qty;
+                    });
+                    Navigator.of(dialogCtx, rootNavigator: true).pop();
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
-  // Small helper to trigger a short “pressed” pulse (optional)
-  Future<void> _pulseButton(_Item item, {required bool isInc}) async {
-    if (isInc) {
-      item.incPulse = true;
-    } else {
-      item.decPulse = true;
+  Future<void> _confirmDeleteItem(int index) async {
+    final it = _items[index];
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _DeleteConfirmDialog(
+        headerGreen: headerGreen,
+        title: 'Delete item',
+        message: 'Delete “${it.name}” from this list?',
+      ),
+    );
+    if (confirmed == true && mounted) {
+      setState(() => _items.removeAt(index));
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _SuccessDialog(
+          headerGreen: headerGreen,
+          title: 'Deleted',
+          message: 'Item removed from the list.',
+        ),
+      );
     }
-    if (mounted) setState(() {});
-    await Future.delayed(const Duration(milliseconds: 160));
-    if (isInc) {
-      item.incPulse = false;
-    } else {
-      item.decPulse = false;
+  }
+
+  // Switches this list to be the active one used by shoppinglist.dart
+  void _useAsCurrent() {
+    MainShoppingListStore.instance.setMainList(
+      title: widget.listTitle,
+      items: _items,
+    );
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Now using this as the current shopping list'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // ===== Delete current list flow =====
+  Future<void> _confirmDeleteCurrentList() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _DeleteConfirmDialog(
+        headerGreen: headerGreen,
+        title: 'Delete shopping list',
+        message: 'Are you sure you want to delete “${widget.listTitle}”?',
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      // If this was the active list, clear shared store safely
+      final store = MainShoppingListStore.instance;
+      if (store.currentListTitle == widget.listTitle) {
+        store.clearMain();
+      }
+
+      // Success card
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _SuccessDialog(
+          headerGreen: headerGreen,
+          title: 'Success!',
+          message: 'Shopping list deleted.',
+        ),
+      );
+
+      if (!mounted) return;
+      Navigator.of(
+        context,
+      ).pop({'deleted': true, 'listTitle': widget.listTitle});
     }
-    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
+    final Color grey = Colors.grey.shade700;
+
     return Scaffold(
       backgroundColor: softCream,
       body: Column(
         children: [
-          // ===== Custom Header with LIST delete icon + USE AS MAIN =====
+          // === HEADER ===
           Container(
             width: double.infinity,
             color: headerGreen,
@@ -656,7 +706,6 @@ class _ListItemsPageState extends State<ListItemsPage> {
                     Icons.arrow_back_ios_new_rounded,
                     color: Colors.white,
                   ),
-                  // Back button should feel immediate and reliable
                   onPressed: () => Navigator.of(context).maybePop(),
                 ),
                 const SizedBox(width: 6),
@@ -672,105 +721,90 @@ class _ListItemsPageState extends State<ListItemsPage> {
                     ),
                   ),
                 ),
-                // NEW: Use-as-main icon
                 IconButton(
                   tooltip: 'Use as current shopping list',
                   icon: const Icon(
-                    Icons.shopping_cart_checkout,
+                    Icons.shopping_cart_outlined,
                     color: Colors.white,
                   ),
-                  onPressed: _confirmUseAsMain,
+                  onPressed: _useAsCurrent,
                 ),
-                // Existing: list-level delete icon
                 IconButton(
                   tooltip: 'Delete list',
                   icon: const Icon(Icons.delete_outline, color: Colors.white),
-                  onPressed: _confirmAndDeleteList,
+                  onPressed: _confirmDeleteCurrentList,
                 ),
               ],
             ),
           ),
+
           Divider(height: 1, thickness: 1, color: sep),
 
-          // ===== Items list (keeps per-item slide actions as before) =====
+          // === CONTENT ===
           Expanded(
             child: ListView.separated(
-              itemCount: items.length,
-              separatorBuilder: (_, __) =>
-                  Divider(height: 1, thickness: 1, color: sep),
+              itemCount: _items.length,
+              separatorBuilder: (_, __) => Divider(color: sep, height: 1),
               itemBuilder: (context, index) {
-                final item = items[index];
+                final it = _items[index];
+
                 return Slidable(
-                  key: ValueKey(item.id),
-                  closeOnScroll: true,
+                  key: ValueKey(it.id),
                   endActionPane: ActionPane(
                     motion: const DrawerMotion(),
-                    extentRatio: 0.40, // room for Edit + Delete
+                    extentRatio: 0.40,
                     children: [
                       SlidableAction(
-                        onPressed: (_) => _showEditItemDialog(item),
-                        icon: Icons.edit,
+                        onPressed: (_) => _editItem(index),
+                        icon: Icons.edit_outlined,
                         label: 'Edit',
                         backgroundColor: headerGreen,
                         foregroundColor: Colors.white,
-                        borderRadius: BorderRadius.circular(0),
                       ),
                       SlidableAction(
-                        onPressed: (_) {
-                          final removed = item;
-                          final removedIndex = index;
-                          setState(() => items.removeAt(removedIndex));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Deleted "${removed.name}"'),
-                              action: SnackBarAction(
-                                label: 'UNDO',
-                                onPressed: () => setState(() {
-                                  final safeIndex = removedIndex.clamp(
-                                    0,
-                                    items.length,
-                                  );
-                                  items.insert(safeIndex, removed);
-                                }),
-                              ),
-                            ),
-                          );
-                        },
+                        onPressed: (_) => _confirmDeleteItem(index),
                         icon: Icons.delete_outline,
                         label: 'Delete',
                         backgroundColor: Colors.red.shade600,
                         foregroundColor: Colors.white,
-                        borderRadius: BorderRadius.circular(0),
                       ),
                     ],
                   ),
-                  child: Container(
+                  child: Material(
                     color: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    child: _ListRow(
-                      item: item,
-                      headerGreen: headerGreen,
-                      onToggleInCart: (v) =>
-                          setState(() => item.inCart = v ?? false),
-                      onToggleBookmark: () {
-                        setState(() {
-                          item.bookmarked = !item.bookmarked;
-                          _reorderByBookmark(); // prioritize bookmarked
-                        });
-                      },
-                      onDecrement: () {
-                        setState(
-                          () => item.qty = (item.qty > 0) ? item.qty - 1 : 0,
-                        );
-                        _pulseButton(item, isInc: false);
-                      },
-                      onIncrement: () {
-                        setState(() => item.qty += 1);
-                        _pulseButton(item, isInc: true);
-                      },
+                    child: Stack(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          child: _ShoppingRowSL(
+                            item: it,
+                            headerGreen: headerGreen,
+                            grey: grey,
+                            onToggleInCart: (v) =>
+                                setState(() => it.inCart = v ?? false),
+                            onToggleBookmark: () {
+                              setState(() {
+                                it.bookmarked = !it.bookmarked;
+                                _resort();
+                              });
+                            },
+                            onDecrement: () => _dec(index),
+                            onIncrement: () => _inc(index),
+                          ),
+                        ),
+                        if (it.inCart)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              ignoring: true,
+                              child: Container(
+                                color: Colors.white.withOpacity(0.45),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 );
@@ -779,55 +813,36 @@ class _ListItemsPageState extends State<ListItemsPage> {
           ),
         ],
       ),
+
+      // Add new item
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(right: 12, bottom: 12),
+        child: ElevatedButton.icon(
+          onPressed: _showAddItemDialog,
+          icon: const Icon(Icons.add),
+          label: const Text('Add new item'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: headerGreen,
+            foregroundColor: Colors.white,
+            elevation: 3,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
 
-/* ======================= Item model ======================= */
-class _Item {
-  final String id;
-  String name;
-  String? brand; // optional
-  String? sizeText; // optional e.g. 1L, 150g
-  String category;
-  int qty;
-  bool inCart;
-  bool bookmarked;
-  bool incPulse;
-  bool decPulse;
-
-  _Item({
-    required this.id,
-    required this.name,
-    required this.category,
-    this.brand,
-    this.sizeText,
-    this.qty = 1,
-    this.inCart = false,
-    this.bookmarked = false,
-    this.incPulse = false,
-    this.decPulse = false,
-  });
-
-  _Item copy() => _Item(
-    id: id,
-    name: name,
-    category: category,
-    brand: brand,
-    sizeText: sizeText,
-    qty: qty,
-    inCart: inCart,
-    bookmarked: bookmarked,
-    incPulse: false,
-    decPulse: false,
-  );
-}
-
-/* ======================= Row UI (with selected indicator) ======================= */
-class _ListRow extends StatelessWidget {
-  const _ListRow({
+/// ===== Row UI (icons removed) =====
+class _ShoppingRowSL extends StatelessWidget {
+  const _ShoppingRowSL({
     required this.item,
     required this.headerGreen,
+    required this.grey,
     required this.onToggleInCart,
     required this.onToggleBookmark,
     required this.onDecrement,
@@ -836,6 +851,7 @@ class _ListRow extends StatelessWidget {
 
   final _Item item;
   final Color headerGreen;
+  final Color grey;
   final ValueChanged<bool?> onToggleInCart;
   final VoidCallback onToggleBookmark;
   final VoidCallback onDecrement;
@@ -843,8 +859,7 @@ class _ListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final grey = Colors.grey[700];
-    final bool selected = item.inCart; // <-- visual selection state
+    final bool selected = item.inCart;
 
     Widget pulseIcon({
       required bool active,
@@ -879,107 +894,282 @@ class _ListRow extends StatelessWidget {
           : (b.isNotEmpty ? b : s);
     }
 
-    final nameStyle = TextStyle(
-      fontSize: 16,
-      fontWeight: FontWeight.w700,
-      decoration: selected ? TextDecoration.lineThrough : TextDecoration.none,
-      color: selected ? Colors.grey.shade600 : Colors.black,
-    );
-    final subStyle = TextStyle(
-      fontSize: 13.5,
-      color: selected ? Colors.grey.shade500 : Colors.black87.withOpacity(.75),
-      height: 1.1,
-    );
-    final catStyle = TextStyle(
-      fontSize: 12.5,
-      color: selected ? Colors.grey.shade500 : Colors.black54,
-    );
-
-    return Stack(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Checkbox(
-              value: item.inCart,
-              onChanged: onToggleInCart,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Name (not tappable; we use slide actions for edit)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Text(
-                      item.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: nameStyle,
-                    ),
+        // Checkbox
+        Checkbox(
+          value: selected,
+          onChanged: onToggleInCart,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+
+        const SizedBox(width: 10), // keeps spacing where the chip used to be
+        // Texts
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  item.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    decoration: selected
+                        ? TextDecoration.lineThrough
+                        : TextDecoration.none,
+                    color: selected ? Colors.grey.shade600 : Colors.black87,
                   ),
-                  if (subline != null) ...[
-                    const SizedBox(height: 1),
-                    Text(
-                      subline,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: subStyle,
-                    ),
-                  ],
-                  const SizedBox(height: 2),
-                  Text(item.category, style: catStyle),
-                ],
-              ),
-            ),
-            IconButton(
-              icon: Icon(
-                item.bookmarked ? Icons.bookmark : Icons.bookmark_border,
-                color: item.bookmarked
-                    ? (selected ? Colors.grey.shade500 : headerGreen)
-                    : (selected ? Colors.grey.shade500 : grey),
-              ),
-              onPressed: onToggleBookmark,
-              splashRadius: 20,
-            ),
-            pulseIcon(
-              active: item.decPulse,
-              outlineIcon: Icons.remove_circle_outline_rounded,
-              filledIcon: Icons.remove_circle,
-              onPressed: onDecrement,
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: const BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: Colors.grey, width: 2),
                 ),
               ),
-              child: Text(
-                '${item.qty}',
+              if (subline != null) ...[
+                const SizedBox(height: 1),
+                Text(
+                  subline,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    color: (selected
+                        ? Colors.black54
+                        : Colors.black87.withOpacity(.75)),
+                    height: 1.1,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 2),
+              Text(
+                item.category,
                 style: TextStyle(
-                  fontSize: 16,
-                  color: selected ? Colors.grey.shade600 : Colors.black,
+                  fontSize: 12.5,
+                  color: selected ? Colors.black45 : Colors.black54,
                 ),
               ),
+            ],
+          ),
+        ),
+
+        IconButton(
+          icon: Icon(
+            item.bookmarked ? Icons.bookmark : Icons.bookmark_border,
+            color: item.bookmarked ? headerGreen : grey,
+          ),
+          onPressed: onToggleBookmark,
+          splashRadius: 20,
+          tooltip: item.bookmarked ? 'Unpin' : 'Pin (priority)',
+        ),
+        pulseIcon(
+          active: item.decPulse,
+          outlineIcon: Icons.remove_circle_outline_rounded,
+          filledIcon: Icons.remove_circle,
+          onPressed: onDecrement,
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: Colors.grey, width: 2)),
+          ),
+          child: Text('${item.qty}', style: const TextStyle(fontSize: 16)),
+        ),
+        pulseIcon(
+          active: item.incPulse,
+          outlineIcon: Icons.add_circle_outline_rounded,
+          filledIcon: Icons.add_circle,
+          onPressed: onIncrement,
+        ),
+      ],
+    );
+  }
+}
+
+/// ====== Dialogs styled like your mockups ======
+class _DeleteConfirmDialog extends StatelessWidget {
+  const _DeleteConfirmDialog({
+    required this.headerGreen,
+    required this.title,
+    required this.message,
+  });
+
+  final Color headerGreen;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFEDEDED),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: headerGreen, width: 6),
+        ),
+        padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: headerGreen,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+              textAlign: TextAlign.center,
             ),
-            pulseIcon(
-              active: item.incPulse,
-              outlineIcon: Icons.add_circle_outline_rounded,
-              filledIcon: Icons.add_circle,
-              onPressed: onIncrement,
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14.5, color: Colors.black87),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _PillButton(
+                  label: 'Yes',
+                  color: headerGreen,
+                  textColor: Colors.white,
+                  onTap: () => Navigator.of(context).pop(true),
+                ),
+                const SizedBox(width: 12),
+                _PillButton(
+                  label: 'No',
+                  color: const Color(0xFF9E9E9E),
+                  textColor: Colors.white,
+                  onTap: () => Navigator.of(context).pop(false),
+                ),
+              ],
             ),
           ],
         ),
-        if (selected)
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: true,
-              child: Container(color: Colors.white.withOpacity(0.45)),
+      ),
+    );
+  }
+}
+
+class _SuccessDialog extends StatelessWidget {
+  const _SuccessDialog({
+    required this.headerGreen,
+    required this.title,
+    required this.message,
+  });
+
+  final Color headerGreen;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    // Auto-close after a short delay
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+    });
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFEDEDED),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: headerGreen, width: 6),
+        ),
+        padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: headerGreen,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+              textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14.5, color: Colors.black87),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PillButton extends StatelessWidget {
+  const _PillButton({
+    required this.label,
+    required this.color,
+    required this.textColor,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final Color textColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Text(
+            label,
+            style: TextStyle(color: textColor, fontWeight: FontWeight.w700),
           ),
-      ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EditQtyButton extends StatelessWidget {
+  const _EditQtyButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color border = enabled
+        ? const Color(0xFF9E9E9E)
+        : Colors.grey.shade300;
+    final Color fg = enabled ? const Color(0xFF9E9E9E) : Colors.grey.shade300;
+    return InkResponse(
+      radius: 20,
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: border, width: 1.6),
+        ),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 18, color: fg),
+      ),
     );
   }
 }

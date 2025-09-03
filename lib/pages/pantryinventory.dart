@@ -99,11 +99,11 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   static const double kTileHPad = 12; // whole item: left/right padding
   static const double kTileVPad = 10; // whole item: top/bottom padding
   static const double kCheckboxTextGap = 12; // gap after checkbox
-  static const double kCheckboxNudgeTop = 4; // vertical nudge for the checkbox
+  static const double kCheckboxNudgeTop = 0; // was 4 — align w/ icon center
   static const double kLeftRightGap = 12; // gap between left & right blocks
 
-  // Row alignment
-  final CrossAxisAlignment rowCrossAxis = CrossAxisAlignment.start;
+  // Row alignment (center to align checkbox + chip like Shoppinglist)
+  final CrossAxisAlignment rowCrossAxis = CrossAxisAlignment.center;
   final MainAxisAlignment rowMainAxis = MainAxisAlignment.start;
 
   // Left block alignment
@@ -418,9 +418,12 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       }
 
       // If you extend EditPantryItem to return brand/size:
-      if (res.containsKey('brand'))
+      if (res.containsKey('brand')) {
         item.brand = (res['brand'] as String).trim();
-      if (res.containsKey('size')) item.size = (res['size'] as String).trim();
+      }
+      if (res.containsKey('size')) {
+        item.size = (res['size'] as String).trim();
+      }
     });
   }
 
@@ -633,7 +636,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  // Base row (content) — left like shoppinglist, right = status + expiration
+  // Base row (content) — now WITHOUT the icon chip
   Widget _rowBaseContent(PantryItem item) {
     final bool isConsumed = item.status == ItemStatus.consumed;
 
@@ -647,28 +650,27 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         mainAxisAlignment: rowMainAxis,
         children: [
           // Checkbox (consume / revert)
-          Padding(
-            padding: const EdgeInsets.only(top: kCheckboxNudgeTop),
-            child: Checkbox(
-              value: isConsumed,
-              onChanged: (v) {
-                setState(() {
-                  if (v == true) {
-                    if (item.status != ItemStatus.consumed) {
-                      item.prevStatus = item.status;
-                    }
-                    item.status = ItemStatus.consumed;
-                  } else {
-                    item.status = item.prevStatus ?? ItemStatus.active;
+          Checkbox(
+            value: isConsumed,
+            onChanged: (v) {
+              setState(() {
+                if (v == true) {
+                  if (item.status != ItemStatus.consumed) {
+                    item.prevStatus = item.status;
                   }
-                });
-              },
-              activeColor: headerGreen,
-              checkColor: Colors.white,
-            ),
+                  item.status = ItemStatus.consumed;
+                } else {
+                  item.status = item.prevStatus ?? ItemStatus.active;
+                }
+              });
+            },
+            activeColor: headerGreen,
+            checkColor: Colors.white,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
 
-          const SizedBox(width: kCheckboxTextGap),
+          // Keep spacing where the icon used to be
+          const SizedBox(width: 10),
 
           // Left block (matches shoppinglist.dart)
           Expanded(

@@ -1,17 +1,9 @@
-import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:guests_main/pages/viewalllists.dart';
 import 'package:guests_main/pages/listitemspage.dart'
     show MainShoppingListStore;
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 
 class Shoppinglist extends StatefulWidget {
   const Shoppinglist({super.key});
@@ -30,13 +22,10 @@ class _ShoppinglistState extends State<Shoppinglist> {
   // Header key so we can anchor SnackBars right under it (no layout shift)
   final GlobalKey _headerKey = GlobalKey();
 
-  // For PNG export — wrap the list with a RepaintBoundary
-  final GlobalKey _captureKey = GlobalKey();
-
-  // ===== NEW: current title reflects the “Main” list when present =====
+  // ===== current title reflects the “Main” list when present =====
   String _currentTitle = 'Shopping List';
 
-  // ===== NEW: store listener for live updates from ListItemsPage =====
+  // store listener for live updates from ListItemsPage
   VoidCallback? _storeListener;
 
   // Guest limit
@@ -53,7 +42,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
     'Other',
   ];
 
-  // Shopping list items (no thumbnails)
+  // Shopping list items (no thumbnails/icons)
   final items = <ShoppingItem>[
     ShoppingItem(
       id: 'oj1',
@@ -184,44 +173,15 @@ class _ShoppinglistState extends State<Shoppinglist> {
     ),
   ];
 
-  // ------- Suggestions dropdown (collapsible) -------
-  bool _suggestionsOpen = true;
-
-  /// Suggestions now include optional brand & size
-  final List<_Suggestion> _suggestions = [
-    _Suggestion(
-      name: 'Mushrooms',
-      brand: 'Jolly',
-      sizeText: '400g',
-      note: 'Low Stock',
-      category: 'Canned Goods',
-    ),
-    _Suggestion(
-      name: 'Canned Meats',
-      brand: 'Argentina',
-      sizeText: '150g',
-      note: 'Out of Stock',
-      category: 'Canned Goods',
-    ),
-    _Suggestion(
-      name: 'Orange Juice',
-      brand: 'Fruit Soda Orange',
-      sizeText: '1L',
-      note: 'Low Stock',
-      category: 'Beverages',
-    ),
-  ];
-
-  // ===== NEW: Apply the “Main” list from the shared store =====
+  // ===== Apply the “Main” list from the shared store =====
   void _applyMainStore(MainShoppingListStore store, {bool showToast = false}) {
     if (!store.hasMain) return;
     final incoming = store.currentItems;
-    // Replace local title + items with copies from store
     _currentTitle = store.currentListTitle ?? 'Shopping List';
     items
       ..clear()
       ..addAll(incoming.map(_mapFromStoreItem));
-    _reorderByBookmark(); // keep your bookmark-first rule
+    _reorderByBookmark();
     if (showToast) {
       _showTopSnack('Loaded main list: “$_currentTitle”');
     }
@@ -246,7 +206,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
     final messengerTop = MediaQuery.of(context).padding.top;
     final render = _headerKey.currentContext?.findRenderObject() as RenderBox?;
     final headerHeight = render?.size.height ?? 0;
-    // +8px breathing room under the header
     return messengerTop + headerHeight + 8;
   }
 
@@ -382,128 +341,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
       ..clear()
       ..addAll(bookmarked)
       ..addAll(others);
-  }
-
-  // ---------- Export helpers ----------
-  String _asPlainText() {
-    final buf = StringBuffer()
-      ..writeln(_currentTitle)
-      ..writeln('-' * _currentTitle.length)
-      ..writeln();
-
-    for (final it in items) {
-      final checked = it.inCart ? 'x' : ' ';
-      final sub = [
-        if ((it.brand ?? '').trim().isNotEmpty) it.brand!.trim(),
-        if ((it.sizeText ?? '').trim().isNotEmpty) it.sizeText!.trim(),
-      ].join(' · ');
-      final name = sub.isEmpty ? it.name : '${it.name} ($sub)';
-      buf.writeln('[${checked}] $name  —  Qty: ${it.qty}  ·  ${it.category}');
-    }
-    return buf.toString();
-  }
-
-  Future<Uint8List> _capturePng() async {
-    final boundary =
-        _captureKey.currentContext?.findRenderObject()
-            as RenderRepaintBoundary?;
-    if (boundary == null) throw Exception('Nothing to capture');
-    final ui.Image image = await boundary.toImage(pixelRatio: 3);
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    if (byteData == null) throw Exception('Failed to encode PNG');
-    return byteData.buffer.asUint8List();
-  }
-
-  Future<File> _writeTemp(Uint8List bytes, String filename) async {
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(bytes);
-    return file;
-  }
-
-  Future<void> _exportAsTxt() async {
-    try {
-      final text = _asPlainText();
-      final bytes = Uint8List.fromList(utf8.encode(text));
-      final file = await _writeTemp(
-        bytes,
-        '${_currentTitle.replaceAll(' ', '_').toLowerCase()}.txt',
-      );
-      await Share.shareXFiles([
-        XFile(file.path, mimeType: 'text/plain'),
-      ], text: 'Shopping List');
-    } catch (e) {
-      _showTopSnack('Failed to export TXT: $e');
-    }
-  }
-
-  Future<void> _exportAsPng() async {
-    try {
-      final png = await _capturePng();
-      final file = await _writeTemp(
-        png,
-        '${_currentTitle.replaceAll(' ', '_').toLowerCase()}.png',
-      );
-      await Share.shareXFiles([
-        XFile(file.path, mimeType: 'image/png'),
-      ], text: 'Shopping List');
-    } catch (e) {
-      _showTopSnack('Failed to export PNG: $e');
-    }
-  }
-
-  void _openExportSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      useRootNavigator: true,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Export "${_currentTitle}"',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: Colors.grey.shade900,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ListTile(
-                  leading: const Icon(Icons.description_outlined),
-                  title: const Text('Export as TXT'),
-                  subtitle: const Text('Share a plain text list'),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    _exportAsTxt();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.image_outlined),
-                  title: const Text('Export as PNG'),
-                  subtitle: const Text('Share an image of the list'),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    _exportAsPng();
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   // ---------- Add Item Dialog ----------
@@ -1084,16 +921,14 @@ class _ShoppinglistState extends State<Shoppinglist> {
     if (mounted) setState(() {});
   }
 
-  // ===== NEW: hook up to the store =====
+  // ===== hook up to the store =====
   @override
   void initState() {
     super.initState();
     final store = MainShoppingListStore.instance;
-    // Load immediately if a main list already exists
     if (store.hasMain) {
       _applyMainStore(store);
     }
-    // Listen for future changes (e.g., when user taps "Use as current" elsewhere)
     _storeListener = () {
       _applyMainStore(store, showToast: true);
     };
@@ -1123,7 +958,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ===== NEW: show the current main list title if available =====
+              // current main list title if available
               Text(
                 _currentTitle,
                 style: TextStyle(
@@ -1146,23 +981,13 @@ class _ShoppinglistState extends State<Shoppinglist> {
                     label: 'View All List',
                     color: darkGreen,
                     onTap: () async {
-                      // Navigate to View All; if user sets a main list there,
-                      // the store listener above will auto-apply on return.
                       await Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const Viewalllist()),
                       );
                     },
                   ),
                   const Spacer(),
-                  // === Export button (changed icon) ===
-                  InkWell(
-                    onTap: _openExportSheet,
-                    borderRadius: BorderRadius.circular(10),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Icon(Icons.file_download_outlined, size: 22),
-                    ),
-                  ),
+                  // (Export button removed)
                 ],
               ),
             ],
@@ -1170,302 +995,108 @@ class _ShoppinglistState extends State<Shoppinglist> {
         ),
         Divider(height: 1, thickness: 1, color: sep),
 
-        // ------- Suggestions (collapsible) -------
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
-          child: Column(
-            children: [
-              InkWell(
-                onTap: () =>
-                    setState(() => _suggestionsOpen = !_suggestionsOpen),
-                borderRadius: BorderRadius.circular(8),
-                child: Row(
-                  children: [
-                    Text(
-                      'Suggestions (${_suggestions.length})',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: Colors.grey.shade800,
-                        fontSize: 15.5,
-                      ),
-                    ),
-                    const Spacer(),
-                    Icon(
-                      _suggestionsOpen
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      color: Colors.grey.shade800,
-                    ),
-                  ],
-                ),
-              ),
-              AnimatedCrossFade(
-                firstChild: const SizedBox.shrink(),
-                secondChild: Column(
-                  children: [
-                    const SizedBox(height: 8),
-                    ..._suggestions.map(
-                      (s) => _SuggestionCard(
-                        suggestion: s,
-                        sep: sep,
-                        headerGreen: headerGreen,
-                        onAdd: () {
-                          if (items.length >= maxGuestItems) {
-                            _showLimitDialog();
-                            return;
-                          }
-                          setState(() {
-                            items.insert(
-                              0,
-                              ShoppingItem(
-                                id: 'sugg_${DateTime.now().millisecondsSinceEpoch}',
-                                name: s.name,
-                                brand: s.brand,
-                                sizeText: s.sizeText,
-                                category: s.category,
-                                imageUrl: null,
-                                qty: 1,
-                              ),
-                            );
-                            _reorderByBookmark();
-                            _suggestions.remove(s);
-                          });
-                          _showTopSnack('Added "${s.name}"');
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                crossFadeState: _suggestionsOpen
-                    ? CrossFadeState.showSecond
-                    : CrossFadeState.showFirst,
-                duration: const Duration(milliseconds: 180),
-                sizeCurve: Curves.easeInOut,
-              ),
-            ],
-          ),
-        ),
-
-        Divider(height: 1, thickness: 1, color: sep),
-
-        // ------- Main list (wrapped for PNG capture) -------
+        // Main list (no suggestions, no capture boundary)
         Expanded(
-          child: RepaintBoundary(
-            key: _captureKey,
-            child: ListView.separated(
-              itemCount: items.length,
-              separatorBuilder: (_, __) =>
-                  Divider(height: 1, thickness: 1, color: sep),
-              itemBuilder: (context, index) {
-                final item = items[index];
+          child: ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, thickness: 1, color: sep),
+            itemBuilder: (context, index) {
+              final item = items[index];
 
-                return Slidable(
-                  key: ValueKey(item.id),
-                  closeOnScroll: true,
-                  endActionPane: ActionPane(
-                    motion: const DrawerMotion(), // stops and reveals actions
-                    extentRatio: 0.40, // ~40% of tile width for two actions
+              return Slidable(
+                key: ValueKey(item.id),
+                closeOnScroll: true,
+                endActionPane: ActionPane(
+                  motion: const DrawerMotion(),
+                  extentRatio: 0.40,
+                  children: [
+                    SlidableAction(
+                      onPressed: (_) => _showEditItemDialog(item),
+                      icon: Icons.edit,
+                      label: 'Edit',
+                      backgroundColor: headerGreen,
+                      foregroundColor: Colors.white,
+                      borderRadius: BorderRadius.circular(0),
+                    ),
+                    SlidableAction(
+                      onPressed: (_) {
+                        final removed = item;
+                        final removedIndex = index;
+                        setState(() => items.removeAt(removedIndex));
+
+                        _showTopSnackWithAction(
+                          message: 'Deleted "${removed.name}"',
+                          actionLabel: 'UNDO',
+                          onAction: () => setState(() {
+                            final safeIndex = removedIndex.clamp(
+                              0,
+                              items.length,
+                            );
+                            items.insert(safeIndex, removed);
+                          }),
+                        );
+                      },
+                      icon: Icons.delete_outline,
+                      label: 'Delete',
+                      backgroundColor: Colors.red.shade600,
+                      foregroundColor: Colors.white,
+                      borderRadius: BorderRadius.circular(0),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.white,
+                  child: Stack(
                     children: [
-                      SlidableAction(
-                        onPressed: (_) => _showEditItemDialog(item),
-                        icon: Icons.edit,
-                        label: 'Edit',
-                        backgroundColor: headerGreen,
-                        foregroundColor: Colors.white,
-                        borderRadius: BorderRadius.circular(0),
-                      ),
-                      SlidableAction(
-                        onPressed: (_) {
-                          final removed = item;
-                          final removedIndex = index;
-                          setState(() => items.removeAt(removedIndex));
-
-                          _showTopSnackWithAction(
-                            message: 'Deleted "${removed.name}"',
-                            actionLabel: 'UNDO',
-                            onAction: () => setState(() {
-                              final safeIndex = removedIndex.clamp(
-                                0,
-                                items.length,
-                              );
-                              items.insert(safeIndex, removed);
-                            }),
-                          );
-                        },
-                        icon: Icons.delete_outline,
-                        label: 'Delete',
-                        backgroundColor: Colors.red.shade600,
-                        foregroundColor: Colors.white,
-                        borderRadius: BorderRadius.circular(0),
-                      ),
-                    ],
-                  ),
-                  // === Pantry-style overlay to indicate selection ===
-                  child: Material(
-                    color: Colors.white,
-                    child: Stack(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          child: _ShoppingRow(
-                            item: item,
-                            headerGreen: headerGreen,
-                            onToggleInCart: (v) =>
-                                setState(() => item.inCart = v ?? false),
-                            onToggleBookmark: () {
-                              setState(() {
-                                item.bookmarked = !item.bookmarked;
-                                _reorderByBookmark();
-                              });
-                            },
-                            onDecrement: () {
-                              setState(
-                                () => item.qty = (item.qty > 0)
-                                    ? item.qty - 1
-                                    : 0,
-                              );
-                              _pulseButton(item, isInc: false);
-                            },
-                            onIncrement: () {
-                              setState(() => item.qty += 1);
-                              _pulseButton(item, isInc: true);
-                            },
-                            onDelete: () {}, // kept for compatibility
-                            onEdit: () {}, // disabled (no tap-to-edit on name)
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
                         ),
-                        if (item.inCart)
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              ignoring: true,
-                              child: Container(
-                                color: Colors.white.withOpacity(0.45),
-                              ),
+                        child: _ShoppingRow(
+                          item: item,
+                          headerGreen: headerGreen,
+                          onToggleInCart: (v) =>
+                              setState(() => item.inCart = v ?? false),
+                          onToggleBookmark: () {
+                            setState(() {
+                              item.bookmarked = !item.bookmarked;
+                              _reorderByBookmark();
+                            });
+                          },
+                          onDecrement: () {
+                            setState(
+                              () =>
+                                  item.qty = (item.qty > 0) ? item.qty - 1 : 0,
+                            );
+                            _pulseButton(item, isInc: false);
+                          },
+                          onIncrement: () {
+                            setState(() => item.qty += 1);
+                            _pulseButton(item, isInc: true);
+                          },
+                          onDelete: () {},
+                          onEdit: () {},
+                        ),
+                      ),
+                      if (item.inCart)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            ignoring: true,
+                            child: Container(
+                              color: Colors.white.withOpacity(0.45),
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
         ),
       ],
-    );
-  }
-}
-
-// ======================= Suggestion types/UI =======================
-class _Suggestion {
-  final String name;
-  final String? brand; // NEW
-  final String? sizeText; // NEW
-  final String note; // e.g., "Low Stock", "Out of Stock"
-  final String category;
-  _Suggestion({
-    required this.name,
-    required this.note,
-    required this.category,
-    this.brand,
-    this.sizeText,
-  });
-}
-
-class _SuggestionCard extends StatelessWidget {
-  const _SuggestionCard({
-    required this.suggestion,
-    required this.sep,
-    required this.headerGreen,
-    required this.onAdd,
-  });
-
-  final _Suggestion suggestion;
-  final Color sep;
-  final Color headerGreen;
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    String? subline;
-    final b = (suggestion.brand ?? '').trim();
-    final s = (suggestion.sizeText ?? '').trim();
-    if (b.isNotEmpty || s.isNotEmpty) {
-      subline = (b.isNotEmpty && s.isNotEmpty)
-          ? '$b · $s'
-          : (b.isNotEmpty ? b : s);
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: sep),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
-          child: Row(
-            children: [
-              Icon(
-                Icons.circle_outlined,
-                size: 22,
-                color: Colors.grey.shade600,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      suggestion.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14.5,
-                      ),
-                    ),
-                    if (subline != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subline,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: Colors.black87.withOpacity(.75),
-                          height: 1.1,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 2),
-                    Text(
-                      suggestion.note,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                        height: 1.1,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: onAdd,
-                icon: const Icon(Icons.add_circle_outline_rounded),
-                color: headerGreen,
-                splashRadius: 20,
-                tooltip: 'Add',
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1474,8 +1105,8 @@ class _SuggestionCard extends StatelessWidget {
 class ShoppingItem {
   final String id;
   String name;
-  String? brand; // NEW
-  String? sizeText; // NEW e.g., 150g, 1L, 5kg, 6 pcs
+  String? brand;
+  String? sizeText; // e.g., 150g, 1L, 5kg, 6 pcs
   String category;
   final String? imageUrl;
   int qty;
@@ -1562,12 +1193,16 @@ class _ShoppingRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // === Pantry-like checkbox behavior (no status change) ===
+        // Checkbox
         Checkbox(
           value: selected,
           onChanged: onToggleInCart,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
+
+        // Keep spacing where the icon used to be
+        const SizedBox(width: 10),
+
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
