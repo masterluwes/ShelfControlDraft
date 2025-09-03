@@ -47,6 +47,53 @@ class PantryItem {
   }
 }
 
+// === Icon helpers: category-first with a few name hints (match Shoppinglist style) ===
+IconData _piIconForCategory(String category) {
+  switch (category) {
+    case 'Beverages':
+      return Icons.local_drink;
+    case 'Bakery':
+    case 'Baked Goods':
+      return Icons.bakery_dining;
+    case 'Condiments':
+      return Icons.kitchen;
+    case 'Canned Goods':
+      return Icons.inventory_2;
+    case 'Dairy':
+      return Icons.icecream;
+    case 'Produce':
+      return Icons.eco;
+    case 'Snacks':
+      return Icons.fastfood;
+    case 'Grains':
+      return Icons.rice_bowl;
+    case 'Frozen':
+      return Icons.ac_unit;
+    case 'Herbs/Spices':
+      return Icons.spa;
+    case 'Meat':
+      return Icons.set_meal;
+    case 'Household':
+      return Icons.home_outlined;
+    default:
+      return Icons.category;
+  }
+}
+
+IconData _piIconForName(String name, String category) {
+  final n = name.toLowerCase();
+  if (n.contains('water')) return Icons.water_drop;
+  if (n.contains('milk')) return Icons.local_drink;
+  if (n.contains('bread') || n.contains('loaf')) return Icons.bakery_dining;
+  if (n.contains('egg')) return Icons.egg;
+  if (n.contains('sauce') || n.contains('ketchup') || n.contains('mayo')) {
+    return Icons.kitchen;
+  }
+  if (n.contains('canned') || n.contains('sardine')) return Icons.inventory_2;
+  if (n.contains('chips') || n.contains('snack')) return Icons.fastfood;
+  return _piIconForCategory(category);
+}
+
 class _PantryInventoryBodyState extends State<Pantryinventory> {
   // Palette
   final Color headerGreen = const Color(0xFF2E7D32);
@@ -636,7 +683,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  // Base row (content) — now WITHOUT the icon chip
+  // Base row (content) — matches Shoppinglist alignment & chip
   Widget _rowBaseContent(PantryItem item) {
     final bool isConsumed = item.status == ItemStatus.consumed;
 
@@ -649,7 +696,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         crossAxisAlignment: rowCrossAxis,
         mainAxisAlignment: rowMainAxis,
         children: [
-          // Checkbox (consume / revert)
+          // Checkbox (consume / revert) — aligned like Shoppinglist
           Checkbox(
             value: isConsumed,
             onChanged: (v) {
@@ -669,8 +716,22 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
 
-          // Keep spacing where the icon used to be
-          const SizedBox(width: 10),
+          // === Shoppinglist-style circular green icon chip ===
+          Container(
+            width: 32,
+            height: 32,
+            margin: const EdgeInsets.only(right: 10),
+            decoration: BoxDecoration(
+              color: headerGreen.withOpacity(0.10),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              _piIconForName(item.name, item.category),
+              size: 18,
+              color: headerGreen,
+            ),
+          ),
 
           // Left block (matches shoppinglist.dart)
           Expanded(

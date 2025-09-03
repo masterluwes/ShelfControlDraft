@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:guests_main/pages/listitemspage.dart';
 
+// ===== Top-level enum =====
+enum GenMode { recommended, budget, healthy }
+
 class Viewalllist extends StatefulWidget {
   const Viewalllist({super.key});
 
@@ -57,7 +60,8 @@ class _ViewAllListsPageState extends State<Viewalllist> {
         });
       }
     } else if (result is bool && result == true) {
-      // Backward-compat: do nothing.
+      // Backward-compat: if any older page returns just `true`,
+      // we don't know which one—so we won't remove anything here.
     }
   }
 
@@ -276,6 +280,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                             ),
                           );
 
+                          // If the list was deleted from inside ListItemsPage, remove it here.
                           if (mounted) _handleListPageResult(result);
                         }
                       : null,
@@ -287,6 +292,434 @@ class _ViewAllListsPageState extends State<Viewalllist> {
         );
       },
     );
+  }
+
+  // ===== GENERATE LIST pop-up =====
+  Future<void> _showGenerateListDialog() async {
+    final parentContext = context;
+
+    GenMode mode = GenMode.recommended;
+    double sliderValue = 1500;
+    const double minBudget = 200;
+    const double maxBudget = 10000;
+    final budgetCtrl = TextEditingController(
+      text: sliderValue.toStringAsFixed(0),
+    );
+
+    String formatPhp(double v) => '₱${v.toStringAsFixed(0)}';
+
+    await showDialog<void>(
+      context: parentContext,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            void syncFromText() {
+              final raw = budgetCtrl.text.replaceAll(',', '').trim();
+              final parsed = double.tryParse(raw);
+              if (parsed != null) {
+                final clamped = parsed.clamp(minBudget, maxBudget).toDouble();
+                setLocal(() => sliderValue = clamped);
+                budgetCtrl.text = clamped.toStringAsFixed(0);
+                budgetCtrl.selection = TextSelection.fromPosition(
+                  TextPosition(offset: budgetCtrl.text.length),
+                );
+              }
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              title: Text(
+                'Generate Shopping List',
+                style: TextStyle(
+                  color: headerGreen,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _RadioTile<GenMode>(
+                      value: GenMode.recommended,
+                      groupValue: mode,
+                      onChanged: (v) => setLocal(() => mode = v!),
+                      title: 'Most Recommended',
+                      subtitle: 'Curated picks based on popularity.',
+                      icon: Icons.recommend_outlined,
+                      headerGreen: headerGreen,
+                      sep: sep,
+                    ),
+                    const SizedBox(height: 8),
+                    _RadioTile<GenMode>(
+                      value: GenMode.budget,
+                      groupValue: mode,
+                      onChanged: (v) => setLocal(() => mode = v!),
+                      title: 'Budget Friendly',
+                      subtitle: 'Generate a list that fits your budget.',
+                      icon: Icons.account_balance_wallet_outlined,
+                      headerGreen: headerGreen,
+                      sep: sep,
+                    ),
+                    if (mode == GenMode.budget) ...[
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Budget',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey.shade800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Slider(
+                              value: sliderValue,
+                              min: minBudget,
+                              max: maxBudget,
+                              divisions: (maxBudget - minBudget).toInt(),
+                              label: formatPhp(sliderValue),
+                              activeColor: headerGreen,
+                              onChanged: (v) {
+                                setLocal(() => sliderValue = v);
+                                budgetCtrl.text = v.toStringAsFixed(0);
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 110,
+                            child: TextField(
+                              controller: budgetCtrl,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              onSubmitted: (_) => syncFromText(),
+                              decoration: InputDecoration(
+                                prefixText: '₱',
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 10,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: sep),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: sep),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(
+                                    color: headerGreen,
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '${formatPhp(minBudget)} – ${formatPhp(maxBudget)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    _RadioTile<GenMode>(
+                      value: GenMode.healthy,
+                      groupValue: mode,
+                      onChanged: (v) => setLocal(() => mode = v!),
+                      title: 'Healthy Option',
+                      subtitle: 'Focus on nutrient-dense picks.',
+                      icon: Icons.eco_outlined,
+                      headerGreen: headerGreen,
+                      sep: sep,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () =>
+                      Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                  child: Text('Cancel', style: TextStyle(color: headerGreen)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: headerGreen,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () async {
+                    // === Titles WITHOUT the "Auto:" prefix ===
+                    String title = 'Most Recommended';
+                    IconData icon = Icons.recommend_outlined;
+
+                    switch (mode) {
+                      case GenMode.recommended:
+                        title = 'Most Recommended';
+                        icon = Icons.recommend_outlined;
+                        break;
+                      case GenMode.budget:
+                        title = 'Budget ${formatPhp(sliderValue)}';
+                        icon = Icons.account_balance_wallet_outlined;
+                        break;
+                      case GenMode.healthy:
+                        title = 'Healthy Picks';
+                        icon = Icons.eco_outlined;
+                        break;
+                    }
+
+                    // === Generate TEMP items grouped by their categories ===
+                    final tempItems = _generateItemsForMode(
+                      mode,
+                      budget: sliderValue,
+                    );
+
+                    if (!mounted) return;
+
+                    final newMeta = ListMeta(
+                      title: title,
+                      created: DateTime.now(),
+                      itemsCount: tempItems.length,
+                      icon: icon,
+                    );
+
+                    setState(() => _lists.insert(0, newMeta));
+                    Navigator.of(dialogCtx, rootNavigator: true).pop();
+
+                    // Pass seed items to ListItemsPage using RouteSettings.arguments
+                    final result = await Navigator.of(parentContext).push(
+                      MaterialPageRoute(
+                        builder: (_) => ListItemsPage(listTitle: title),
+                        settings: RouteSettings(
+                          arguments: {
+                            'seedItems': tempItems,
+                            'isGeneratedTemp': true,
+                            'genMode': mode.name,
+                            'budget': sliderValue,
+                          },
+                        ),
+                      ),
+                    );
+
+                    if (mounted) _handleListPageResult(result);
+                  },
+                  child: const Text('Generate'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ===== TEMP item generator (keeps items under proper categories) =====
+  static const List<String> kCategories = [
+    'Beverages',
+    'Baked Goods',
+    'Condiments',
+    'Canned Goods',
+    'Dairy',
+    'Produce',
+    'Snacks',
+    'Other',
+  ];
+
+  List<GenItem> _generateItemsForMode(GenMode mode, {double budget = 0}) {
+    final base = <GenItem>[
+      GenItem(
+        name: 'Orange Juice',
+        brand: 'Minute Maid',
+        grams: 1000,
+        qty: 1,
+        category: 'Beverages',
+      ),
+      GenItem(
+        name: 'Wheat Bread',
+        brand: 'Gardenia',
+        grams: 600,
+        qty: 1,
+        category: 'Baked Goods',
+      ),
+      GenItem(
+        name: 'Mayonnaise',
+        brand: 'Lady’s Choice',
+        grams: 470,
+        qty: 1,
+        category: 'Condiments',
+      ),
+      GenItem(
+        name: 'Tuna Flakes',
+        brand: 'Century',
+        grams: 180,
+        qty: 2,
+        category: 'Canned Goods',
+      ),
+      GenItem(
+        name: 'Fresh Milk',
+        brand: 'Cowhead',
+        grams: 1000,
+        qty: 1,
+        category: 'Dairy',
+      ),
+      GenItem(
+        name: 'Bananas',
+        brand: 'Local',
+        grams: 1000,
+        qty: 1,
+        category: 'Produce',
+      ),
+      GenItem(
+        name: 'Crackers',
+        brand: 'SkyFlakes',
+        grams: 250,
+        qty: 1,
+        category: 'Snacks',
+      ),
+    ];
+
+    switch (mode) {
+      case GenMode.recommended:
+        return base;
+      case GenMode.budget:
+        if (budget <= 800) {
+          return [
+            GenItem(
+              name: 'Instant Coffee',
+              brand: 'Great Taste',
+              grams: 50,
+              qty: 1,
+              category: 'Beverages',
+            ),
+            GenItem(
+              name: 'Pandesal Pack',
+              brand: 'Local Bakery',
+              grams: 300,
+              qty: 1,
+              category: 'Baked Goods',
+            ),
+            GenItem(
+              name: 'Sardines',
+              brand: '555',
+              grams: 155,
+              qty: 2,
+              category: 'Canned Goods',
+            ),
+            GenItem(
+              name: 'Bananas',
+              brand: 'Local',
+              grams: 800,
+              qty: 1,
+              category: 'Produce',
+            ),
+            GenItem(
+              name: 'Soy Sauce',
+              brand: 'Datu Puti',
+              grams: 350,
+              qty: 1,
+              category: 'Condiments',
+            ),
+          ];
+        } else if (budget <= 2000) {
+          return [
+            ...base.where((x) => x.category != 'Snacks'),
+            GenItem(
+              name: 'Rice',
+              brand: 'Sinandomeng',
+              grams: 2000,
+              qty: 1,
+              category: 'Other',
+            ),
+          ];
+        } else {
+          return [
+            ...base,
+            GenItem(
+              name: 'Greek Yogurt',
+              brand: 'Almarai',
+              grams: 500,
+              qty: 1,
+              category: 'Dairy',
+            ),
+            GenItem(
+              name: 'Mixed Veggies',
+              brand: 'Del Monte',
+              grams: 400,
+              qty: 1,
+              category: 'Canned Goods',
+            ),
+            GenItem(
+              name: 'Granola',
+              brand: 'Quaker',
+              grams: 380,
+              qty: 1,
+              category: 'Snacks',
+            ),
+          ];
+        }
+      case GenMode.healthy:
+        return [
+          GenItem(
+            name: 'Rolled Oats',
+            brand: 'Quaker',
+            grams: 800,
+            qty: 1,
+            category: 'Baked Goods',
+          ),
+          GenItem(
+            name: 'Low-Fat Milk',
+            brand: 'Bear Brand',
+            grams: 1000,
+            qty: 1,
+            category: 'Dairy',
+          ),
+          GenItem(
+            name: 'Chicken Breast',
+            brand: 'Fresh Cut',
+            grams: 1000,
+            qty: 1,
+            category: 'Other',
+          ),
+          GenItem(
+            name: 'Spinach',
+            brand: 'Local',
+            grams: 300,
+            qty: 1,
+            category: 'Produce',
+          ),
+          GenItem(
+            name: 'Olive Oil',
+            brand: 'Bertolli',
+            grams: 500,
+            qty: 1,
+            category: 'Condiments',
+          ),
+          GenItem(
+            name: 'Tuna in Water',
+            brand: 'Century',
+            grams: 180,
+            qty: 2,
+            category: 'Canned Goods',
+          ),
+        ];
+    }
   }
 
   // ===== UI =====
@@ -327,6 +760,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
               children: [
                 ..._lists.asMap().entries.map((entry) {
+                  final index = entry.key;
                   final m = entry.value;
                   return _ListCard(
                     meta: m,
@@ -352,7 +786,24 @@ class _ViewAllListsPageState extends State<Viewalllist> {
           ),
         ],
       ),
-      // NOTE: Floating action button removed (no generator)
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(right: 12, bottom: 12),
+        child: ElevatedButton.icon(
+          onPressed: _showGenerateListDialog,
+          icon: const Icon(Icons.add),
+          label: const Text('Generate Shopping List'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: headerGreen,
+            foregroundColor: Colors.white,
+            elevation: 3,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -528,6 +979,23 @@ class ListMeta {
   });
 }
 
+// ===== TEMP item model for generator =====
+class GenItem {
+  final String name;
+  final String brand;
+  final int grams; // use grams or mL depending on item
+  final int qty;
+  final String category; // MUST match your app categories
+
+  const GenItem({
+    required this.name,
+    required this.brand,
+    required this.grams,
+    required this.qty,
+    required this.category,
+  });
+}
+
 // ===== Card widgets =====
 class _ListCard extends StatelessWidget {
   const _ListCard({
@@ -655,6 +1123,90 @@ class _CreateListRow extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RadioTile<T> extends StatelessWidget {
+  const _RadioTile({
+    required this.value,
+    required this.groupValue,
+    required this.onChanged,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.headerGreen,
+    required this.sep,
+  });
+
+  final T value;
+  final T groupValue;
+  final ValueChanged<T?> onChanged;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color headerGreen;
+  final Color sep;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool selected = value == groupValue;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => onChanged(value),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: selected ? headerGreen : sep, width: 1.5),
+        ),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEEEEEE),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: selected ? headerGreen : Colors.grey.shade800,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: Colors.grey.shade900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Radio<T>(
+              value: value,
+              groupValue: groupValue,
+              activeColor: headerGreen,
+              onChanged: onChanged,
+            ),
+          ],
         ),
       ),
     );
