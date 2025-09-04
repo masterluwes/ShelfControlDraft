@@ -334,7 +334,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(.06),
+                                  color: Colors.black.withAlpha((255 * 0.06).round()),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
@@ -1124,6 +1124,7 @@ class _SuccessDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     // Auto-close after a short delay
     Future.delayed(const Duration(milliseconds: 900), () {
+      if (!context.mounted) return;
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
     });
 

@@ -429,9 +429,12 @@ class _ShoppinglistState extends State<Shoppinglist> {
         bytes,
         '${_currentTitle.replaceAll(' ', '_').toLowerCase()}.txt',
       );
-      await Share.shareXFiles([
-        XFile(file.path, mimeType: 'text/plain'),
-      ], text: 'Shopping List');
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'text/plain')],
+          subject: 'Shopping List',
+        ),
+      );
     } catch (e) {
       _showTopSnack('Failed to export TXT: $e');
     }
@@ -444,9 +447,12 @@ class _ShoppinglistState extends State<Shoppinglist> {
         png,
         '${_currentTitle.replaceAll(' ', '_').toLowerCase()}.png',
       );
-      await Share.shareXFiles([
-        XFile(file.path, mimeType: 'image/png'),
-      ], text: 'Shopping List');
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'image/png')],
+          subject: 'Shopping List',
+        ),
+      );
     } catch (e) {
       _showTopSnack('Failed to export PNG: $e');
     }
@@ -471,7 +477,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Export "${_currentTitle}"',
+                    'Export "$_currentTitle"',
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
                       color: Colors.grey.shade900,
@@ -636,7 +642,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(
-                                color: Colors.black.withOpacity(.15),
+                                color: Colors.black.withAlpha((255 * 0.15).round()),
                               ),
                             ),
                             focusedBorder: OutlineInputBorder(
@@ -683,7 +689,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(.06),
+                                  color: Colors.black.withAlpha((255 * 0.06).round()),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
@@ -805,7 +811,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.black.withOpacity(.15)),
+        borderSide: BorderSide(color: Colors.black.withAlpha((255 * 0.15).round())),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -825,12 +831,12 @@ class _ShoppinglistState extends State<Shoppinglist> {
               color: softCream,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: headerGreen.withOpacity(.75),
+                color: headerGreen.withAlpha((255 * 0.75).round()),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: headerGreen.withOpacity(.30),
+                  color: headerGreen.withAlpha((255 * 0.30).round()),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -926,7 +932,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(
-                                color: Colors.black.withOpacity(.15),
+                                color: Colors.black.withAlpha((255 * 0.15).round()),
                               ),
                             ),
                             focusedBorder: OutlineInputBorder(
@@ -973,7 +979,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(.06),
+                                  color: Colors.black.withAlpha((255 * 0.06).round()),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
@@ -1255,7 +1261,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
             key: _captureKey,
             child: ListView.separated(
               itemCount: items.length,
-              separatorBuilder: (_, __) =>
+              separatorBuilder: (_, _ ) =>
                   Divider(height: 1, thickness: 1, color: sep),
               itemBuilder: (context, index) {
                 final item = items[index];
@@ -1343,7 +1349,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                             child: IgnorePointer(
                               ignoring: true,
                               child: Container(
-                                color: Colors.white.withOpacity(0.45),
+                                color: Colors.white.withAlpha((255 * 0.45).round()),
                               ),
                             ),
                           ),
@@ -1461,7 +1467,7 @@ class _SuggestionCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12.5,
-                          color: Colors.black87.withOpacity(.75),
+                          color: Colors.black87.withAlpha((255 * 0.75).round()),
                           height: 1.1,
                         ),
                       ),
@@ -1555,7 +1561,7 @@ class _ShoppingRow extends StatelessWidget {
       required IconData filledIcon,
       required VoidCallback onPressed,
     }) {
-      final bg = active ? headerGreen.withOpacity(.12) : Colors.transparent;
+      final bg = active ? headerGreen.withAlpha((255 * 0.12).round()) : Colors.transparent;
       final iconData = active ? filledIcon : outlineIcon;
       final iconColor = active ? headerGreen : grey;
 
@@ -1598,7 +1604,7 @@ class _ShoppingRow extends StatelessWidget {
           height: 32,
           margin: const EdgeInsets.only(right: 10),
           decoration: BoxDecoration(
-            color: headerGreen.withOpacity(0.10),
+            color: headerGreen.withAlpha((255 * 0.10).round()),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -1639,7 +1645,7 @@ class _ShoppingRow extends StatelessWidget {
                     fontSize: 13.5,
                     color: (selected
                         ? Colors.black54
-                        : Colors.black87.withOpacity(.75)),
+                        : Colors.black87.withAlpha((255 * 0.75).round())),
                     height: 1.1,
                   ),
                 ),
