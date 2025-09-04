@@ -1010,7 +1010,7 @@ class _ListCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: const Color.fromARGB(10, 0, 0, 0),
             blurRadius: 4,
             offset: const Offset(0, 1),
           ),
