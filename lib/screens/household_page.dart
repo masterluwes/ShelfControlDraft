@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:shelf_control/screens/household_state.dart';
 import 'household_detail_page.dart';
 import 'create_group_page.dart';
 
@@ -11,13 +12,13 @@ class HouseholdPage extends StatefulWidget {
 }
 
 class _HouseholdPageState extends State<HouseholdPage> {
-  final List<Map<String, dynamic>> households = [];
+  List<Map<String, dynamic>> get households => HouseholdState().households;
 
   bool get hasGroup => households.isNotEmpty;
 
   void _leaveGroupByCode(String code) {
     setState(() {
-      households.removeWhere((g) => g['code'] == code);
+      HouseholdState().removeHouseholdByCode(code);
     });
   }
 
@@ -30,7 +31,7 @@ class _HouseholdPageState extends State<HouseholdPage> {
     if (result != null) {
       setState(() {
         result['default'] = false;
-        households.add(result);
+        HouseholdState().addHousehold(result);
       });
       if (!mounted) return;
       Navigator.push(
@@ -159,7 +160,9 @@ class _HouseholdPageState extends State<HouseholdPage> {
                                     "default": false,
                                   };
 
-                                  setState(() => households.add(joined));
+                                  setState(() {
+                                    HouseholdState().addHousehold(joined);
+                                  });
                                   Navigator.pop(context);
 
                                   Navigator.push(
@@ -208,7 +211,7 @@ class _HouseholdPageState extends State<HouseholdPage> {
 
   void _deleteGroupByCode(String code) {
     setState(() {
-      households.removeWhere((g) => g['code'] == code);
+      HouseholdState().removeHouseholdByCode(code);
     });
   }
 
@@ -305,11 +308,9 @@ class _HouseholdPageState extends State<HouseholdPage> {
                     ),
                     onPressed: () {
                       setState(() {
-                        // Clear all defaults
                         for (final g in households) {
                           g["default"] = false;
                         }
-                        // Set this one as default
                         h["default"] = true;
                       });
 

@@ -14,6 +14,7 @@ import 'package:shelf_control/screens/addpantryitem.dart';
 import 'package:shelf_control/screens/editpantryitem.dart';
 import 'package:shelf_control/screens/household_page.dart';
 import 'package:shelf_control/screens/shoppinglist.dart'; // Import for ShoppingListPage
+import 'package:shelf_control/screens/household_state.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:shelf_control/screens/scan_item_screen.dart'; // Import for ScanItemScreen
 
@@ -459,16 +460,27 @@ class DashboardHome extends StatelessWidget {
                   color: const Color(0xFF2E7D32),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: DropdownButton<String>(
-                  value: 'Household 1',
-                  items: ['Household 1', 'Household 2', 'Household 3']
-                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                      .toList(),
-                  onChanged: (value) {},
-                  dropdownColor: const Color(0xFF2E7D32),
-                  underline: Container(),
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                  iconEnabledColor: Colors.white,
+                child: AnimatedBuilder(
+                  animation: HouseholdState(),
+                  builder: (context, _) {
+                    return DropdownButton<String>(
+                      value: HouseholdState().selectedPantry,
+                      items: HouseholdState().allPantries
+                          .map(
+                            (e) => DropdownMenuItem(value: e, child: Text(e)),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          HouseholdState().selectPantry(value);
+                        }
+                      },
+                      dropdownColor: const Color(0xFF2E7D32),
+                      underline: Container(),
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      iconEnabledColor: Colors.white,
+                    );
+                  },
                 ),
               ),
             ],
