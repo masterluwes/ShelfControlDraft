@@ -5,7 +5,6 @@ class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _NotificationSettingsPageState createState() =>
       _NotificationSettingsPageState();
 }
@@ -78,9 +77,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         ),
                       ),
                       onPressed: () {
-                        setState(
-                          () => daysForAtRisk = tempValue,
-                        ); // Update main
+                        setState(() => daysForAtRisk = tempValue);
                         Navigator.pop(ctx);
                       },
                       child: const Text(
