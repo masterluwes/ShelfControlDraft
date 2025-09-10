@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:shelf_control/screens/pantryinventory.dart';
+import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
 import 'package:intl/intl.dart';
 
 class AddPantryItem extends StatefulWidget {
-  final Function(PantryItem) onAddItem;
+  final Function(PantryItemModel) onAddItem;
   final VoidCallback onBack; // Keep onBack for navigation
   const AddPantryItem({super.key, required this.onAddItem, required this.onBack});
 
@@ -63,14 +63,15 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
       return;
     }
 
-    final newItem = PantryItem(
+    final newItem = PantryItemModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: _nameCtrl.text,
       category: _selectedCategory!,
       imageUrl: 'https://via.placeholder.com/150',
       qty: int.tryParse(_qtyCtrl.text) ?? 1,
       expiresText: _expCtrl.text,
-      status: ItemStatus.active,
+      // status: ItemStatus.active, // Removed as status is derived in PantryInventory
+      expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text), // Parse expiration date
     );
     widget.onAddItem(newItem); // Pass the new item back
     widget.onBack(); // Navigate back after adding item

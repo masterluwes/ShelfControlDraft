@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:shelf_control/screens/pantryinventory.dart'; // Corrected import path
+import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
 
 import 'package:intl/intl.dart';
 
 class EditPantryItem extends StatefulWidget {
-  final PantryItem item;
+  final PantryItemModel item;
   final VoidCallback onBack;
-  final Function(PantryItem) onSave;
+  final Function(PantryItemModel) onSave;
 
   const EditPantryItem({super.key, required this.item, required this.onBack, required this.onSave});
 
@@ -44,9 +44,9 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.item.name);
     _qtyCtrl = TextEditingController(text: widget.item.qty.toString());
-    _expCtrl = TextEditingController(text: widget.item.expiresText);
-    _dopCtrl = TextEditingController(text: 'January 5, 2025'); // Placeholder, as it's not in PantryItem
-    _notesCtrl = TextEditingController(text: "Don't put it on the fridge!"); // Placeholder, as it's not in PantryItem
+    _expCtrl = TextEditingController(text: widget.item.expirationDate != null ? DateFormat('MMMM d, yyyy').format(widget.item.expirationDate!) : '');
+    _dopCtrl = TextEditingController(text: widget.item.manufacturedDate != null ? DateFormat('MMMM d, yyyy').format(widget.item.manufacturedDate!) : '');
+    _notesCtrl = TextEditingController(text: ''); // Assuming notes are not part of PantryItemModel yet
     _selectedCategory = widget.item.category; // Initialize with item's category
   }
 
@@ -61,14 +61,24 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
   }
 
   void _saveChanges() {
-    final updatedItem = PantryItem(
+    final updatedItem = PantryItemModel(
       id: widget.item.id,
       name: _nameCtrl.text,
       category: _selectedCategory!,
       imageUrl: widget.item.imageUrl, // Keep existing image URL
       qty: int.tryParse(_qtyCtrl.text) ?? 1,
       expiresText: _expCtrl.text,
-      status: widget.item.status, // Keep existing status
+      barcode: widget.item.barcode,
+      brand: widget.item.brand,
+      quantityUnit: widget.item.quantityUnit,
+      nutritionFacts: widget.item.nutritionFacts,
+      shelfLifeDays: widget.item.shelfLifeDays,
+      shelfLifeWeeks: widget.item.shelfLifeWeeks,
+      shelfLifeMonths: widget.item.shelfLifeMonths,
+      manufacturedDate: DateFormat('MMMM d, yyyy').parse(_dopCtrl.text),
+      expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text),
+      netWeight: widget.item.netWeight,
+      selected: widget.item.selected,
     );
     widget.onSave(updatedItem);
   }

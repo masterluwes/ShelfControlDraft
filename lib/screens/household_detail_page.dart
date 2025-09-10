@@ -305,14 +305,6 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
   }
 
   void _popWithUpdatedData() {
-    String? imagePath;
-
-    if (_profileImage is FileImage) {
-      imagePath = (_profileImage as FileImage).file.path;
-    } else {
-      imagePath = widget.profileImage;
-    }
-
     Navigator.pop(context, {
       "name": _householdName,
       "profileImage": (_profileImage is FileImage)
@@ -321,59 +313,13 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
     });
   }
 
-  // TODO: Backeenddd here for share group button
-  void _showJoinPopup(String code) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: _green, width: 3),
-          ),
-          title: const Text(
-            "Join Group",
-            style: TextStyle(fontWeight: FontWeight.bold, color: _green),
-            textAlign: TextAlign.center,
-          ),
-          content: Text(
-            "Pantry Code: $code\n\n(Backend will handle actual join logic here.)",
-            textAlign: TextAlign.center,
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Joined successfully (mock placeholder)"),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _green,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
-              ),
-              child: const Text(
-                "Confirm",
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
         _popWithUpdatedData();
-        return false;
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFFFFBE6),
@@ -385,61 +331,17 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
           ),
           actions: [
             PopupMenuButton<String>(
-              offset: const Offset(0, 40),
-              color: _green,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              constraints: const BoxConstraints(minWidth: 160),
               icon: const Icon(Icons.more_vert, color: Colors.white),
               onSelected: (value) {
-                if (value == "leave") _showLeaveConfirmationDialog();
-                if (value == "delete") _showDeleteConfirmationDialog();
-                if (value == "share") {
-                  final fakeLink = "app://join?code=${widget.code}";
-                  showDialog(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: const BorderSide(color: _green, width: 3),
-                      ),
-                      title: const Text(
-                        "Share Group",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: _green,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      content: Text(
-                        "Share this link with others:\n\n$fakeLink",
-                        textAlign: TextAlign.center,
-                      ),
-                      actionsAlignment: MainAxisAlignment.center,
-                      actions: [
-                        ElevatedButton(
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: fakeLink));
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Link copied to clipboard"),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _green,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                          ),
-                          child: const Text(
-                            "Copy",
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ],
+                if (value == "leave") {
+                  _showLeaveConfirmationDialog();
+                } else if (value == "delete") {
+                  _showDeleteConfirmationDialog();
+                } else if (value == "share") {
+                  Clipboard.setData(ClipboardData(text: widget.code));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Pantry code copied to clipboard!"),
                     ),
                   );
                 }
@@ -450,7 +352,7 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                     value: "leave",
                     child: Text(
                       "Leave Group",
-                      style: TextStyle(color: Colors.white),
+                      style: TextStyle(color: Colors.black),
                     ),
                   ),
                   if (widget.isAdmin)
@@ -458,14 +360,14 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                       value: "delete",
                       child: Text(
                         "Delete Group",
-                        style: TextStyle(color: Colors.white),
+                        style: TextStyle(color: Colors.black),
                       ),
                     ),
                   const PopupMenuItem(
                     value: "share",
                     child: Text(
                       "Share Group",
-                      style: TextStyle(color: Colors.white),
+                      style: TextStyle(color: Colors.black),
                     ),
                   ),
                 ];
@@ -531,6 +433,7 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                       IconButton(
                         icon: const Icon(Icons.copy, size: 18),
                         onPressed: () {
+                          Clipboard.setData(ClipboardData(text: widget.code));
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text("Pantry code copied!"),

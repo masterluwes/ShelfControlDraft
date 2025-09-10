@@ -43,6 +43,15 @@ dependencies:
   dropdown_button2: ^2.3.9 # Added for pantryinventory.dart
   flutter_speed_dial: ^7.0.0 # Added for floating action button with multiple choices
   intl: ^0.20.2
+  http: ^1.2.1
+  modal_bottom_sheet: ^3.0.0
+  device_preview: ^1.1.0
+  platform: ^3.1.4
+  logger: ^2.0.2 # Added for logging
+  mobile_scanner: ^7.0.1 # Replaced flutter_barcode_scanner
+  flutter_slidable: ^4.0.1 # Added for swipe actions on list items
+  path_provider: ^2.1.3 # Added for temporary directory access
+  share_plus: ^11.1.0 # Added for sharing functionality
 
 dev_dependencies:
   flutter_test:
@@ -53,7 +62,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
