@@ -43,7 +43,6 @@ dependencies:
   dropdown_button2: ^2.3.9 # Added for pantryinventory.dart
   flutter_speed_dial: ^7.0.0 # Added for floating action button with multiple choices
   intl: ^0.20.2
-  shared_preferences: ^2.3.2
 
 dev_dependencies:
   flutter_test:
