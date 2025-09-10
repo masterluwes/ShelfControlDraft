@@ -6,11 +6,18 @@ import 'package:shelf_control/screens/guest_page.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/feature_preview_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:device_preview/device_preview.dart';
+import 'package:flutter/foundation.dart'; // Required for kReleaseMode
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(const ShelfControlApp());
+  runApp(
+    DevicePreview(
+      enabled: !kReleaseMode, // Enable DevicePreview only in debug mode
+      builder: (context) => const ShelfControlApp(),
+    ),
+  );
 }
 
 class ShelfControlApp extends StatelessWidget {
@@ -24,6 +31,9 @@ class ShelfControlApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
       ),
+      // Use DevicePreview's builder for locale and builder
+      locale: DevicePreview.locale(context),
+      builder: DevicePreview.appBuilder,
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
