@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationPage extends StatefulWidget {
   const NotificationPage({super.key});
@@ -34,6 +36,51 @@ class _NotificationPageState extends State<NotificationPage> {
 
   bool selectionMode = false;
 
+  DateTime? snoozeUntil;
+  bool snoozeIndefinite = false;
+  bool get isSnoozed {
+    if (snoozeIndefinite) return true;
+    if (snoozeUntil != null) {
+      return snoozeUntil!.isAfter(DateTime.now());
+    }
+    return false;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSnoozeState();
+  }
+
+  Future<void> _loadSnoozeState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final untilString = prefs.getString('snoozeUntil');
+    final indefinite = prefs.getBool('snoozeIndefinite') ?? false;
+
+    DateTime? until;
+    if (untilString != null) {
+      until = DateTime.tryParse(untilString);
+      if (until != null && until.isBefore(DateTime.now())) {
+        until = null;
+      }
+    }
+
+    setState(() {
+      snoozeUntil = until;
+      snoozeIndefinite = indefinite;
+    });
+  }
+
+  Future<void> _saveSnoozeState() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (snoozeUntil != null) {
+      await prefs.setString('snoozeUntil', snoozeUntil!.toIso8601String());
+    } else {
+      await prefs.remove('snoozeUntil');
+    }
+    await prefs.setBool('snoozeIndefinite', snoozeIndefinite);
+  }
+
   void toggleSelection(int index) {
     setState(() {
       notifications[index]["selected"] = !notifications[index]["selected"];
@@ -55,8 +102,88 @@ class _NotificationPageState extends State<NotificationPage> {
     });
   }
 
+  void _showSnoozeDialog() {
+    if (isSnoozed) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("End Snooze?"),
+          content: const Text("Do you want to turn notifications back on?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  snoozeUntil = null;
+                  snoozeIndefinite = false;
+                });
+                _saveSnoozeState();
+                Navigator.pop(context);
+              },
+              child: const Text("Yes"),
+            ),
+          ],
+        ),
+      );
+    } else {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Snooze Notifications"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _snoozeOption(
+                "1 Day",
+                DateTime.now().add(const Duration(days: 1)),
+              ),
+              _snoozeOption(
+                "3 Days",
+                DateTime.now().add(const Duration(days: 3)),
+              ),
+              _snoozeOption(
+                "1 Week",
+                DateTime.now().add(const Duration(days: 7)),
+              ),
+              _snoozeOption("Until I turn back on", null, indefinite: true),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _snoozeOption(
+    String label,
+    DateTime? until, {
+    bool indefinite = false,
+  }) {
+    return ListTile(
+      title: Text(label),
+      onTap: () {
+        setState(() {
+          snoozeUntil = until;
+          snoozeIndefinite = indefinite;
+        });
+        _saveSnoozeState();
+        Navigator.pop(context);
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    String? snoozeText;
+    if (snoozeIndefinite) {
+      snoozeText = "Snoozed until turned back on";
+    } else if (isSnoozed && snoozeUntil != null) {
+      snoozeText =
+          "Snoozed until ${DateFormat.yMMMd().add_jm().format(snoozeUntil!)}";
+    }
+
     return Column(
       children: [
         // Header
@@ -86,6 +213,10 @@ class _NotificationPageState extends State<NotificationPage> {
                         onPressed: deleteSelected,
                       ),
                     IconButton(
+                      icon: const Icon(Icons.snooze, color: Color(0xFF2E7D32)),
+                      onPressed: _showSnoozeDialog,
+                    ),
+                    IconButton(
                       icon: const Icon(
                         Icons.clear_all,
                         color: Color(0xFF2E7D32),
@@ -97,6 +228,18 @@ class _NotificationPageState extends State<NotificationPage> {
             ],
           ),
         ),
+        if (isSnoozed)
+          Container(
+            padding: const EdgeInsets.all(8),
+            color: Colors.orange.shade100,
+            child: Text(
+              snoozeText ?? "",
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
         Expanded(
           child: notifications.isEmpty
               ? Center(

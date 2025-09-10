@@ -96,10 +96,19 @@ class _DashboardPageState extends State<DashboardPage> {
     ),
   ];
 
+  bool _isOnNotificationPage = false;
+  Widget? _lastPageBeforeNotifications;
+  bool _hasUnreadNotifications = false;
+
   @override
   void initState() {
     super.initState();
     _currentBodyWidget = DashboardHome(pantryItems: _pantryItems);
+    _listenForNotifications();
+  }
+
+  void _listenForNotifications() {
+    //TODO: BACKEND HERE FOR NOTIFICATIONS
   }
 
   void _showPage(Widget page) {
@@ -170,11 +179,38 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications, color: Colors.white),
-            onPressed: () {
-              _showPage(const NotificationPage());
-            },
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications, color: Colors.white),
+                onPressed: () {
+                  setState(() {
+                    if (_isOnNotificationPage) {
+                      _currentBodyWidget = _lastPageBeforeNotifications;
+                      _isOnNotificationPage = false;
+                    } else {
+                      _lastPageBeforeNotifications = _currentBodyWidget;
+                      _currentBodyWidget = const NotificationPage();
+                      _isOnNotificationPage = true;
+                      _hasUnreadNotifications = false;
+                    }
+                  });
+                },
+              ),
+              if (_hasUnreadNotifications)
+                Positioned(
+                  right: 10,
+                  top: 10,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
           IconButton(
             icon: const Icon(Icons.group, color: Colors.white),
