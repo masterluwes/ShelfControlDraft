@@ -1,6 +1,6 @@
-# myapp
+# ShelfControl
 
-A new Flutter project.
+ShelfControl's User Guide, Feedback, and Smart Tips and Suggestions Pages.
 
 ## Getting Started
 
