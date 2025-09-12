@@ -22,7 +22,7 @@ android {
     defaultConfig {
         applicationId = "com.example.shelfcontrol"
 
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = 35
 
         versionCode = flutter.versionCode

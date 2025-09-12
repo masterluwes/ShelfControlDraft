@@ -14,7 +14,7 @@ void main() async {
   await Firebase.initializeApp();
   runApp(
     DevicePreview(
-      enabled: !kReleaseMode, // Enable DevicePreview only in debug mode
+      enabled: false, // Enable DevicePreview only in debug mode !kReleaseMode
       builder: (context) => const ShelfControlApp(),
     ),
   );

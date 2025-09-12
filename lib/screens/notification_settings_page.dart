@@ -17,7 +17,13 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   bool tipsSuggestions = true;
 
   int daysForAtRisk = 0;
-  TimeOfDay notificationTime = const TimeOfDay(hour: 7, minute: 0);
+  TimeOfDay expiryAndRiskNotificationTime = const TimeOfDay(hour: 7, minute: 0);
+
+  // backend
+  Future<void> _updateSetting(String key, dynamic value) async {
+    // TODO:backend
+    debugPrint("Saving setting: $key -> $value");
+  }
 
   void _pickDays() {
     showDialog(
@@ -78,6 +84,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       ),
                       onPressed: () {
                         setState(() => daysForAtRisk = tempValue);
+                        _updateSetting("daysForAtRisk", tempValue);
                         Navigator.pop(ctx);
                       },
                       child: const Text(
@@ -98,7 +105,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   void _pickTime() async {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
-      initialTime: notificationTime,
+      initialTime: expiryAndRiskNotificationTime,
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -117,11 +124,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     ? Colors.white
                     : Colors.black,
               ),
-
               dialHandColor: const Color(0xFF2E7D32),
               dialBackgroundColor: Colors.white,
               entryModeIconColor: const Color(0xFF2E7D32),
-
               dayPeriodColor: WidgetStateColor.resolveWith(
                 (states) => states.contains(WidgetState.selected)
                     ? const Color(0xFF2E7D32)
@@ -146,8 +151,11 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
     if (picked != null) {
       setState(() {
-        notificationTime = picked;
+        expiryAndRiskNotificationTime = picked;
       });
+      final formatted =
+          "${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}";
+      _updateSetting("expiryAndRiskNotificationTime", formatted);
     }
   }
 
@@ -158,6 +166,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       body: SafeArea(
         child: Column(
           children: [
+            // Back button
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Row(
@@ -181,6 +190,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 ],
               ),
             ),
+
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
@@ -198,6 +208,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
+
                     const Text(
                       "Show Notifications for",
                       style: TextStyle(
@@ -206,50 +217,68 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         fontSize: 18,
                       ),
                     ),
+
+                    // Toggles
                     SwitchListTile(
                       title: const Text('"Expired" Items'),
                       value: expiredItems,
                       activeColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
-                      onChanged: (val) => setState(() => expiredItems = val),
+                      onChanged: (val) {
+                        setState(() => expiredItems = val);
+                        _updateSetting("expiredItems", val);
+                      },
                     ),
                     SwitchListTile(
                       title: const Text('"At risk" Items'),
                       value: atRiskItems,
                       activeColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
-                      onChanged: (val) => setState(() => atRiskItems = val),
+                      onChanged: (val) {
+                        setState(() => atRiskItems = val);
+                        _updateSetting("atRiskItems", val);
+                      },
                     ),
                     SwitchListTile(
                       title: const Text("App Updates"),
                       value: appUpdates,
                       activeColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
-                      onChanged: (val) => setState(() => appUpdates = val),
+                      onChanged: (val) {
+                        setState(() => appUpdates = val);
+                        _updateSetting("appUpdates", val);
+                      },
                     ),
                     SwitchListTile(
-                      title: const Text("Item recommendations"),
+                      title: const Text("Item Recommendations"),
                       value: itemRecommendations,
                       activeColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
-                      onChanged: (val) =>
-                          setState(() => itemRecommendations = val),
+                      onChanged: (val) {
+                        setState(() => itemRecommendations = val);
+                        _updateSetting("itemRecommendations", val);
+                      },
                     ),
                     SwitchListTile(
                       title: const Text("Tips and Suggestions"),
                       value: tipsSuggestions,
                       activeColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
-                      onChanged: (val) => setState(() => tipsSuggestions = val),
+                      onChanged: (val) {
+                        setState(() => tipsSuggestions = val);
+                        _updateSetting("tipsSuggestions", val);
+                      },
                     ),
+
                     const Divider(height: 30, thickness: 1.5),
 
+                    // Days picker
                     GestureDetector(
                       onTap: _pickDays,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         child: Text(
-                          "Number of Days for “At Risk” Items\n$daysForAtRisk day(s)",
+                          "Number of Days for 'At Risk' Items\n$daysForAtRisk day(s)",
                           style: const TextStyle(
                             color: Color(0xFF2E7D32),
                             fontWeight: FontWeight.bold,
@@ -261,12 +290,13 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
                     const Divider(height: 30, thickness: 1.5),
 
+                    // Time picker
                     GestureDetector(
                       onTap: _pickTime,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         child: Text(
-                          "Notification Time\nNotification time set to: ${notificationTime.format(context)}",
+                          "Notification Time (for Expired & At Risk Items)\nSet to: ${expiryAndRiskNotificationTime.format(context)}",
                           style: const TextStyle(
                             color: Color(0xFF2E7D32),
                             fontWeight: FontWeight.bold,
@@ -275,6 +305,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         ),
                       ),
                     ),
+
                     const Divider(height: 30, thickness: 1.5),
                   ],
                 ),
