@@ -96,6 +96,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _isOnNotificationPage = false;
   Widget? _lastPageBeforeNotifications;
   bool _hasUnreadNotifications = false;
+  bool _isSnoozed = false;
 
   @override
   void initState() {
@@ -193,14 +194,21 @@ class _DashboardPageState extends State<DashboardPage> {
                       _isOnNotificationPage = false;
                     } else {
                       _lastPageBeforeNotifications = _currentBodyWidget;
-                      _currentBodyWidget = const NotificationPage();
+                      _currentBodyWidget = NotificationPage(
+                        onStatusChanged: (hasUnread, isSnoozed) {
+                          setState(() {
+                            _hasUnreadNotifications = hasUnread;
+                            _isSnoozed = isSnoozed;
+                          });
+                        },
+                      );
                       _isOnNotificationPage = true;
                       _hasUnreadNotifications = false;
                     }
                   });
                 },
               ),
-              if (_hasUnreadNotifications)
+              if (_hasUnreadNotifications && !_isSnoozed)
                 Positioned(
                   right: 10,
                   top: 10,
