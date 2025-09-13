@@ -107,57 +107,16 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _showPantryInventory() {
     _showPage(
-      Pantryinventory(
-        items: _pantryItems,
-        onEdit: _showEditPantryItem,
-        onDelete: (item) {
-          setState(() {
-            _pantryItems.removeWhere((element) => element.id == item.id);
-          });
-        },
-        onAddItems: (newItems) {
-          setState(() {
-            _pantryItems.addAll(newItems);
-          });
-          _showPantryInventory();
-        },
-      ),
+      const Pantryinventory(),
     );
   }
 
   void _showAddPantryItem() {
     _showPage(
-      AddPantryItem(
-        onAddItem: (newItem) {
-          setState(() {
-            _pantryItems.add(newItem);
-          });
-          _showPantryInventory();
-        },
-        onBack: _showPantryInventory, // Add the onBack parameter
-      ),
+      const AddPantryItem(),
     );
   }
 
-  void _showEditPantryItem(PantryItemModel item) {
-    _showPage(
-      EditPantryItem(
-        item: item,
-        onBack: _showPantryInventory,
-        onSave: (updatedItem) {
-          setState(() {
-            final index = _pantryItems.indexWhere(
-              (element) => element.id == updatedItem.id,
-            );
-            if (index != -1) {
-              _pantryItems[index] = updatedItem;
-            }
-          });
-          _showPantryInventory();
-        },
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {

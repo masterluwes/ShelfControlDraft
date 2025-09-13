@@ -2,16 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
 import 'package:intl/intl.dart';
 
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+
 class AddPantryItem extends StatefulWidget {
-  final Function(PantryItemModel) onAddItem;
-  final VoidCallback onBack; // Keep onBack for navigation
-  const AddPantryItem({super.key, required this.onAddItem, required this.onBack});
+  const AddPantryItem({super.key});
 
   @override
   State<AddPantryItem> createState() => _AddPantryItemBodyState();
 }
 
 class _AddPantryItemBodyState extends State<AddPantryItem> {
+  final FirestoreService _firestoreService = FirestoreService();
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
 
@@ -23,6 +24,7 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
 
   String? _selectedCategory;
   final List<String> _categories = <String>[
+    'Uncategorized',
     'Beverages',
     'Canned Goods',
     'Dairy',
@@ -55,8 +57,9 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
     super.dispose();
   }
 
-  void _registerItem() {
+  Future<void> _registerItem() async {
     if (_nameCtrl.text.isEmpty || _selectedCategory == null || _qtyCtrl.text.isEmpty || _expCtrl.text.isEmpty || _dopCtrl.text.isEmpty) {
+      if (!mounted) return; // Guard against async gap
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill all required fields')),
       );
@@ -73,8 +76,9 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
       // status: ItemStatus.active, // Removed as status is derived in PantryInventory
       expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text), // Parse expiration date
     );
-    widget.onAddItem(newItem); // Pass the new item back
-    widget.onBack(); // Navigate back after adding item
+    await _firestoreService.addPantryItem(newItem); // Add item to Firestore
+    if (!mounted) return;
+    Navigator.of(context).pop(); // Pop after adding
   }
 
   Widget label(String text) {
@@ -158,10 +162,9 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: softCream,
-      width: double.infinity,
-      child: SafeArea(
+    return Scaffold(
+      backgroundColor: softCream,
+      body: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -174,7 +177,7 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                   children: [
                     IconButton(
                       icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF2E7D32)),
-                      onPressed: widget.onBack,
+                      onPressed: () => Navigator.of(context).pop(),
                     ),
                     const Text(
                       'Back',
@@ -265,7 +268,7 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                         fontSize: 12,
                       ),
                     ),
-                    onPressed: widget.onBack,
+                    onPressed: () => Navigator.of(context).pop(),
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 12),

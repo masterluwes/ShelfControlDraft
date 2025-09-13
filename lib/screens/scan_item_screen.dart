@@ -4,6 +4,7 @@ import 'package:shelf_control/models/pantry_item_model.dart'; // Import the new 
 import 'package:cloud_firestore/cloud_firestore.dart'; // For Firestore operations
 import 'package:logger/logger.dart'; // Import the logger package
 import 'package:mobile_scanner/mobile_scanner.dart'; // Import the new scanner package
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 
 class ScanItemScreen extends StatefulWidget {
   const ScanItemScreen({super.key});
@@ -15,7 +16,7 @@ class ScanItemScreen extends StatefulWidget {
 class _ScanItemScreenState extends State<ScanItemScreen> {
   bool _isLoading = false;
   final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService();
-  // Removed Firestore instance as saving will be local first
+  final FirestoreService _firestoreService = FirestoreService(); // Initialize FirestoreService
   final Logger _logger = Logger(); // Initialize logger
   late MobileScannerController _scannerController; // Declare controller
   final DraggableScrollableController _sheetController = DraggableScrollableController();
@@ -168,9 +169,15 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       return;
     }
 
-    // Instead of saving to Firestore, return the list of items
+    for (final item in _scannedItems) {
+      await _firestoreService.addPantryItem(item);
+    }
+
     if (mounted) {
-      Navigator.pop(context, _scannedItems);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_scannedItems.length} items saved to pantry!')),
+      );
+      Navigator.pop(context); // Pop after saving all items
     }
   }
 
