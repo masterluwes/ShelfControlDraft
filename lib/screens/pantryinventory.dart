@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import the new model
-import 'package:intl/intl.dart'; // For date formatting
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:shelf_control/screens/editpantryitem.dart'; // Import EditPantryItem
+import 'package:provider/provider.dart'; // Import provider
 
 class Pantryinventory extends StatefulWidget {
   const Pantryinventory({super.key});
@@ -15,8 +15,6 @@ class Pantryinventory extends StatefulWidget {
 enum ItemStatus { active, atRisk, available, consumed }
 
 class _PantryInventoryBodyState extends State<Pantryinventory> {
-  final FirestoreService _firestoreService = FirestoreService();
-
   // Palette to match your UI
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
@@ -99,9 +97,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
   void _onQueryChanged(String v) => setState(() => _query = v.trim());
 
-  void _deletePantryItem(PantryItemModel item) async {
+  void _deletePantryItem(PantryItemModel item, FirestoreService firestoreService) async {
     if (item.id != null) {
-      await _firestoreService.deletePantryItem(item.id!);
+      await firestoreService.deletePantryItem(item.id!);
       if (!mounted) return;
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -503,7 +501,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  Widget _dismissibleRow(List<PantryItemModel> view, int idx) {
+  Widget _dismissibleRow(List<PantryItemModel> view, int idx, FirestoreService firestoreService) {
     final item = view[idx];
     return Dismissible(
       key: ValueKey(item.id),
@@ -523,7 +521,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
           // RIGHT → delete with Undo
-          _deletePantryItem(item);
+          _deletePantryItem(item, firestoreService);
           return true; // remove from the visible list
         } else {
           // LEFT → go to edit (do NOT dismiss)
@@ -532,7 +530,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             MaterialPageRoute(builder: (context) => EditPantryItem(item: item)),
           );
           if (result != null && result is PantryItemModel) {
-            await _firestoreService.updatePantryItem(result);
+            await firestoreService.updatePantryItem(result);
           }
           return false;
         }
@@ -543,8 +541,14 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
   @override
   Widget build(BuildContext context) {
+    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+
+    if (firestoreService.selectedHouseholdId == null) {
+      return const Center(child: Text('No household selected.'));
+    }
+
     return StreamBuilder<List<PantryItemModel>>(
-      stream: _firestoreService.getPantryItems(),
+      stream: firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -570,7 +574,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                 itemCount: view.length,
                 separatorBuilder: (_, _ ) =>
                     Divider(height: 1, thickness: 1, color: sep),
-                itemBuilder: (_, i) => _dismissibleRow(view, i),
+                itemBuilder: (_, i) => _dismissibleRow(view, i, firestoreService),
               ),
             ),
           ],

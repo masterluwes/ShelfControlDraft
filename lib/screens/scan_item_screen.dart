@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shelf_control/services/open_food_facts_service.dart';
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import the new model
-import 'package:cloud_firestore/cloud_firestore.dart'; // For Firestore operations
 import 'package:logger/logger.dart'; // Import the logger package
 import 'package:mobile_scanner/mobile_scanner.dart'; // Import the new scanner package
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:provider/provider.dart'; // Import provider
 
 class ScanItemScreen extends StatefulWidget {
   const ScanItemScreen({super.key});
@@ -16,7 +16,6 @@ class ScanItemScreen extends StatefulWidget {
 class _ScanItemScreenState extends State<ScanItemScreen> {
   bool _isLoading = false;
   final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService();
-  final FirestoreService _firestoreService = FirestoreService(); // Initialize FirestoreService
   final Logger _logger = Logger(); // Initialize logger
   late MobileScannerController _scannerController; // Declare controller
   final DraggableScrollableController _sheetController = DraggableScrollableController();
@@ -73,7 +72,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     super.dispose();
   }
 
-  Future<void> _processBarcode(String barcodeScanRes) async {
+  Future<void> _processBarcode(String barcodeScanRes, FirestoreService firestoreService) async {
     if (!mounted) return;
     if (_isLoading) return; // Prevent multiple scans
 
@@ -81,7 +80,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       _isLoading = true;
     });
 
-    await _fetchProductDetails(barcodeScanRes);
+    await _fetchProductDetails(barcodeScanRes, firestoreService);
 
     if (mounted) {
       setState(() {
@@ -90,12 +89,23 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     }
   }
 
-  Future<void> _fetchProductDetails(String barcode) async {
+  Future<void> _fetchProductDetails(String barcode, FirestoreService firestoreService) async {
     final product = await _openFoodFactsService.fetchProductByBarcode(barcode);
     if (!mounted) return;
 
     if (product != null) {
+      if (firestoreService.selectedHouseholdId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No household selected. Please select or create a household.')),
+        );
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
       final newItem = PantryItemModel(
+        householdId: firestoreService.selectedHouseholdId!, // Use the provided selected household ID
         name: product['product_name'] ?? 'Unknown Product',
         category: _selectedCategory,
         imageUrl: product['image_front_url'],
@@ -117,22 +127,24 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         _scannedItems.add(newItem);
         _currentItemIndex = _scannedItems.length - 1;
         _updateControllersForItem(_currentItemIndex);
-        _scannerController.stop();
-      });
+      _scannerController.stop();
+    });
 
-      // Expand the sheet after a successful scan
+    // Expand the sheet after a successful scan, only if attached
+    if (_sheetController.isAttached) {
       _sheetController.animateTo(
         0.9,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
-
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Product not found or error fetching data.')),
-      );
     }
+
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Product not found or error fetching data.')),
+    );
   }
+}
 
   void _updateControllersForItem(int index) {
     if (index < 0 || index >= _scannedItems.length) return;
@@ -161,7 +173,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     _expirationDate = item.expirationDate;
   }
 
-  Future<void> _saveAllItems() async {
+  Future<void> _saveAllItems(FirestoreService firestoreService) async {
     if (_scannedItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No items to save.')),
@@ -170,7 +182,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     }
 
     for (final item in _scannedItems) {
-      await _firestoreService.addPantryItem(item);
+      await firestoreService.addPantryItem(item);
     }
 
     if (mounted) {
@@ -198,6 +210,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -221,7 +235,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                 final String? barcodeScanRes = barcodes.first.rawValue;
                 if (barcodeScanRes != null && barcodeScanRes.isNotEmpty) {
                   _logger.d('Scanned barcode: $barcodeScanRes');
-                  _processBarcode(barcodeScanRes);
+                  _processBarcode(barcodeScanRes, firestoreService);
                 }
               }
             },
@@ -333,7 +347,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.check, color: Colors.white),
-                                  onPressed: _saveAllItems,
+                                  onPressed: () => _saveAllItems(firestoreService),
                                 ),
                               ],
                             ),

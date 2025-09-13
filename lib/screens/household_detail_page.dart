@@ -1,36 +1,18 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
+import 'package:shelf_control/models/household_model.dart'; // Import Household model
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 
 class HouseholdDetailPage extends StatefulWidget {
-  final String name;
-  final String code;
-  final List<String> members;
-  final bool isAdmin;
+  final Household household;
   final VoidCallback onLeaveGroup;
   final VoidCallback? onDeleteGroup;
 
-  final bool showWelcome;
-  final String? welcomeTitle;
-  final String? welcomeMessage;
-
-  final String? profileImage;
-  final ValueChanged<Map<String, dynamic>>? onUpdate;
-
   const HouseholdDetailPage({
     super.key,
-    required this.name,
-    required this.code,
-    required this.members,
-    required this.isAdmin,
+    required this.household,
     required this.onLeaveGroup,
     this.onDeleteGroup,
-    this.showWelcome = false,
-    this.welcomeTitle,
-    this.welcomeMessage,
-    this.profileImage,
-    this.onUpdate,
   });
 
   @override
@@ -38,47 +20,15 @@ class HouseholdDetailPage extends StatefulWidget {
 }
 
 class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
+  final FirestoreService _firestoreService = FirestoreService();
   static const _green = Color(0xFF2E7D32);
 
-  late bool _showWelcome;
   late String _householdName;
-  late ImageProvider _profileImage;
 
   @override
   void initState() {
     super.initState();
-    _householdName = widget.name;
-    _showWelcome = widget.showWelcome;
-
-    if (widget.profileImage != null && widget.profileImage!.isNotEmpty) {
-      if (File(widget.profileImage!).existsSync()) {
-        _profileImage = FileImage(File(widget.profileImage!));
-      } else {
-        _profileImage = const AssetImage("assets/default_profile.png");
-      }
-    } else {
-      _profileImage = const AssetImage("assets/default_profile.png");
-    }
-
-    if (_showWelcome) {
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) setState(() => _showWelcome = false);
-      });
-    }
-  }
-
-  Future<void> _editProfileImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-
-    if (pickedFile != null) {
-      final newPath = pickedFile.path;
-      setState(() {
-        _profileImage = FileImage(File(newPath));
-      });
-
-      widget.onUpdate?.call({"name": _householdName, "profileImage": newPath});
-    }
+    _householdName = widget.household.name;
   }
 
   void _showLeaveConfirmationDialog() {
@@ -305,12 +255,7 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
   }
 
   void _popWithUpdatedData() {
-    Navigator.pop(context, {
-      "name": _householdName,
-      "profileImage": (_profileImage is FileImage)
-          ? (_profileImage as FileImage).file.path
-          : null,
-    });
+    Navigator.pop(context); // No data to return directly from here anymore
   }
 
   @override
@@ -338,7 +283,7 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                 } else if (value == "delete") {
                   _showDeleteConfirmationDialog();
                 } else if (value == "share") {
-                  Clipboard.setData(ClipboardData(text: widget.code));
+                  Clipboard.setData(ClipboardData(text: widget.household.joinCode));
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text("Pantry code copied to clipboard!"),
@@ -355,7 +300,7 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                       style: TextStyle(color: Colors.black),
                     ),
                   ),
-                  if (widget.isAdmin)
+                  if (widget.household.ownerId == _firestoreService.userId) // Only owner can delete
                     const PopupMenuItem(
                       value: "delete",
                       child: Text(
@@ -375,133 +320,80 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
             ),
           ],
         ),
-        body: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+        body: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const CircleAvatar(
+                radius: 40,
+                backgroundColor: Colors.black12,
+                child: Icon(Icons.group, color: Colors.black, size: 40), // Default group icon
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Stack(
-                    alignment: Alignment.bottomRight,
-                    children: [
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundImage: _profileImage,
-                        backgroundColor: Colors.black12,
-                      ),
-                      if (widget.isAdmin)
-                        IconButton(
-                          icon: const Icon(Icons.edit, color: Colors.black),
-                          onPressed: _editProfileImage,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        _householdName,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: _green,
-                        ),
-                      ),
-                      if (widget.isAdmin)
-                        IconButton(
-                          icon: const Icon(
-                            Icons.edit,
-                            size: 18,
-                            color: Colors.black,
-                          ),
-                          onPressed: _editHouseholdName,
-                        ),
-                    ],
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "Pantry Code: ${widget.code}",
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.copy, size: 18),
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: widget.code));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("Pantry code copied!"),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: widget.members.length,
-                      itemBuilder: (context, index) {
-                        final member = widget.members[index];
-                        return ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: Colors.black12,
-                            child: Icon(Icons.person, color: Colors.black),
-                          ),
-                          title: Text(member),
-                        );
-                      },
+                  Text(
+                    _householdName,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: _green,
                     ),
+                  ),
+                  if (widget.household.ownerId == _firestoreService.userId) // Only owner can edit name
+                    IconButton(
+                      icon: const Icon(
+                        Icons.edit,
+                        size: 18,
+                        color: Colors.black,
+                      ),
+                      onPressed: _editHouseholdName,
+                    ),
+                ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    "Pantry Code: ${widget.household.joinCode}",
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy, size: 18),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: widget.household.joinCode));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Pantry code copied!"),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
-            ),
-
-            if (_showWelcome)
-              Center(
-                child: AnimatedOpacity(
-                  opacity: _showWelcome ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 400),
-                  child: Container(
-                    width: MediaQuery.of(context).size.width * 0.7,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: _green, width: 3),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          widget.welcomeTitle ?? "Welcome!",
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: _green,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          widget.welcomeMessage ?? "You have joined the group!",
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.black87,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: widget.household.members.length,
+                  itemBuilder: (context, index) {
+                    final member = widget.household.members[index];
+                    return ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: Colors.black12,
+                        child: Icon(Icons.person, color: Colors.black),
+                      ),
+                      title: Text(member), // This will show user IDs, ideally we'd fetch user display names
+                    );
+                  },
                 ),
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );

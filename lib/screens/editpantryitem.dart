@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
 
 import 'package:intl/intl.dart';
-
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:provider/provider.dart'; // Import provider
 
 class EditPantryItem extends StatefulWidget {
   final PantryItemModel item;
@@ -15,7 +15,6 @@ class EditPantryItem extends StatefulWidget {
 }
 
 class _EditPantryItemBodyState extends State<EditPantryItem> {
-  final FirestoreService _firestoreService = FirestoreService();
   // Colors consistent with your app
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
@@ -74,9 +73,18 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
     super.dispose();
   }
 
-  Future<void> _saveChanges() async {
+  Future<void> _saveChanges(FirestoreService firestoreService) async {
+    if (firestoreService.selectedHouseholdId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No household selected. Cannot update item.')),
+      );
+      return;
+    }
+
     final updatedItem = PantryItemModel(
       id: widget.item.id,
+      householdId: firestoreService.selectedHouseholdId!, // Pass the selected household ID
       name: _nameCtrl.text,
       category: _selectedCategory!,
       imageUrl: widget.item.imageUrl, // Keep existing image URL
@@ -94,7 +102,7 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
       netWeight: _netWeightCtrl.text.isEmpty ? null : _netWeightCtrl.text,
       selected: widget.item.selected,
     );
-    await _firestoreService.updatePantryItem(updatedItem);
+    await firestoreService.updatePantryItem(updatedItem);
     if (!mounted) return;
     Navigator.of(context).pop();
   }
@@ -183,6 +191,8 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
 
   @override
   Widget build(BuildContext context) {
+    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+
     return Scaffold(
       backgroundColor: softCream,
       body: SafeArea(
@@ -346,7 +356,7 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
                         fontSize: 12,
                       ),
                     ),
-                    onPressed: _saveChanges,
+                    onPressed: () => _saveChanges(firestoreService),
                     child: const Text('Save'),
                   ),
                 ],
@@ -358,7 +368,7 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
                   onPressed: () async {
                     if (widget.item.id != null) {
                       final navigator = Navigator.of(context);
-                      await _firestoreService.deletePantryItem(widget.item.id!);
+                      await firestoreService.deletePantryItem(widget.item.id!);
                       if (!mounted) return;
                       navigator.pop(); // Pop after deleting
                     }
