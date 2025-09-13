@@ -2,20 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import the new model
 import 'package:intl/intl.dart'; // For date formatting
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:shelf_control/screens/editpantryitem.dart'; // Import EditPantryItem
 
 class Pantryinventory extends StatefulWidget {
-  final List<PantryItemModel> items;
-  final Function(PantryItemModel) onEdit;
-  final Function(PantryItemModel) onDelete;
-  final Function(List<PantryItemModel>) onAddItems; // New callback for adding multiple items
-
-  const Pantryinventory({
-    super.key,
-    required this.items,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onAddItems, // Add to constructor
-  });
+  const Pantryinventory({super.key});
 
   @override
   State<Pantryinventory> createState() => _PantryInventoryBodyState();
@@ -24,6 +15,8 @@ class Pantryinventory extends StatefulWidget {
 enum ItemStatus { active, atRisk, available, consumed }
 
 class _PantryInventoryBodyState extends State<Pantryinventory> {
+  final FirestoreService _firestoreService = FirestoreService();
+
   // Palette to match your UI
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
@@ -57,15 +50,6 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   @override
   void initState() {
     super.initState();
-    _items = List.from(widget.items); // Initialize with items passed from parent
-  }
-
-  @override
-  void didUpdateWidget(covariant Pantryinventory oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.items != oldWidget.items) {
-      _items = List.from(widget.items);
-    }
   }
 
   bool get _inSelectMode => _items.any((e) => e.selected);
@@ -115,30 +99,24 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
   void _onQueryChanged(String v) => setState(() => _query = v.trim());
 
-
-  void _deleteFromViewIndex(int viewIndex) {
-    // Map the visible index to the original list so Undo restores correctly
-    final view = _filteredAndSorted();
-    if (viewIndex < 0 || viewIndex >= view.length) return;
-    final removed = view[viewIndex];
-    widget.onDelete(removed); // Call the onDelete callback
-    setState(() {
-      _items.removeWhere((element) => element.id == removed.id);
-    });
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Deleted "${removed.name}"'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () {
-            // Undo functionality would require more complex state management
-            // if we want to truly re-add it to the parent's list.
-            // For now, we'll just re-fetch the list from the parent if needed.
-          },
+  void _deletePantryItem(PantryItemModel item) async {
+    if (item.id != null) {
+      await _firestoreService.deletePantryItem(item.id!);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Deleted "${item.name}"'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              // Re-add item if undo is pressed (requires more complex logic)
+              // For now, we'll just show the message.
+            },
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   // ---------- Filtering & Sorting ----------
@@ -545,11 +523,17 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
           // RIGHT → delete with Undo
-          _deleteFromViewIndex(idx);
+          _deletePantryItem(item);
           return true; // remove from the visible list
         } else {
           // LEFT → go to edit (do NOT dismiss)
-          widget.onEdit(item);
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => EditPantryItem(item: item)),
+          );
+          if (result != null && result is PantryItemModel) {
+            await _firestoreService.updatePantryItem(result);
+          }
           return false;
         }
       },
@@ -559,23 +543,39 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
   @override
   Widget build(BuildContext context) {
-    final view = _filteredAndSorted();
+    return StreamBuilder<List<PantryItemModel>>(
+      stream: _firestoreService.getPantryItems(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Center(child: Text('No pantry items yet. Add some!'));
+        }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _bigTitle(),
-        _controlsRow(), // pills or search field
-        const Divider(height: 1, thickness: 1, color: Color(0xFFE9E1C7)),
-        Expanded(
-          child: ListView.separated(
-            itemCount: view.length,
-            separatorBuilder: (_, _ ) =>
-                Divider(height: 1, thickness: 1, color: sep),
-            itemBuilder: (_, i) => _dismissibleRow(view, i),
-          ),
-        ),
-      ],
+        _items = snapshot.data!;
+        final view = _filteredAndSorted();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _bigTitle(),
+            _controlsRow(), // pills or search field
+            const Divider(height: 1, thickness: 1, color: Color(0xFFE9E1C7)),
+            Expanded(
+              child: ListView.separated(
+                itemCount: view.length,
+                separatorBuilder: (_, _ ) =>
+                    Divider(height: 1, thickness: 1, color: sep),
+                itemBuilder: (_, i) => _dismissibleRow(view, i),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
