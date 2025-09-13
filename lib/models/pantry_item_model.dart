@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PantryItemModel {
   String? id; // Firestore document ID
+  String householdId; // New field for household ID
   String name;
   String category;
   String? imageUrl;
@@ -21,6 +22,7 @@ class PantryItemModel {
 
   PantryItemModel({
     this.id,
+    required this.householdId, // Add householdId to constructor
     required this.name,
     required this.category,
     this.imageUrl,
@@ -44,6 +46,7 @@ class PantryItemModel {
     Map data = doc.data() as Map<String, dynamic>;
     return PantryItemModel(
       id: doc.id,
+      householdId: data['householdId'] ?? '', // Add householdId to fromFirestore
       name: data['name'] ?? '',
       category: data['category'] ?? 'Uncategorized',
       imageUrl: data['imageUrl'],
@@ -66,6 +69,7 @@ class PantryItemModel {
   // Method to convert a PantryItemModel to a Firestore document
   Map<String, dynamic> toFirestore() {
     return {
+      'householdId': householdId, // Add householdId to toFirestore
       'name': name,
       'category': category,
       'imageUrl': imageUrl,

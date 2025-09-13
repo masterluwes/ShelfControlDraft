@@ -3,6 +3,7 @@ import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryIt
 import 'package:intl/intl.dart';
 
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:provider/provider.dart'; // Import provider
 
 class AddPantryItem extends StatefulWidget {
   const AddPantryItem({super.key});
@@ -12,7 +13,6 @@ class AddPantryItem extends StatefulWidget {
 }
 
 class _AddPantryItemBodyState extends State<AddPantryItem> {
-  final FirestoreService _firestoreService = FirestoreService();
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
 
@@ -57,7 +57,7 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
     super.dispose();
   }
 
-  Future<void> _registerItem() async {
+  Future<void> _registerItem(FirestoreService firestoreService) async {
     if (_nameCtrl.text.isEmpty || _selectedCategory == null || _qtyCtrl.text.isEmpty || _expCtrl.text.isEmpty || _dopCtrl.text.isEmpty) {
       if (!mounted) return; // Guard against async gap
       ScaffoldMessenger.of(context).showSnackBar(
@@ -66,19 +66,37 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
       return;
     }
 
+    if (firestoreService.selectedHouseholdId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No household selected. Please select or create a household.')),
+      );
+      return;
+    }
+
     final newItem = PantryItemModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
+      householdId: firestoreService.selectedHouseholdId!, // Use the provided selected household ID
       name: _nameCtrl.text,
       category: _selectedCategory!,
       imageUrl: 'https://via.placeholder.com/150',
       qty: int.tryParse(_qtyCtrl.text) ?? 1,
       expiresText: _expCtrl.text,
-      // status: ItemStatus.active, // Removed as status is derived in PantryInventory
       expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text), // Parse expiration date
     );
-    await _firestoreService.addPantryItem(newItem); // Add item to Firestore
-    if (!mounted) return;
-    Navigator.of(context).pop(); // Pop after adding
+    try {
+      await firestoreService.addPantryItem(newItem); // Add item to Firestore
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Item added successfully!')),
+      );
+      Navigator.of(context).pop(); // Pop after adding
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to add item: ${e.toString()}')),
+      );
+    }
   }
 
   Widget label(String text) {
@@ -162,6 +180,8 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
 
   @override
   Widget build(BuildContext context) {
+    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+
     return Scaffold(
       backgroundColor: softCream,
       body: SafeArea(
@@ -288,7 +308,7 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                         fontSize: 12,
                       ),
                     ),
-                    onPressed: _registerItem,
+                    onPressed: () => _registerItem(firestoreService),
                     child: const Text('Register'),
                   ),
                 ],

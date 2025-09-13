@@ -11,12 +11,15 @@ import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/pantryinventory.dart'; // Import for Pantryinventory
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import for PantryItemModel
 import 'package:shelf_control/screens/addpantryitem.dart';
-import 'package:shelf_control/screens/editpantryitem.dart';
 import 'package:shelf_control/screens/household_page.dart';
 import 'package:shelf_control/screens/shoppinglist.dart'; // Import for ShoppingListPage
-import 'package:shelf_control/screens/household_state.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:shelf_control/screens/scan_item_screen.dart'; // Import for ScanItemScreen
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:shelf_control/models/household_model.dart'; // Import Household model
+import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
+import 'package:collection/collection.dart'; // Import for firstWhereOrNull
+import 'package:provider/provider.dart'; // Import provider
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -27,76 +30,13 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   Widget? _currentBodyWidget;
-  final List<PantryItemModel> _pantryItems = [
-    PantryItemModel(
-      id: 'oj1',
-      name: 'Orange Juice (1L)',
-      category: 'Beverages',
-      imageUrl:
-          'https://upload.wikimedia.org/wikipedia/commons/0/0b/Orange_juice_1.jpg',
-      qty: 1,
-      expirationDate: DateTime.now().add(const Duration(days: 3)),
-    ),
-    PantryItemModel(
-      id: 'ketch397',
-      name: 'Ketchup (397g)',
-      category: 'Condiments',
-      imageUrl:
-          'https://upload.wikimedia.org/wikipedia/commons/9/9b/Tomato_ketchup.jpg',
-      qty: 1,
-      expirationDate: DateTime(2025, 6, 30),
-    ),
-    PantryItemModel(
-      id: 'onion50',
-      name: 'Onion Powder (50g)',
-      category: 'Herbs/Spices',
-      imageUrl:
-          'https://upload.wikimedia.org/wikipedia/commons/2/2a/Onion_Powder.jpg',
-      qty: 1,
-      expirationDate: DateTime(2025, 7, 3),
-    ),
-    PantryItemModel(
-      id: 'soy300',
-      name: 'Soy Sauce (300ml)',
-      category: 'Condiments',
-      imageUrl:
-          'https://upload.wikimedia.org/wikipedia/commons/1/13/Soy_sauce.jpg',
-      qty: 1,
-      expirationDate: DateTime(2025, 7, 15),
-    ),
-    PantryItemModel(
-      id: 'sardines',
-      name: 'Sardines',
-      category: 'Canned Goods',
-      imageUrl:
-          'https://upload.wikimedia.org/wikipedia/commons/2/27/Conserva_de_sardinas.jpg',
-      qty: 2,
-      expirationDate: DateTime(2025, 9, 19),
-    ),
-    PantryItemModel(
-      id: 'coke500',
-      name: 'Coca Cola (500ml)',
-      category: 'Beverages',
-      imageUrl:
-          'https://upload.wikimedia.org/wikipedia/commons/4/4f/Coca-Cola_bottle.jpg',
-      qty: 1,
-      expirationDate: DateTime(2026, 12, 19),
-    ),
-    PantryItemModel(
-      id: 'oj2',
-      name: 'Orange Juice (1L)',
-      category: 'Beverages',
-      imageUrl:
-          'https://upload.wikimedia.org/wikipedia/commons/0/0b/Orange_juice_1.jpg',
-      qty: 1,
-      expirationDate: DateTime.now().add(const Duration(days: 3)),
-    ),
-  ];
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
   void initState() {
     super.initState();
-    _currentBodyWidget = DashboardHome(pantryItems: _pantryItems);
+    _currentBodyWidget = const DashboardHome();
+    // _setInitialHousehold() is no longer needed here as it's handled by main.dart and Provider
   }
 
   void _showPage(Widget page) {
@@ -105,13 +45,13 @@ class _DashboardPageState extends State<DashboardPage> {
     });
   }
 
-  void _showPantryInventory() {
+  void _showPantryInventory(FirestoreService firestoreService) {
     _showPage(
       const Pantryinventory(),
     );
   }
 
-  void _showAddPantryItem() {
+  void _showAddPantryItem(FirestoreService firestoreService) {
     _showPage(
       const AddPantryItem(),
     );
@@ -120,6 +60,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+
     return Scaffold(
       backgroundColor: const Color(0xFFFFFBE6),
       appBar: AppBar(
@@ -164,13 +106,13 @@ class _DashboardPageState extends State<DashboardPage> {
                 Icons.home,
                 Icons.home_outlined,
                 "Home",
-                () => _showPage(DashboardHome(pantryItems: _pantryItems)),
+                () => _showPage(const DashboardHome()),
               ),
               _navBarItem(
                 Icons.kitchen,
                 Icons.kitchen_outlined,
                 "Pantry",
-                _showPantryInventory,
+                () => _showPantryInventory(firestoreService),
               ),
               const SizedBox(width: 49),
               _navBarItem(
@@ -220,10 +162,8 @@ class _DashboardPageState extends State<DashboardPage> {
                 MaterialPageRoute(builder: (context) => const ScanItemScreen()),
               );
               if (scannedItems != null && scannedItems.isNotEmpty) {
-                setState(() {
-                  _pantryItems.addAll(scannedItems);
-                });
-                _showPantryInventory(); // Refresh pantry inventory to show new items
+                // No longer adding to _pantryItems directly, as DashboardHome fetches its own data
+                _showPantryInventory(firestoreService); // Refresh pantry inventory to show new items
               }
             },
           ),
@@ -232,7 +172,7 @@ class _DashboardPageState extends State<DashboardPage> {
             backgroundColor: Colors.white,
             label: 'Add Manually',
             labelStyle: const TextStyle(fontSize: 18.0, color: Colors.black),
-            onTap: _showAddPantryItem,
+            onTap: () => _showAddPantryItem(firestoreService),
           ),
         ],
       ),
@@ -391,12 +331,18 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 }
 
-class DashboardHome extends StatelessWidget {
-  final List<PantryItemModel> pantryItems;
-  const DashboardHome({super.key, required this.pantryItems});
+class DashboardHome extends StatefulWidget {
+  const DashboardHome({super.key});
 
   @override
+  State<DashboardHome> createState() => _DashboardHomeState();
+}
+
+class _DashboardHomeState extends State<DashboardHome> {
+  @override
   Widget build(BuildContext context) {
+    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+
     return Column(
       children: [
         Padding(
@@ -404,40 +350,84 @@ class DashboardHome extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                "Overview",
-                style: TextStyle(
-                  fontSize: 33,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2E7D32),
+              const Expanded(
+                child: Text(
+                  "Overview",
+                  style: TextStyle(
+                    fontSize: 24, // Reduced font size
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2E7D32),
+                  ),
+                  overflow: TextOverflow.ellipsis, // Add ellipsis for long text
                 ),
               ),
-              Container(
-                height: 36,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2E7D32),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: AnimatedBuilder(
-                  animation: HouseholdState(),
-                  builder: (context, _) {
-                    return DropdownButton<String>(
-                      value: HouseholdState().selectedPantry,
-                      items: HouseholdState().allPantries
-                          .map(
-                            (e) => DropdownMenuItem(value: e, child: Text(e)),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          HouseholdState().selectPantry(value);
-                        }
-                      },
-                      dropdownColor: const Color(0xFF2E7D32),
-                      underline: Container(),
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
-                      iconEnabledColor: Colors.white,
+              const SizedBox(width: 10), // Add some spacing between the text and dropdown
+              Expanded(
+                child: StreamBuilder<List<Household>>(
+                  stream: firestoreService.getHouseholds(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const CircularProgressIndicator();
+                    }
+                    if (snapshot.hasError) {
+                      return Text('Error: ${snapshot.error}');
+                    }
+                    final households = snapshot.data ?? [];
+
+                    if (households.isEmpty) {
+                      return const Text('No Households');
+                    }
+
+                    // Sort households to put personal household first
+                    households.sort((a, b) {
+                      if (a.isPersonal) return -1;
+                      if (b.isPersonal) return 1;
+                      return a.name.compareTo(b.name);
+                    });
+
+                    // Find the currently selected household
+                    Household? selectedHousehold = households.firstWhereOrNull(
+                        (h) => h.id == firestoreService.selectedHouseholdId);
+
+                    // If no household is selected, or the selected one is no longer valid,
+                    // default to the personal household or the first available.
+                    if (selectedHousehold == null && households.isNotEmpty) {
+                      selectedHousehold = households.firstWhere(
+                          (h) => h.isPersonal,
+                          orElse: () => households.first);
+                      firestoreService.selectedHouseholdId = selectedHousehold.id;
+                    }
+
+                    return Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2E7D32),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: DropdownButton<String>(
+                        value: selectedHousehold?.id,
+                        items: households
+                            .map(
+                              (h) => DropdownMenuItem(
+                                value: h.id,
+                                child: Text(
+                                  h.isPersonal ? "${h.name} (Personal)" : h.name,
+                                  overflow: TextOverflow.ellipsis, // Add ellipsis for long names
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            firestoreService.selectedHouseholdId = value;
+                          }
+                        },
+                        dropdownColor: const Color(0xFF2E7D32),
+                        underline: Container(),
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        iconEnabledColor: Colors.white,
+                      ),
                     );
                   },
                 ),
@@ -470,7 +460,21 @@ class DashboardHome extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                _buildPantryOverview(pantryItems),
+                StreamBuilder<List<PantryItemModel>>(
+                  stream: firestoreService.selectedHouseholdId == null
+                      ? Stream.value([])
+                      : firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const CircularProgressIndicator();
+                    }
+                    if (snapshot.hasError) {
+                      return Text('Error: ${snapshot.error}');
+                    }
+                    final items = snapshot.data ?? [];
+                    return _buildPantryOverview(items);
+                  },
+                ),
               ],
             ),
           ),

@@ -52,6 +52,10 @@ dependencies:
   flutter_slidable: ^4.0.1 # Added for swipe actions on list items
   path_provider: ^2.1.3 # Added for temporary directory access
   share_plus: ^11.1.0 # Added for sharing functionality
+  collection: ^1.18.0 # Added for depend_on_referenced_packages in dashboard_page.dart
+  uuid: ^4.4.0 # Added for depend_on_referenced_packages in firestore_service.dart
+  shared_preferences: ^2.2.3 # Added for persisting selected household ID
+  provider: ^6.1.2 # Added for state management
 
 dev_dependencies:
   flutter_test:

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shelf_control/services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:shelf_control/screens/privacy_policy_screen.dart';
 import 'package:shelf_control/screens/terms_and_conditions_screen.dart';
 import 'package:shelf_control/screens/login_page.dart';
@@ -32,6 +32,7 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
 
   final RegExp _emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
   final AuthService _authService = AuthService();
+  final FirestoreService _firestoreService = FirestoreService(); // Instantiate FirestoreService
 
   void _validateAndSubmit() async {
     setState(() {
@@ -84,11 +85,10 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
           _passwordController.text,
         );
 
-        // Save user details to Realtime Database
-        FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
-          'email': userCredential.user!.email,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+        // Save user details to Firestore and create personal household
+        if (userCredential.user != null) {
+          await _firestoreService.createPersonalHousehold(userCredential.user!.uid, userCredential.user!.email!);
+        }
 
         if (!mounted) return; // Check if the widget is still mounted before using context
         ScaffoldMessenger.of(context).showSnackBar(

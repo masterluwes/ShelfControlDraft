@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read/write for authenticated users to their own user document
+    match /users/{userId} {
+      allow read, update, delete: if request.auth.uid == userId;
+      allow create: if request.auth.uid != null;
+    }
+
+    // Allow read/write for household documents
+    match /households/{householdId} {
+      allow read: if request.auth.uid != null && (
+        // Existing members can read
+        resource.data.members.hasAny([request.auth.uid]) ||
+        // Allow authenticated users to read non-personal households (for joining)
+        (resource.data.isPersonal == false)
+      );
+      allow create: if request.auth.uid != null; // Allow any authenticated user to create a household
+      allow update: if request.auth.uid != null && (
+        // Existing members can update
+        resource.data.members.hasAny([request.auth.uid]) ||
+        // Allow a user to add themselves to the members list if the joinCode is correct
+        (
+          request.resource.data.members.size() == resource.data.members.size() + 1 &&
+          request.resource.data.members.hasAll(resource.data.members.concat([request.auth.uid])) &&
+          request.resource.data.joinCode == resource.data.joinCode &&
+          request.resource.data.ownerId == resource.data.ownerId &&
+          request.resource.data.name == resource.data.name &&
+          request.resource.data.isPersonal == resource.data.isPersonal
+        )
+      );
+      allow delete: if request.auth.uid == resource.data.ownerId; // Only owner can delete
+    }
+
+    // Allow read/write for pantry items within a household
+    match /pantryItems/{pantryItemId} {
+      allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+    }
+  }
+}

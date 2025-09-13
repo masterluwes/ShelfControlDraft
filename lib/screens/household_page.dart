@@ -1,8 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:shelf_control/screens/household_state.dart';
-import 'household_detail_page.dart';
-import 'create_group_page.dart';
+import 'package:shelf_control/models/household_model.dart';
+import 'package:shelf_control/services/firestore_service.dart';
+import 'package:shelf_control/screens/household_detail_page.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
+import 'package:provider/provider.dart'; // Import provider
 
 class HouseholdPage extends StatefulWidget {
   const HouseholdPage({super.key});
@@ -12,49 +13,9 @@ class HouseholdPage extends StatefulWidget {
 }
 
 class _HouseholdPageState extends State<HouseholdPage> {
-  List<Map<String, dynamic>> get households => HouseholdState().households;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  bool get hasGroup => households.isNotEmpty;
-
-  void _leaveGroupByCode(String code) {
-    setState(() {
-      HouseholdState().removeHouseholdByCode(code);
-    });
-  }
-
-  Future<void> _openCreate() async {
-    final result = await Navigator.push<Map<String, dynamic>?>(
-      context,
-      MaterialPageRoute(builder: (_) => const CreateGroupPage()),
-    );
-
-    if (result != null) {
-      setState(() {
-        result['default'] = false;
-        HouseholdState().addHousehold(result);
-      });
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => HouseholdDetailPage(
-            name: result['name'] as String,
-            code: result['code'] as String,
-            members: (result['members'] as List).cast<String>(),
-            isAdmin: result['isAdmin'] as bool? ?? true,
-            onLeaveGroup: () => _leaveGroupByCode(result['code'] as String),
-            onDeleteGroup: () => _deleteGroupByCode(result['code'] as String),
-            showWelcome: true,
-            welcomeTitle: 'Success!',
-            welcomeMessage: 'You created the group.',
-            profileImage: result['profileImage'],
-          ),
-        ),
-      );
-    }
-  }
-
-  void _showJoinDialog() {
+  void _showJoinDialog(BuildContext context, FirestoreService firestoreService) {
     final codeController = TextEditingController();
     String? errorText;
 
@@ -91,11 +52,7 @@ class _HouseholdPageState extends State<HouseholdPage> {
                       controller: codeController,
                       onChanged: (value) {
                         dialogSetState(() {
-                          if (value.length > 8) {
-                            errorText = "Maximum of 8 characters.";
-                          } else {
-                            errorText = null;
-                          }
+                          errorText = null; // Clear error on change
                         });
                       },
                       textAlign: TextAlign.center,
@@ -134,58 +91,30 @@ class _HouseholdPageState extends State<HouseholdPage> {
                           ),
                         ),
                         ElevatedButton(
-                          onPressed:
-                              (codeController.text.trim().length >= 6 &&
-                                  codeController.text.trim().length <= 8)
-                              ? () {
-                                  final code = codeController.text.trim();
-
-                                  if (code.length > 8) {
-                                    dialogSetState(() {
-                                      errorText = "Maximum of 8 characters";
-                                    });
-                                    return;
-                                  }
-
-                                  final joined = {
-                                    "name": "Household 1",
-                                    "code": code,
-                                    "members": [
-                                      "Luis",
-                                      "Relle",
-                                      "Jennie",
-                                      "Angel",
-                                    ],
-                                    "isAdmin": false,
-                                    "default": false,
-                                  };
-
-                                  setState(() {
-                                    HouseholdState().addHousehold(joined);
-                                  });
-                                  Navigator.pop(context);
-
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => HouseholdDetailPage(
-                                        name: joined['name'] as String,
-                                        code: joined['code'] as String,
-                                        members: (joined['members'] as List)
-                                            .cast<String>(),
-                                        isAdmin: joined['isAdmin'] as bool,
-                                        onLeaveGroup: () => _leaveGroupByCode(
-                                          joined['code'] as String,
-                                        ),
-                                        showWelcome: true,
-                                        welcomeTitle: 'Welcome!',
-                                        welcomeMessage:
-                                            'You have joined the group!',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              : null,
+                          onPressed: () async {
+                            final code = codeController.text.trim();
+                            if (code.isEmpty) {
+                              dialogSetState(() {
+                                errorText = "Code cannot be empty.";
+                              });
+                              return;
+                            }
+                            try {
+                              final currentContext = context; // Capture context before async gap
+                              await firestoreService.joinHousehold(code);
+                              if (!mounted) return;
+                              Navigator.of(currentContext).pop();
+                              if (!mounted) return; // Re-add check before ScaffoldMessenger
+                              ScaffoldMessenger.of(currentContext).showSnackBar(
+                                const SnackBar(content: Text('Successfully joined household!')),
+                              );
+                              // No need for setState here, Provider will handle rebuilds
+                            } catch (e) {
+                              dialogSetState(() {
+                                errorText = e.toString().replaceFirst('Exception: ', '');
+                              });
+                            }
+                          },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2E7D32),
                             shape: RoundedRectangleBorder(
@@ -209,14 +138,133 @@ class _HouseholdPageState extends State<HouseholdPage> {
     );
   }
 
-  void _deleteGroupByCode(String code) {
-    setState(() {
-      HouseholdState().removeHouseholdByCode(code);
-    });
+  Future<void> _createHousehold(BuildContext context, FirestoreService firestoreService) async {
+    final nameController = TextEditingController();
+    String? errorText;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, dialogSetState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  border: Border.all(color: const Color(0xFF2E7D32), width: 3),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      "Create New Household",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: nameController,
+                      onChanged: (value) {
+                        dialogSetState(() {
+                          errorText = null; // Clear error on change
+                        });
+                      },
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.black),
+                      decoration: InputDecoration(
+                        hintText: "Household Name",
+                        hintStyle: const TextStyle(color: Colors.black),
+                        filled: true,
+                        fillColor: Colors.grey[400],
+                        errorText: errorText,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                          horizontal: 20,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                          child: const Text(
+                            "Cancel",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: () async {
+                            final name = nameController.text.trim();
+                            if (name.isEmpty) {
+                              dialogSetState(() {
+                                errorText = "Household name cannot be empty.";
+                              });
+                              return;
+                            }
+                            try {
+                              final currentContext = context; // Capture context before async gap
+                              await firestoreService.createHousehold(name);
+                              if (!mounted) return;
+                              Navigator.of(currentContext).pop();
+                              if (!mounted) return; // Re-add check before ScaffoldMessenger
+                              ScaffoldMessenger.of(currentContext).showSnackBar(
+                                const SnackBar(content: Text('Household created successfully!')),
+                              );
+                              // No need for setState here, Provider will handle rebuilds
+                            } catch (e) {
+                              dialogSetState(() {
+                                errorText = e.toString().replaceFirst('Exception: ', '');
+                              });
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2E7D32),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                          child: const Text(
+                            "Create",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+
     return Scaffold(
       backgroundColor: const Color(0xFFFFFBE6),
       appBar: AppBar(
@@ -237,9 +285,9 @@ class _HouseholdPageState extends State<HouseholdPage> {
             icon: const Icon(Icons.group_add, color: Colors.white),
             onSelected: (value) {
               if (value == "join") {
-                _showJoinDialog();
+                _showJoinDialog(context, firestoreService);
               } else if (value == "create") {
-                _openCreate();
+                _createHousehold(context, firestoreService);
               }
             },
             itemBuilder: (context) => const [
@@ -262,103 +310,19 @@ class _HouseholdPageState extends State<HouseholdPage> {
           ),
         ],
       ),
-      body: hasGroup
-          ? ListView.separated(
-              itemCount: households.length,
-              separatorBuilder: (_, _ ) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final h = households[index];
-                return ListTile(
-                  leading:
-                      (h['profileImage'] != null &&
-                          File(h['profileImage']).existsSync())
-                      ? CircleAvatar(
-                          radius: 20,
-                          backgroundImage: FileImage(File(h['profileImage'])),
-                        )
-                      : const Icon(Icons.group, size: 40, color: Colors.black),
-                  title: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: h["name"] as String,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2E7D32),
-                          ),
-                        ),
-                        if (h["default"] == true)
-                          const TextSpan(
-                            text: " (default)",
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.black54,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  subtitle: Text((h["members"] as List<String>).join(", ")),
-                  trailing: IconButton(
-                    icon: Icon(
-                      h["default"] == true ? Icons.star : Icons.star_border,
-                      color: h["default"] == true ? Colors.amber : Colors.grey,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        for (final g in households) {
-                          g["default"] = false;
-                        }
-                        h["default"] = true;
-                      });
+      body: StreamBuilder<List<Household>>(
+        stream: firestoreService.getHouseholds(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+          final households = snapshot.data ?? [];
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            "${h['name']} set as default household",
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  onTap: () async {
-                    final updatedData = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => HouseholdDetailPage(
-                          name: h['name'] as String,
-                          code: h['code'] as String,
-                          members: (h['members'] as List).cast<String>(),
-                          isAdmin: h['isAdmin'] as bool? ?? false,
-                          onLeaveGroup: () =>
-                              _leaveGroupByCode(h['code'] as String),
-                          onDeleteGroup: () =>
-                              _deleteGroupByCode(h['code'] as String),
-                          showWelcome: false,
-                          profileImage: h['profileImage'],
-                          onUpdate: (updated) {
-                            setState(() {
-                              h['name'] = updated['name'];
-                              h['profileImage'] = updated['profileImage'];
-                            });
-                          },
-                        ),
-                      ),
-                    );
-
-                    if (updatedData != null) {
-                      setState(() {
-                        h['name'] = updatedData['name'];
-                        h['profileImage'] = updatedData['profileImage'];
-                      });
-                    }
-                  },
-                );
-              },
-            )
-          : const Center(
+          if (households.isEmpty) {
+            return const Center(
               child: Text(
                 "You are not in any household groups right now.\nCreate or Join now!",
                 textAlign: TextAlign.center,
@@ -368,7 +332,92 @@ class _HouseholdPageState extends State<HouseholdPage> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
+            );
+          }
+
+          // Sort households to put personal household first
+          households.sort((a, b) {
+            if (a.isPersonal) return -1;
+            if (b.isPersonal) return 1;
+            return a.name.compareTo(b.name);
+          });
+
+          return ListView.separated(
+            itemCount: households.length,
+            separatorBuilder: (_, i) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final household = households[index];
+              final isSelected = firestoreService.selectedHouseholdId == household.id;
+
+              return ListTile(
+                leading: Icon(
+                  household.isPersonal ? Icons.person : Icons.group,
+                  size: 40,
+                  color: Colors.black,
+                ),
+                title: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: household.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2E7D32),
+                        ),
+                      ),
+                      if (household.isPersonal)
+                        const TextSpan(
+                          text: " (Personal)",
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.black54,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                subtitle: Text(household.members.join(", ")),
+                trailing: isSelected
+                    ? const Icon(Icons.check_circle, color: Colors.green)
+                    : IconButton(
+                        icon: const Icon(Icons.radio_button_unchecked, color: Colors.grey),
+                        onPressed: () {
+                          firestoreService.selectedHouseholdId = household.id;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                "${household.name} selected as current household",
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                onTap: () {
+                  // Navigate to HouseholdDetailPage
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => HouseholdDetailPage(
+                        household: household,
+                        onLeaveGroup: () {
+                          // Implement leave group logic
+                          // No need for setState here, Provider will handle rebuilds
+                        },
+                        onDeleteGroup: () {
+                          // Implement delete group logic
+                          // No need for setState here, Provider will handle rebuilds
+                        },
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
