@@ -9,12 +9,10 @@ service cloud.firestore {
 
     // Allow read/write for household documents
     match /households/{householdId} {
-      allow read: if request.auth.uid != null && (
-        // Existing members can read
-        resource.data.members.hasAny([request.auth.uid]) ||
-        // Allow authenticated users to read non-personal households (for joining)
-        (resource.data.isPersonal == false)
-      );
+      // Allow any authenticated user to read household documents.
+      // This is necessary to allow users to query for households by joinCode.
+      // Note: This makes household information, including member lists, readable by any authenticated user.
+      allow read: if request.auth.uid != null;
       allow create: if request.auth.uid != null; // Allow any authenticated user to create a household
       allow update: if request.auth.uid != null && (
         // Existing members can update
