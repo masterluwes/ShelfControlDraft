@@ -297,50 +297,115 @@ class _TipsPageState extends State<TipsPage> {
       return _buildEmptyState();
     }
 
-    // If there are items, build a list of item groups.
-    return ListView.builder(
+    // MODIFIED: Use a ListView.separated for better spacing between item cards.
+    return ListView.separated(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
       itemCount: availableItems.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 16),
       itemBuilder: (context, index) {
         final itemName = availableItems[index];
         final itemTips = allTips[selectedCategory]?[itemName] ?? [];
-        return _buildItemGroup(itemName, itemTips);
+
+        // Use the new _buildItemCard widget for each pantry item.
+        return _buildItemCard(itemName, itemTips);
       },
     );
   }
 
-  /// Builds a group for a single pantry item, including its name and related tips.
-  Widget _buildItemGroup(String itemName, List<Map<String, dynamic>> tips) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            itemName,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2E7D32),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Create a Column of tip cards for the current item.
-          Column(
-            children: tips.map((tip) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _buildTipCard(
-                  context,
-                  title: tip['title'] as String,
-                  subtitle: tip['subtitle'] as String,
-                  details: tip['details'] as String,
-                  icon: tip['icon'] as IconData,
+  /// NEW WIDGET: Builds a card for a single pantry item, containing its name and tips.
+  /// This matches the format of the last generated UI.
+  Widget _buildItemCard(String itemName, List<Map<String, dynamic>> tips) {
+    return Card(
+      elevation: 2,
+      shadowColor: Colors.black.withOpacity(0.1),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Item Header
+            Row(
+              children: [
+                // A placeholder for an item icon, you can customize this
+                Icon(
+                  _getIconForItem(itemName), // Helper to get a matching icon
+                  color: const Color(0xFF2E7D32),
+                  size: 28,
                 ),
-              );
-            }).toList(),
-          ),
-        ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    itemName,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.grey,
+                  size: 16,
+                ),
+              ],
+            ),
+            const Divider(height: 24, thickness: 1),
+
+            // Tips Section
+            const Text(
+              'Tips & Suggestions',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Create a Column of clickable tip rows for the current item.
+            Column(
+              children: tips.map((tip) {
+                return InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TipDetailPage(
+                          title: tip['title'] as String,
+                          details: tip['details'] as String,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Row(
+                      children: [
+                        Icon(
+                          tip['icon'] as IconData,
+                          color: Colors.green[700],
+                          size: 22,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            tip['subtitle'] as String,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -484,5 +549,35 @@ class _TipsPageState extends State<TipsPage> {
         ),
       ),
     );
+  }
+
+  // NEW HELPER: Provides a relevant icon for the item name.
+  IconData _getIconForItem(String itemName) {
+    switch (itemName.toLowerCase()) {
+      case 'apples':
+        return Icons.apple;
+      case 'lettuce':
+        return Icons.eco;
+      case 'chicken':
+        return Icons.kebab_dining;
+      case 'pork':
+        return Icons.kebab_dining;
+      case 'beef':
+        return Icons.kebab_dining;
+      case 'salmon':
+        return Icons.set_meal;
+      case 'tuna':
+        return Icons.set_meal;
+      case 'milk':
+        return Icons.opacity;
+      case 'cheese':
+        return Icons.icecream_outlined;
+      case 'rice':
+        return Icons.rice_bowl;
+      case 'bread':
+        return Icons.breakfast_dining_outlined;
+      default:
+        return Icons.fastfood; // A generic fallback icon
+    }
   }
 }
