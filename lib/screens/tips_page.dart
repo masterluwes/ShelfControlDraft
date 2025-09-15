@@ -33,7 +33,7 @@ class TipDetailPage extends StatelessWidget {
   }
 }
 
-// Your TipsPage class with the updated tip card UI.
+// Your TipsPage class with the updated item-specific logic.
 class TipsPage extends StatefulWidget {
   const TipsPage({super.key});
 
@@ -43,6 +43,15 @@ class TipsPage extends StatefulWidget {
 
 class _TipsPageState extends State<TipsPage> {
   // --- DATA ---
+
+  // UPDATED: Added 'Salmon' and 'Tuna' to the 'Fish' category in the pantry.
+  final Map<String, List<String>> pantryItems = {
+    'Meat': ['Chicken', 'Pork', 'Beef'],
+    'Fish': ['Salmon', 'Tuna'],
+    'Dairy': ['Milk', 'Cheese'],
+    'Produce': ['Apples', 'Lettuce'],
+    'Grains': ['Rice', 'Bread'],
+  };
 
   final List<Map<String, dynamic>> categories = [
     {'name': 'General', 'icon': Icons.restaurant_menu_outlined},
@@ -55,97 +64,168 @@ class _TipsPageState extends State<TipsPage> {
 
   String selectedCategory = 'General';
 
-  final Map<String, List<Map<String, dynamic>>> allTips = {
-    'General': [
-      {
-        'title': 'Know your food labels',
-        'subtitle':
-            'Not sure what "Best Before" really means? We\'ll help you read labels the right way so you don\'t toss food too early.',
-        'details':
-            'Food labels provide important info like expiry dates, storage instructions, and nutritional values. "Best Before" = quality; "Use By" = safety.',
-        'icon': Icons.label_important_outline,
-      },
-      {
-        'title': 'How to store items properly',
-        'subtitle':
-            'Keep your food fresh for longer! Find out where and how to store each item the smart way.',
-        'details':
-            'Proper storage prevents spoilage. Keep potatoes in a cool dark place, bread in a breadbox, leafy greens in the fridge with a damp paper towel.',
-        'icon': Icons.inventory_2_outlined,
-      },
-      {
-        'title': 'Nutrition facts check!',
-        'subtitle':
-            'Want to know what’s in your food? Quickly check the nutrition info to stay on top of your health goals.',
-        'details':
-            'Checking nutrition facts helps you make informed choices. Compare sugar, sodium, and fats to choose healthier options.',
-        'icon': Icons.fact_check_outlined,
-      },
-      {
-        'title': 'Reduce food waste',
-        'subtitle':
-            'Small changes make a big difference. Try these simple tips to waste less and save more.',
-        'details':
-            'Plan meals, store food properly, and use leftovers creatively. Donate excess food where possible.',
-        'icon': Icons.recycling_outlined,
-      },
-    ],
-    'Meat': [
-      {
-        'title': 'Storing Meat Safely',
-        'subtitle': 'Refrigerate raw meat at 40°F (4°C) or below.',
-        'details':
-            'Always store raw meat on the bottom shelf of your fridge to prevent juices from dripping onto other foods. Cook or freeze fresh poultry, fish, and ground meats within 2 days; other beef, pork, or lamb within 3 to 5 days.',
-        'icon': Icons.kitchen,
-      },
-    ],
-    'Fish': [
-      {
-        'title': 'Fresh Fish Guide',
-        'subtitle': 'Fresh fish should smell like the ocean, not "fishy".',
-        'details':
-            'Look for clear, full eyes and firm flesh that springs back when touched. Store it in the coldest part of your fridge and use it within 1 to 2 days of purchase.',
-        'icon': Icons.phishing,
-      },
-    ],
-    'Dairy': [
-      {
-        'title': 'Keeping Dairy Fresh',
-        'subtitle': 'Store milk in the main body of the fridge, not the door.',
-        'details':
-            'The temperature in the refrigerator door fluctuates more than the shelves, which can cause milk to spoil faster. Keep cheese tightly wrapped to prevent it from drying out.',
-        'icon': Icons.icecream_outlined,
-      },
-    ],
-    'Produce': [
-      {
-        'title': 'Stop Fruits from Ripening Too Fast',
-        'subtitle':
-            'Some fruits release gases that speed up ripening in others.',
-        'details':
-            'Keep ethylene-producing fruits like bananas, avocados, and apples separate from ethylene-sensitive produce like lettuce, broccoli, and carrots.',
-        'icon': Icons.grass,
-      },
-    ],
-    'Grains': [
-      {
-        'title': 'Store Grains Airtight',
-        'subtitle':
-            'Protect grains like rice, flour, and pasta from pests and moisture.',
-        'details':
-            'Transfer grains from their original packaging to airtight containers. Store them in a cool, dark, and dry place like a pantry.',
-        'icon': Icons.breakfast_dining_outlined,
-      },
-    ],
+  final Map<String, Map<String, List<Map<String, dynamic>>>> allTips = {
+    'General': {
+      'General': [
+        {
+          'title': 'Know your food labels',
+          'subtitle':
+              'Not sure what "Best Before" really means? Read labels the right way.',
+          'details':
+              'Food labels provide important info like expiry dates, storage instructions, and nutritional values. "Best Before" = quality; "Use By" = safety.',
+          'icon': Icons.label_important_outline,
+        },
+        {
+          'title': 'How to store items properly',
+          'subtitle':
+              'Keep your food fresh for longer! Find out where and how to store each item.',
+          'details':
+              'Proper storage prevents spoilage. Keep potatoes in a cool dark place, bread in a breadbox, leafy greens in the fridge with a damp paper towel.',
+          'icon': Icons.inventory_2_outlined,
+        },
+        {
+          'title': 'Nutrition facts check!',
+          'subtitle':
+              'Want to know what’s in your food? Quickly check the nutrition info.',
+          'details':
+              'Checking nutrition facts helps you make informed choices. Compare sugar, sodium, and fats to choose healthier options.',
+          'icon': Icons.fact_check_outlined,
+        },
+        {
+          'title': 'Reduce food waste',
+          'subtitle':
+              'Small changes make a big difference. Try these simple tips to waste less.',
+          'details':
+              'Plan meals, store food properly, and use leftovers creatively. Donate excess food where possible.',
+          'icon': Icons.recycling_outlined,
+        },
+      ],
+    },
+    'Meat': {
+      'Chicken': [
+        {
+          'title': 'Storing Raw Chicken',
+          'subtitle': 'Refrigerate at 40°F (4°C) or below on the bottom shelf.',
+          'details':
+              'Always store raw chicken on the bottom shelf of your fridge to prevent juices from dripping onto other foods. Cook or freeze within 2 days.',
+          'icon': Icons.kitchen,
+        },
+      ],
+      'Pork': [
+        {
+          'title': 'Safe Pork Temperature',
+          'subtitle': 'Cook to an internal temperature of 145°F (63°C).',
+          'details':
+              'For safety and quality, cook pork chops, roasts, and tenderloins to an internal temperature of 145°F, then allow it to rest for three minutes before carving or consuming.',
+          'icon': Icons.thermostat,
+        },
+      ],
+      'Beef': [
+        {
+          'title': 'Resting Your Steak',
+          'subtitle': 'Let steak rest after cooking for a juicier result.',
+          'details':
+              'After cooking, let your steak rest on a cutting board for 5-10 minutes before slicing. This allows the juices to redistribute throughout the meat, making it more tender and flavorful.',
+          'icon': Icons.timer_outlined,
+        },
+      ],
+    },
+    // UPDATED: Added a new 'Fish' category with tips for each item.
+    'Fish': {
+      'Salmon': [
+        {
+          'title': 'Fresh Salmon Guide',
+          'subtitle': 'Look for vibrant, moist flesh and a mild ocean scent.',
+          'details':
+              'Fresh salmon should have a bright, deep orange or pink color and firm flesh that springs back when pressed. Avoid any pieces with a strong "fishy" odor or brown spots.',
+          'icon': Icons.remove_red_eye_outlined,
+        },
+        {
+          'title': 'Storing Fresh Salmon',
+          'subtitle': 'Use within 2 days or freeze for longer storage.',
+          'details':
+              'Store fresh salmon in the coldest part of your refrigerator, ideally on a bed of ice. If you don\'t plan to cook it within two days, wrap it tightly in plastic wrap and then foil, and place it in the freezer.',
+          'icon': Icons.ac_unit,
+        },
+      ],
+      'Tuna': [
+        {
+          'title': 'Storing Canned Tuna',
+          'subtitle': 'Keep unopened cans in a cool, dark pantry.',
+          'details':
+              'Unopened canned tuna is shelf-stable for several years. Once opened, transfer any leftover tuna to an airtight container and store it in the refrigerator for up to 3-4 days.',
+          'icon': Icons.inventory,
+        },
+      ],
+    },
+    'Dairy': {
+      'Milk': [
+        {
+          'title': 'Keep Milk Fresh',
+          'subtitle':
+              'Store milk in the main body of the fridge, not the door.',
+          'details':
+              'The temperature in the refrigerator door fluctuates more than the shelves, which can cause milk to spoil faster. Always seal it tightly after use.',
+          'icon': Icons.opacity,
+        },
+      ],
+      'Cheese': [
+        {
+          'title': 'Cheese Storage 101',
+          'subtitle': 'Wrap cheese in parchment paper, not plastic wrap.',
+          'details':
+              'Cheese needs to breathe. Wrapping it in parchment or wax paper allows for air circulation while preventing it from drying out.',
+          'icon': Icons.icecream_outlined,
+        },
+      ],
+    },
+    'Produce': {
+      'Apples': [
+        {
+          'title': 'Storing Apples',
+          'subtitle': 'Keep apples in the crisper drawer of your fridge.',
+          'details':
+              'Refrigerating apples helps them stay crisp and fresh for weeks. Keep them separate from other produce, as they release ethylene gas that can speed up ripening.',
+          'icon': Icons.apple,
+        },
+      ],
+      'Lettuce': [
+        {
+          'title': 'Keep Lettuce Crisp',
+          'subtitle': 'Store lettuce with a paper towel to absorb moisture.',
+          'details':
+              'Wash and dry your lettuce leaves thoroughly. Store them in a container or sealed bag with a dry paper towel to absorb excess water, which helps prevent wilting.',
+          'icon': Icons.eco,
+        },
+      ],
+    },
+    'Grains': {
+      'Rice': [
+        {
+          'title': 'Store Rice Airtight',
+          'subtitle': 'Protect rice from pests and moisture.',
+          'details':
+              'Transfer rice from its original packaging to an airtight container. Store it in a cool, dark, and dry place like a pantry to maintain its quality.',
+          'icon': Icons.rice_bowl,
+        },
+      ],
+      'Bread': [
+        {
+          'title': 'Best Way to Store Bread',
+          'subtitle':
+              'Keep bread at room temperature in a breadbox or paper bag.',
+          'details':
+              'Refrigerating bread can cause it to go stale faster. For long-term storage, slice it and store it in the freezer in a well-sealed bag.',
+          'icon': Icons.breakfast_dining_outlined,
+        },
+      ],
+    },
   };
 
   // --- BUILD METHOD & HELPERS ---
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> filteredTips =
-        allTips[selectedCategory] ?? [];
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -170,7 +250,6 @@ class _TipsPageState extends State<TipsPage> {
               final category = categories[index];
               final isSelected =
                   selectedCategory == (category['name'] as String? ?? '');
-
               return _buildCategoryChip(
                 context,
                 text: category['name'] as String? ?? 'Error',
@@ -185,26 +264,118 @@ class _TipsPageState extends State<TipsPage> {
             },
           ),
         ),
-        Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-            itemCount: filteredTips.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final t = filteredTips[index];
-              return _buildTipCard(
-                context,
-                title: t['title'] as String? ?? 'No Title',
-                subtitle: t['subtitle'] as String? ?? 'No subtitle available.',
-                details: t['details'] as String? ?? 'No details available.',
-                icon: t['icon'] as IconData? ?? Icons.help_outline,
-              );
-            },
-          ),
-        ),
+        Expanded(child: _buildBodyContent()),
       ],
     );
   }
+
+  /// Builds the main content area based on the selected category.
+  Widget _buildBodyContent() {
+    if (selectedCategory == 'General') {
+      final generalTips = allTips['General']?['General'] ?? [];
+      return ListView.separated(
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+        itemCount: generalTips.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (context, index) {
+          final tip = generalTips[index];
+          return _buildTipCard(
+            context,
+            title: tip['title'] as String,
+            subtitle: tip['subtitle'] as String,
+            details: tip['details'] as String,
+            icon: tip['icon'] as IconData,
+          );
+        },
+      );
+    }
+
+    // For specific categories, get the items from the pantry.
+    final availableItems = pantryItems[selectedCategory] ?? [];
+
+    if (availableItems.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    // If there are items, build a list of item groups.
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+      itemCount: availableItems.length,
+      itemBuilder: (context, index) {
+        final itemName = availableItems[index];
+        final itemTips = allTips[selectedCategory]?[itemName] ?? [];
+        return _buildItemGroup(itemName, itemTips);
+      },
+    );
+  }
+
+  /// Builds a group for a single pantry item, including its name and related tips.
+  Widget _buildItemGroup(String itemName, List<Map<String, dynamic>> tips) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            itemName,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2E7D32),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Create a Column of tip cards for the current item.
+          Column(
+            children: tips.map((tip) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildTipCard(
+                  context,
+                  title: tip['title'] as String,
+                  subtitle: tip['subtitle'] as String,
+                  details: tip['details'] as String,
+                  icon: tip['icon'] as IconData,
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A helper widget to show when no items are in the pantry for a category.
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inventory_2_outlined, size: 60, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'No Items in Pantry',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Add items to your pantry in the "$selectedCategory" category to see relevant tips here.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- Unchanged Helper Widgets ---
 
   Widget _buildCategoryChip(
     BuildContext context, {
@@ -254,7 +425,6 @@ class _TipsPageState extends State<TipsPage> {
     );
   }
 
-  // THIS WIDGET HAS BEEN UPDATED to match the new tip card UI
   Widget _buildTipCard(
     BuildContext context, {
     required String title,
@@ -265,15 +435,9 @@ class _TipsPageState extends State<TipsPage> {
     return Card(
       elevation: 2,
       shadowColor: Colors.black.withOpacity(0.2),
-      // This is the new softer green color
       color: const Color(0xFFD4E4D5),
       shape: RoundedRectangleBorder(
-        // This creates the subtle border
-        side: BorderSide(
-          color: const Color(0xFFADC2AD), // Border color
-          width: 1.5,
-        ),
-        // This creates the highly rounded corners
+        side: BorderSide(color: const Color(0xFFADC2AD), width: 1.5),
         borderRadius: BorderRadius.circular(20),
       ),
       child: InkWell(
@@ -290,7 +454,6 @@ class _TipsPageState extends State<TipsPage> {
           padding: const EdgeInsets.all(16.0),
           child: Row(
             children: [
-              // Icon is now black
               Icon(icon, size: 36, color: Colors.black87),
               const SizedBox(width: 16),
               Expanded(
