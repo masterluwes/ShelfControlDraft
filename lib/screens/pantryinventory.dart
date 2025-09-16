@@ -567,8 +567,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _bigTitle(),
-            _controlsRow(), // pills or search field
-            const Divider(height: 1, thickness: 1, color: Color(0xFFE9E1C7)),
+            // _controlsRow(), // Temporarily commented out for debugging
+            // const Divider(height: 1, thickness: 1, color: Color(0xFFE9E1C7)),
             Expanded(
               child: ListView.separated(
                 itemCount: view.length,
