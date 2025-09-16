@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
 import 'package:intl/intl.dart';
+import 'dart:io'; // Import dart:io for File
 
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import provider
+import 'package:image_picker/image_picker.dart'; // Import image_picker
+import 'package:firebase_storage/firebase_storage.dart'; // Import firebase_storage
+import 'package:shelf_control/screens/pantryinventory.dart'; // Import Pantryinventory
 
 class AddPantryItem extends StatefulWidget {
   const AddPantryItem({super.key});
@@ -21,8 +25,14 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
   late TextEditingController _expCtrl;
   late TextEditingController _dopCtrl;
   late TextEditingController _notesCtrl;
+  late TextEditingController _barcodeCtrl;
+  late TextEditingController _brandCtrl;
+  late TextEditingController _netWeightCtrl;
 
   String? _selectedCategory;
+  File? _imageFile; // To store the picked image
+  final ImagePicker _picker = ImagePicker(); // Image picker instance
+
   final List<String> _categories = <String>[
     'Uncategorized',
     'Beverages',
@@ -44,7 +54,36 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
     _expCtrl = TextEditingController(text: '');
     _dopCtrl = TextEditingController(text: DateFormat('MMMM d, yyyy').format(DateTime.now()));
     _notesCtrl = TextEditingController(text: '');
+    _barcodeCtrl = TextEditingController(text: '');
+    _brandCtrl = TextEditingController(text: '');
+    _netWeightCtrl = TextEditingController(text: '');
     _selectedCategory = null;
+  }
+
+  Future<void> _pickImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        _imageFile = File(pickedFile.path);
+      });
+    }
+  }
+
+  Future<String?> _uploadImage() async {
+    if (_imageFile == null) {
+      return null; // No new image to upload
+    }
+    try {
+      final storageRef = FirebaseStorage.instance.ref().child('pantry_item_images/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await storageRef.putFile(_imageFile!);
+      return await storageRef.getDownloadURL();
+    } catch (e) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to upload image: ${e.toString()}')),
+      );
+      return null;
+    }
   }
 
   @override
@@ -54,6 +93,9 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
     _expCtrl.dispose();
     _dopCtrl.dispose();
     _notesCtrl.dispose();
+    _barcodeCtrl.dispose();
+    _brandCtrl.dispose();
+    _netWeightCtrl.dispose();
     super.dispose();
   }
 
@@ -74,14 +116,25 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
       return;
     }
 
+    String? imageUrl;
+    if (_imageFile != null) {
+      imageUrl = await _uploadImage();
+      if (imageUrl == null) {
+        return; // Image upload failed
+      }
+    }
+
     final newItem = PantryItemModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       householdId: firestoreService.selectedHouseholdId!, // Use the provided selected household ID
       name: _nameCtrl.text,
       category: _selectedCategory!,
-      imageUrl: 'https://via.placeholder.com/150',
+      imageUrl: imageUrl ?? 'https://via.placeholder.com/150', // Use uploaded image or placeholder
       qty: int.tryParse(_qtyCtrl.text) ?? 1,
       expiresText: _expCtrl.text,
+      barcode: _barcodeCtrl.text.isEmpty ? null : _barcodeCtrl.text,
+      brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
+      netWeight: _netWeightCtrl.text.isEmpty ? null : _netWeightCtrl.text,
       expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text), // Parse expiration date
     );
     try {
@@ -219,14 +272,44 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                 ),
               ),
               const SizedBox(height: 24),
+              // Image placeholder
+              Center(
+                child: GestureDetector(
+                  onTap: _pickImage,
+                  child: CircleAvatar(
+                    radius: 50,
+                    backgroundColor: Colors.grey[300],
+                    backgroundImage: _imageFile != null
+                        ? FileImage(_imageFile!) as ImageProvider
+                        : null, // No initial image from item
+                    child: _imageFile == null
+                        ? Icon(
+                            Icons.camera_alt,
+                            color: Colors.grey[600],
+                            size: 50,
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
               label('Item Name'),
               filledField(_nameCtrl),
+              const SizedBox(height: 14),
+              label('Barcode (Optional)'),
+              filledField(_barcodeCtrl),
+              const SizedBox(height: 14),
+              label('Brand (Optional)'),
+              filledField(_brandCtrl),
               const SizedBox(height: 14),
               label('Item Category'),
               greenDropdown(),
               const SizedBox(height: 14),
               label('Quantity'),
               filledField(_qtyCtrl, keyboardType: TextInputType.number),
+              const SizedBox(height: 14),
+              label('Net Weight (e.g., "1L", "397g") (Optional)'),
+              filledField(_netWeightCtrl),
               const SizedBox(height: 14),
               label('Expiration Date'),
               filledField(

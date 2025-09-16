@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
 
 import 'package:intl/intl.dart';
+import 'dart:io'; // Import dart:io for File
+
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import provider
+import 'package:image_picker/image_picker.dart'; // Import image_picker
+import 'package:firebase_storage/firebase_storage.dart'; // Import firebase_storage
 
 class EditPantryItem extends StatefulWidget {
   final PantryItemModel item;
@@ -31,6 +35,9 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
   late TextEditingController _netWeightCtrl;
 
   String? _selectedCategory;
+  File? _imageFile; // To store the picked image
+  final ImagePicker _picker = ImagePicker(); // Image picker instance
+
   final List<String> _categories = <String>[
     'Uncategorized',
     'Beverages',
@@ -54,9 +61,35 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
     _notesCtrl = TextEditingController(text: ''); // Assuming notes are not part of PantryItemModel yet
     _barcodeCtrl = TextEditingController(text: widget.item.barcode ?? '');
     _brandCtrl = TextEditingController(text: widget.item.brand ?? '');
-    _quantityUnitCtrl = TextEditingController(text: widget.item.quantityUnit ?? '');
-    _netWeightCtrl = TextEditingController(text: widget.item.netWeight ?? '');
+    _quantityUnitCtrl = TextEditingController(text: widget.item.netWeight ?? '');
+    _netWeightCtrl = TextEditingController(); // No longer used
     _selectedCategory = widget.item.category; // Initialize with item's category
+  }
+
+  Future<void> _pickImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        _imageFile = File(pickedFile.path);
+      });
+    }
+  }
+
+  Future<String?> _uploadImage() async {
+    if (_imageFile == null) {
+      return null; // No new image to upload
+    }
+    try {
+      final storageRef = FirebaseStorage.instance.ref().child('pantry_item_images/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await storageRef.putFile(_imageFile!);
+      return await storageRef.getDownloadURL();
+    } catch (e) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to upload image: ${e.toString()}')),
+      );
+      return null;
+    }
   }
 
   @override
@@ -82,24 +115,32 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
       return;
     }
 
+    String? newImageUrl = widget.item.imageUrl;
+    if (_imageFile != null) {
+      newImageUrl = await _uploadImage();
+      if (newImageUrl == null) {
+        return; // Image upload failed
+      }
+    }
+
     final updatedItem = PantryItemModel(
       id: widget.item.id,
       householdId: firestoreService.selectedHouseholdId!, // Pass the selected household ID
       name: _nameCtrl.text,
       category: _selectedCategory!,
-      imageUrl: widget.item.imageUrl, // Keep existing image URL
+      imageUrl: newImageUrl, // Use the new image URL
       qty: int.tryParse(_qtyCtrl.text) ?? 1,
       expiresText: _expCtrl.text,
       barcode: _barcodeCtrl.text.isEmpty ? null : _barcodeCtrl.text,
       brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
-      quantityUnit: _quantityUnitCtrl.text.isEmpty ? null : _quantityUnitCtrl.text,
+      quantityUnit: null,
+      netWeight: _quantityUnitCtrl.text.isEmpty ? null : _quantityUnitCtrl.text,
       nutritionFacts: widget.item.nutritionFacts,
       shelfLifeDays: widget.item.shelfLifeDays,
       shelfLifeWeeks: widget.item.shelfLifeWeeks,
       shelfLifeMonths: widget.item.shelfLifeMonths,
       manufacturedDate: _dopCtrl.text.isNotEmpty ? DateFormat('MMMM d, yyyy').parse(_dopCtrl.text) : null,
       expirationDate: _expCtrl.text.isNotEmpty ? DateFormat('MMMM d, yyyy').parse(_expCtrl.text) : null,
-      netWeight: _netWeightCtrl.text.isEmpty ? null : _netWeightCtrl.text,
       selected: widget.item.selected,
     );
     await firestoreService.updatePantryItem(updatedItem);
@@ -231,6 +272,31 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
                 ),
               ),
               const SizedBox(height: 24),
+
+              // Image placeholder
+              Center(
+                child: GestureDetector(
+                  onTap: _pickImage,
+                  child: CircleAvatar(
+                    radius: 50,
+                    backgroundColor: Colors.grey[300],
+                    backgroundImage: _imageFile != null
+                        ? FileImage(_imageFile!) as ImageProvider
+                        : (widget.item.imageUrl != null && widget.item.imageUrl!.isNotEmpty
+                            ? NetworkImage(widget.item.imageUrl!)
+                            : null),
+                    child: _imageFile == null && (widget.item.imageUrl == null || widget.item.imageUrl!.isEmpty)
+                        ? Icon(
+                            Icons.camera_alt,
+                            color: Colors.grey[600],
+                            size: 50,
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
               // Item Name
               _label('Item Name'),
               _filledField(_nameCtrl),
@@ -256,14 +322,9 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
               _filledField(_qtyCtrl, keyboardType: TextInputType.number), // Set keyboardType
               const SizedBox(height: 14),
 
-              // Quantity Unit
-              _label('Quantity Unit (e.g., "1L", "397g") (Optional)'),
-              _filledField(_quantityUnitCtrl),
-              const SizedBox(height: 14),
-
               // Net Weight
-              _label('Net Weight (Optional)'),
-              _filledField(_netWeightCtrl),
+              _label('Net Weight (e.g., "1L", "397g") (Optional)'),
+              _filledField(_quantityUnitCtrl),
               const SizedBox(height: 14),
 
               // Expiration Date
