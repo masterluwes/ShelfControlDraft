@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart'; // Import for ChangeNotifier
 import 'package:shelf_control/models/pantry_item_model.dart';
 import 'package:shelf_control/models/household_model.dart'; // Import Household model
+import 'package:shelf_control/models/user_model.dart'; // Import UserModel
 import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 
@@ -91,6 +92,10 @@ class FirestoreService extends ChangeNotifier {
     }, SetOptions(merge: true)); // Use merge to avoid overwriting existing user data
 
     selectedHouseholdId = householdId; // Automatically select the personal household
+    // Also set the initial nickname for the user
+    await _db.collection('users').doc(userId).update({
+      'nickname': userEmail.split('@').first, // Default nickname from email
+    });
   }
 
   // Get a stream of pantry items for a specific household
@@ -174,6 +179,13 @@ class FirestoreService extends ChangeNotifier {
     await _db.collection('users').doc(userId).update({
       'householdIds': FieldValue.arrayUnion([householdId]),
     });
+    // Set a default nickname if not already set
+    final userDoc = await _db.collection('users').doc(userId).get();
+    if (userDoc.data()?['nickname'] == null) {
+      await _db.collection('users').doc(userId).update({
+        'nickname': _auth.currentUser?.email?.split('@').first ?? 'User',
+      });
+    }
   }
 
   // Join an existing household
@@ -204,5 +216,43 @@ class FirestoreService extends ChangeNotifier {
     await _db.collection('users').doc(userId).update({
       'householdIds': FieldValue.arrayUnion([household.id]),
     });
+    // Set a default nickname if not already set
+    final userDoc = await _db.collection('users').doc(userId).get();
+    if (userDoc.data()?['nickname'] == null) {
+      await _db.collection('users').doc(userId).update({
+        'nickname': _auth.currentUser?.email?.split('@').first ?? 'User',
+      });
+    }
+  }
+
+  // Get user data by ID
+  Future<UserModel?> getUser(String userId) async {
+    final doc = await _db.collection('users').doc(userId).get();
+    if (doc.exists) {
+      return UserModel.fromFirestore(doc);
+    }
+    return null;
+  }
+
+
+  // Update a user's nickname
+  Future<void> updateUserNickname(String userId, String nickname) async {
+    await _db.collection('users').doc(userId).update({
+      'nickname': nickname,
+    });
+  }
+
+  // Leave a household
+  Future<void> leaveHousehold(String householdId, String userId) async {
+    // Remove user from the household's members array
+    await _db.collection('households').doc(householdId).update({
+      'members': FieldValue.arrayRemove([userId]),
+    });
+
+    // Remove householdId from the user's householdIds array
+    await _db.collection('users').doc(userId).update({
+      'householdIds': FieldValue.arrayRemove([householdId]),
+    });
+    notifyListeners(); // Notify listeners after leaving a household
   }
 }

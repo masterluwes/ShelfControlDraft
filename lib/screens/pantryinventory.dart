@@ -547,39 +547,44 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       return const Center(child: Text('No household selected.'));
     }
 
-    return StreamBuilder<List<PantryItemModel>>(
-      stream: firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(child: Text('No pantry items yet. Add some!'));
-        }
+    return Scaffold(
+      backgroundColor: softCream, // Use your softCream color
+      body: SafeArea(
+        child: StreamBuilder<List<PantryItemModel>>(
+          stream: firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const Center(child: Text('No pantry items yet. Add some!'));
+            }
 
-        _items = snapshot.data!;
-        final view = _filteredAndSorted();
+            _items = snapshot.data!;
+            final view = _filteredAndSorted();
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _bigTitle(),
-            // _controlsRow(), // Temporarily commented out for debugging
-            // const Divider(height: 1, thickness: 1, color: Color(0xFFE9E1C7)),
-            Expanded(
-              child: ListView.separated(
-                itemCount: view.length,
-                separatorBuilder: (_, _ ) =>
-                    Divider(height: 1, thickness: 1, color: sep),
-                itemBuilder: (_, i) => _dismissibleRow(view, i, firestoreService),
-              ),
-            ),
-          ],
-        );
-      },
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _bigTitle(),
+                _controlsRow(), // pills or search field
+                const Divider(height: 1, thickness: 1, color: Color(0xFFE9E1C7)),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: view.length,
+                    separatorBuilder: (_, _ ) =>
+                        Divider(height: 1, thickness: 1, color: sep),
+                    itemBuilder: (_, i) => _dismissibleRow(view, i, firestoreService),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }
