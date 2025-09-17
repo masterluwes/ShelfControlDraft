@@ -30,13 +30,20 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   Widget? _currentBodyWidget;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  bool _isOnNotificationPage = false;
+  Widget? _lastPageBeforeNotifications;
+  bool _hasUnreadNotifications = false;
+  bool _isSnoozed = false;
 
   @override
   void initState() {
     super.initState();
     _currentBodyWidget = const DashboardHome();
-    // _setInitialHousehold() is no longer needed here as it's handled by main.dart and Provider
+    _listenForNotifications();
+  }
+
+  void _listenForNotifications() {
+    // This is a placeholder for future notification backend integration.
   }
 
   void _showPage(Widget page) {
@@ -74,11 +81,45 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications, color: Colors.white),
-            onPressed: () {
-              _showPage(const NotificationPage());
-            },
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications, color: Colors.white),
+                onPressed: () {
+                  setState(() {
+                    if (_isOnNotificationPage) {
+                      _currentBodyWidget = _lastPageBeforeNotifications;
+                      _isOnNotificationPage = false;
+                    } else {
+                      _lastPageBeforeNotifications = _currentBodyWidget;
+                      _currentBodyWidget = NotificationPage(
+                        onStatusChanged: (hasUnread, isSnoozed) {
+                          setState(() {
+                            _hasUnreadNotifications = hasUnread;
+                            _isSnoozed = isSnoozed;
+                          });
+                        },
+                      );
+                      _isOnNotificationPage = true;
+                      _hasUnreadNotifications = false;
+                    }
+                  });
+                },
+              ),
+              if (_hasUnreadNotifications && !_isSnoozed)
+                Positioned(
+                  right: 10,
+                  top: 10,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
           IconButton(
             icon: const Icon(Icons.group, color: Colors.white),
@@ -191,7 +232,6 @@ class _DashboardPageState extends State<DashboardPage> {
         (_currentBodyWidget is Pantryinventory && label == "Pantry") ||
         (_currentBodyWidget is Shoppinglist && label == "Shopping") ||
         (_currentBodyWidget is TipsPage && label == "Tips");
-    // (_currentBodyWidget is HouseholdPage && label == "Households"); // This line was commented out and caused an error
     return InkWell(
       onTap: onTap,
       child: Column(
