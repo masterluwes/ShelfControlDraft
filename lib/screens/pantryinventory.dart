@@ -57,10 +57,12 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     if (item.expirationDate == null) return ItemStatus.available; // No expiry, assume available
 
     final now = DateTime.now();
-    final difference = item.expirationDate!.difference(now).inDays;
+    final today = DateTime(now.year, now.month, now.day);
+    final expirationDay = DateTime(item.expirationDate!.year, item.expirationDate!.month, item.expirationDate!.day);
+    final difference = expirationDay.difference(today).inDays;
 
-    if (difference <= 0) {
-      return ItemStatus.consumed; // Expired or expiring today
+    if (difference < 0) {
+      return ItemStatus.consumed; // Expired
     } else if (difference <= 7) {
       return ItemStatus.atRisk; // Expiring within 7 days
     } else {
@@ -73,11 +75,15 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       return 'No expiry date';
     }
     final now = DateTime.now();
-    final difference = item.expirationDate!.difference(now).inDays;
+    final today = DateTime(now.year, now.month, now.day);
+    final expirationDay = DateTime(item.expirationDate!.year, item.expirationDate!.month, item.expirationDate!.day);
+    final difference = expirationDay.difference(today).inDays;
 
     if (difference == 0) {
       return 'Expires today';
-    } else if (difference > 0) {
+    } else if (difference == 1) {
+      return 'Expires tomorrow';
+    } else if (difference > 1) {
       return 'Expires in $difference days';
     } else {
       return 'Expired ${difference.abs()} days ago';
@@ -296,7 +302,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         'Pantry Inventory',
         style: TextStyle(
           color: Color(0xFF20451F),
-          fontSize: 28,
+          fontSize: 24, // Reduced font size
           fontWeight: FontWeight.w900,
         ),
       ),
@@ -434,57 +440,33 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
-                    Row(
+                    const SizedBox(height: 4),
+                    Column( // Use a Column for vertical alignment
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          '• ',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF6F6F6F),
-                          ),
-                        ),
-                        Flexible(
-                          child: Text(
-                            item.category,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF6F6F6F),
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Qty: ',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF6F6F6F),
-                          ),
-                        ),
                         Text(
-                          '${item.qty}',
+                          '• ${item.category}',
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 11, // Reduced font size
+                            color: Color(0xFF6F6F6F),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Qty: ${item.qty}',
+                          style: const TextStyle(
+                            fontSize: 11, // Reduced font size
+                            color: Color(0xFF6F6F6F),
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Expires in: ',
-                          style: TextStyle(
-                            fontSize: 12,
+                        const SizedBox(height: 2),
+                        Text(
+                          'Expires in: ${_getExpiresText(item)}',
+                          style: const TextStyle(
+                            fontSize: 11, // Reduced font size
                             color: Color(0xFF6F6F6F),
-                          ),
-                        ),
-                        Flexible(
-                          child: Text(
-                            _getExpiresText(item),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],

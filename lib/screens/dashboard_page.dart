@@ -402,7 +402,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                 ),
               ),
               const SizedBox(width: 10), // Add some spacing between the text and dropdown
-              Expanded(
+              Flexible(
+                fit: FlexFit.tight,
                 child: StreamBuilder<List<Household>>(
                   stream: firestoreService.getHouseholds(),
                   builder: (context, snapshot) {

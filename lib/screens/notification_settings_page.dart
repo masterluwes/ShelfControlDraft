@@ -5,11 +5,11 @@ class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
 
   @override
-  _NotificationSettingsPageState createState() =>
-      _NotificationSettingsPageState();
+  NotificationSettingsPageState createState() =>
+      NotificationSettingsPageState();
 }
 
-class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
+class NotificationSettingsPageState extends State<NotificationSettingsPage> {
   bool expiredItems = true;
   bool atRiskItems = true;
   bool appUpdates = true;

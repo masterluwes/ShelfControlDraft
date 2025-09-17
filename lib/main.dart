@@ -15,12 +15,9 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   runApp(
-    DevicePreview(
-      enabled: !kReleaseMode, // Enable DevicePreview only in debug mode
-      builder: (context) => ChangeNotifierProvider(
-        create: (context) => FirestoreService(),
-        child: const ShelfControlApp(),
-      ),
+    ChangeNotifierProvider(
+      create: (context) => FirestoreService(),
+      child: const ShelfControlApp(),
     ),
   );
 }
@@ -36,6 +33,7 @@ class _ShelfControlAppState extends State<ShelfControlApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // Removed useInheritedMediaQuery as it might conflict with DevicePreview's own MediaQuery handling
       debugShowCheckedModeBanner: false,
       title: 'ShelfControl',
       theme: ThemeData(
