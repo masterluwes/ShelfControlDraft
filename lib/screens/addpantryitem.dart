@@ -8,6 +8,7 @@ import 'package:provider/provider.dart'; // Import provider
 import 'package:image_picker/image_picker.dart'; // Import image_picker
 import 'package:firebase_storage/firebase_storage.dart'; // Import firebase_storage
 import 'package:shelf_control/screens/pantryinventory.dart'; // Import Pantryinventory
+import 'package:shelf_control/screens/dashboard_page.dart'; // Import DashboardPage
 
 class AddPantryItem extends StatefulWidget {
   const AddPantryItem({super.key});
@@ -250,7 +251,12 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                   children: [
                     IconButton(
                       icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF2E7D32)),
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: () {
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (context) => const DashboardPage()),
+                          (Route<dynamic> route) => false, // Remove all routes from the stack
+                        );
+                      },
                     ),
                     const Text(
                       'Back',
@@ -371,7 +377,12 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                         fontSize: 12,
                       ),
                     ),
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: () {
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (context) => const DashboardPage()),
+                        (Route<dynamic> route) => false, // Remove all routes from the stack
+                      );
+                    },
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 12),

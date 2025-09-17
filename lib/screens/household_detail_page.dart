@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shelf_control/models/household_model.dart'; // Import Household model
+import 'package:shelf_control/models/user_model.dart'; // Import UserModel
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:provider/provider.dart'; // Import Provider
+import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 
 class HouseholdDetailPage extends StatefulWidget {
   final Household household;
@@ -20,15 +23,17 @@ class HouseholdDetailPage extends StatefulWidget {
 }
 
 class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
-  final FirestoreService _firestoreService = FirestoreService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   static const _green = Color(0xFF2E7D32);
 
   late String _householdName;
+  late String _currentUserId;
 
   @override
   void initState() {
     super.initState();
     _householdName = widget.household.name;
+    _currentUserId = _auth.currentUser!.uid;
   }
 
   void _showLeaveConfirmationDialog() {
@@ -104,11 +109,25 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
       },
     );
 
-    Future.delayed(const Duration(seconds: 1), () {
+    Future.delayed(const Duration(seconds: 1), () async {
       if (!mounted) return;
-      Navigator.pop(context);
-      Navigator.pop(context);
-      widget.onLeaveGroup();
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+      try {
+        await firestoreService.leaveHousehold(widget.household.id, _currentUserId);
+        if (firestoreService.selectedHouseholdId == widget.household.id) {
+          await firestoreService.setInitialHousehold(_currentUserId);
+        }
+        if (!mounted) return;
+        Navigator.pop(context); // Pop the "Bye!" dialog
+        Navigator.pop(context); // Pop the HouseholdDetailPage
+        widget.onLeaveGroup(); // Trigger rebuild on HouseholdPage
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.pop(context); // Pop the "Bye!" dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to leave household: ${e.toString().replaceFirst('Exception: ', '')}')),
+        );
+      }
     });
   }
 
@@ -185,11 +204,16 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
       },
     );
 
-    Future.delayed(const Duration(seconds: 1), () {
+    Future.delayed(const Duration(seconds: 1), () async {
       if (!mounted) return;
       Navigator.pop(context);
       Navigator.pop(context);
       widget.onDeleteGroup?.call();
+      // Remove the household from the user's selected household if it was the selected one
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+      if (firestoreService.selectedHouseholdId == widget.household.id) {
+        await firestoreService.setInitialHousehold(_currentUserId);
+      }
     });
   }
 
@@ -258,8 +282,98 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
     Navigator.pop(context); // No data to return directly from here anymore
   }
 
+  void _showEditNicknameDialog(BuildContext context, FirestoreService firestoreService, String userId, String currentNickname) {
+    final controller = TextEditingController(text: currentNickname);
+    String? errorText;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, dialogSetState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: _green, width: 3),
+              ),
+              title: const Text(
+                "Edit Nickname",
+                style: TextStyle(fontWeight: FontWeight.bold, color: _green),
+                textAlign: TextAlign.center,
+              ),
+              content: TextField(
+                controller: controller,
+                maxLength: 20,
+                onChanged: (value) {
+                  dialogSetState(() {
+                    errorText = null;
+                  });
+                },
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: "Nickname",
+                  errorText: errorText,
+                ),
+              ),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  child: const Text(
+                    "Cancel",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                ElevatedButton(
+                  onPressed: () async {
+                    final newNickname = controller.text.trim();
+                    if (newNickname.isEmpty) {
+                      dialogSetState(() {
+                        errorText = "Nickname cannot be empty.";
+                      });
+                      return;
+                    }
+                    try {
+                      await firestoreService.updateUserNickname(userId, newNickname);
+                      if (!mounted) return;
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Nickname updated successfully!')),
+                      );
+                    } catch (e) {
+                      dialogSetState(() {
+                        errorText = e.toString().replaceFirst('Exception: ', '');
+                      });
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _green,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  child: const Text("Save", style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
+    final firestoreService = Provider.of<FirestoreService>(context);
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -277,7 +391,7 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
           actions: [
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, color: Colors.white),
-              onSelected: (value) {
+              onSelected: (value) async {
                 if (value == "leave") {
                   _showLeaveConfirmationDialog();
                 } else if (value == "delete") {
@@ -300,7 +414,7 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                       style: TextStyle(color: Colors.black),
                     ),
                   ),
-                  if (widget.household.ownerId == _firestoreService.userId) // Only owner can delete
+                  if (widget.household.ownerId == _currentUserId) // Only owner can delete
                     const PopupMenuItem(
                       value: "delete",
                       child: Text(
@@ -342,7 +456,7 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                       color: _green,
                     ),
                   ),
-                  if (widget.household.ownerId == _firestoreService.userId) // Only owner can edit name
+                  if (widget.household.ownerId == _currentUserId) // Only owner can edit name
                     IconButton(
                       icon: const Icon(
                         Icons.edit,
@@ -381,13 +495,56 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                 child: ListView.builder(
                   itemCount: widget.household.members.length,
                   itemBuilder: (context, index) {
-                    final member = widget.household.members[index];
-                    return ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: Colors.black12,
-                        child: Icon(Icons.person, color: Colors.black),
-                      ),
-                      title: Text(member), // This will show user IDs, ideally we'd fetch user display names
+                    final memberId = widget.household.members[index];
+                    return FutureBuilder<UserModel?>(
+                      future: firestoreService.getUser(memberId),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Colors.black12,
+                              child: Icon(Icons.person, color: Colors.black),
+                            ),
+                            title: Text("Loading member..."),
+                          );
+                        }
+                        if (snapshot.hasError) {
+                          return ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Colors.black12,
+                              child: Icon(Icons.person, color: Colors.black),
+                            ),
+                            title: Text('Error: ${snapshot.error}'),
+                          );
+                        }
+                        final memberUser = snapshot.data;
+                        final displayName = memberUser?.nickname ?? memberUser?.email.split('@').first ?? 'Unknown User';
+                        final isOwner = memberId == widget.household.ownerId;
+                        final isCurrentUser = memberId == _currentUserId;
+
+                        return ListTile(
+                          leading: const CircleAvatar(
+                            backgroundColor: Colors.black12,
+                            child: Icon(Icons.person, color: Colors.black),
+                          ),
+                          title: Text(
+                            displayName + (isOwner ? " (Owner)" : ""),
+                            style: TextStyle(
+                              fontWeight: isOwner ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isCurrentUser)
+                                IconButton(
+                                  icon: const Icon(Icons.edit, size: 20),
+                                  onPressed: () => _showEditNicknameDialog(context, firestoreService, memberId, displayName),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     );
                   },
                 ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shelf_control/models/household_model.dart';
+import 'package:shelf_control/models/user_model.dart'; // Import UserModel
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:shelf_control/screens/household_detail_page.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
@@ -378,7 +379,20 @@ class _HouseholdPageState extends State<HouseholdPage> {
                     ],
                   ),
                 ),
-                subtitle: Text(household.members.join(", ")),
+                subtitle: FutureBuilder<List<UserModel>>(
+                  future: Future.wait(household.members.map((uid) => firestoreService.getUser(uid).then((user) => user!))),
+                  builder: (context, userSnapshot) {
+                    if (userSnapshot.connectionState == ConnectionState.waiting) {
+                      return const Text("Loading members...");
+                    }
+                    if (userSnapshot.hasError) {
+                      return Text('Error loading members: ${userSnapshot.error}');
+                    }
+                    final memberUsers = userSnapshot.data ?? [];
+                    final memberNames = memberUsers.map((user) => user.nickname ?? user.email.split('@').first).toList();
+                    return Text(memberNames.join(", "));
+                  },
+                ),
                 trailing: isSelected
                     ? const Icon(Icons.check_circle, color: Colors.green)
                     : IconButton(
@@ -402,12 +416,14 @@ class _HouseholdPageState extends State<HouseholdPage> {
                       builder: (_) => HouseholdDetailPage(
                         household: household,
                         onLeaveGroup: () {
-                          // Implement leave group logic
-                          // No need for setState here, Provider will handle rebuilds
+                          // When a user leaves a group, we need to ensure the HouseholdPage rebuilds
+                          // to reflect the updated list of households.
+                          setState(() {}); // Force a rebuild of HouseholdPage
                         },
                         onDeleteGroup: () {
-                          // Implement delete group logic
-                          // No need for setState here, Provider will handle rebuilds
+                          // When a group is deleted, we need to ensure the HouseholdPage rebuilds
+                          // to reflect the updated list of households.
+                          setState(() {}); // Force a rebuild of HouseholdPage
                         },
                       ),
                     ),
