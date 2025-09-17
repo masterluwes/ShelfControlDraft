@@ -17,6 +17,7 @@ import 'package:shelf_control/screens/shoppinglist.dart'; // Import for Shopping
 import 'package:shelf_control/screens/household_state.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:shelf_control/screens/scan_item_screen.dart'; // Import for ScanItemScreen
+import 'package:shelf_control/screens/waste_tracker_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -387,7 +388,15 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               );
             }),
-            _drawerItem(Icons.delete, "Waste Tracker", () {}),
+            _drawerItem(Icons.delete, "Waste Tracker", () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const WasteTrackerPage(),
+                ),
+              );
+            }),
+
             _drawerItem(Icons.info, "User Guide", () {
               Navigator.push(
                 context,
