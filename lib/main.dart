@@ -5,6 +5,7 @@ import 'package:shelf_control/screens/login_page.dart';
 import 'package:shelf_control/screens/guest_page.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/feature_preview_screen.dart';
+import 'package:shelf_control/screens/dashboard_page.dart'; // Import DashboardPage
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart'; // Required for kReleaseMode
 import 'package:device_preview/device_preview.dart'; // Import DevicePreview
@@ -54,7 +55,7 @@ class _ShelfControlAppState extends State<ShelfControlApp> {
                 if (householdSnapshot.connectionState == ConnectionState.waiting) {
                   return const CircularProgressIndicator();
                 }
-                return const FeaturePreviewScreen();
+                return const DashboardPage(); // Navigate to DashboardPage
               },
             );
           }
@@ -66,6 +67,7 @@ class _ShelfControlAppState extends State<ShelfControlApp> {
         '/login': (context) => const LoginPage(),
         '/guest': (context) => const GuestPage(),
         '/feature-preview': (context) => const FeaturePreviewScreen(),
+        '/dashboard': (context) => const DashboardPage(), // Add dashboard route
       },
     );
   }

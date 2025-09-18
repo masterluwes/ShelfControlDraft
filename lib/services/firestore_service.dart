@@ -126,12 +126,121 @@ class FirestoreService extends ChangeNotifier {
     await _db.collection('pantryItems').doc(item.id).update(item.toFirestore());
   }
 
-  // Delete a pantry item for the currently selected household
+  // Mark a pantry item as deleted for the currently selected household
   Future<void> deletePantryItem(String itemId) async {
     if (selectedHouseholdId == null) {
       throw Exception("No household selected.");
     }
-    await _db.collection('pantryItems').doc(itemId).delete();
+    await _db.collection('pantryItems').doc(itemId).update({
+      'status': 'Deleted',
+      'deletedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // Record consumed items
+  Future<void> recordConsumedItem(PantryItemModel item, int consumedQty) async {
+    if (selectedHouseholdId == null) {
+      throw Exception("No household selected.");
+    }
+
+    if (consumedQty <= 0) {
+      return; // Nothing to consume
+    }
+
+    // First, update the original item's quantity in the pantry
+    if (item.qty > consumedQty) {
+      await _db.collection('pantryItems').doc(item.id).update({
+        'qty': item.qty - consumedQty,
+      });
+    } else {
+      // If all available quantity is consumed, delete the item from the pantry
+      await _db.collection('pantryItems').doc(item.id).delete();
+    }
+
+    // Now, handle the consumed portion for history
+    QuerySnapshot existingConsumedItems;
+    if (item.barcode != null && item.barcode!.isNotEmpty) {
+      // Try to find an existing consumed item by barcode
+      existingConsumedItems = await _db
+          .collection('pantryItems')
+          .where('householdId', isEqualTo: selectedHouseholdId)
+          .where('status', isEqualTo: 'Consumed')
+          .where('barcode', isEqualTo: item.barcode)
+          .limit(1)
+          .get();
+    } else {
+      // Fallback to name if no barcode
+      existingConsumedItems = await _db
+          .collection('pantryItems')
+          .where('householdId', isEqualTo: selectedHouseholdId)
+          .where('status', isEqualTo: 'Consumed')
+          .where('name', isEqualTo: item.name)
+          .limit(1)
+          .get();
+    }
+
+    if (existingConsumedItems.docs.isNotEmpty) {
+      // Update existing consumed item
+      final existingDoc = existingConsumedItems.docs.first;
+      final existingItem = PantryItemModel.fromFirestore(existingDoc);
+      await _db.collection('pantryItems').doc(existingDoc.id).update({
+        'qty': existingItem.qty + consumedQty,
+        'consumedAt': FieldValue.serverTimestamp(), // Update to latest consumption time
+      });
+    } else {
+      // Create a new consumed entry
+      final consumedItem = item.copyWith(
+        id: null, // Let Firestore generate a new ID
+        qty: consumedQty,
+        status: 'Consumed',
+        consumedAt: DateTime.now(),
+        // Ensure other fields like barcode, name, etc., are copied for identification
+      );
+      await _db.collection('pantryItems').add(consumedItem.toFirestore());
+    }
+  }
+
+  // Get a stream of history items (consumed or deleted) for a specific household
+  Stream<List<PantryItemModel>> getHistoryItemsForHousehold(String householdId) {
+    return _db
+        .collection('pantryItems')
+        .where('householdId', isEqualTo: householdId)
+        .where('status', whereIn: ['Consumed', 'Deleted'])
+        .orderBy('consumedAt', descending: true) // Order by consumedAt first
+        .orderBy('deletedAt', descending: true) // Then by deletedAt
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => PantryItemModel.fromFirestore(doc))
+            .toList());
+  }
+
+  // Clean up history items older than 30 days
+  Future<void> cleanUpHistoryItems(String householdId) async {
+    final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
+
+    // Query for consumed items older than 30 days
+    final consumedQuery = await _db
+        .collection('pantryItems')
+        .where('householdId', isEqualTo: householdId)
+        .where('status', isEqualTo: 'Consumed')
+        .where('consumedAt', isLessThan: thirtyDaysAgo)
+        .get();
+
+    for (final doc in consumedQuery.docs) {
+      await doc.reference.delete();
+    }
+
+    // Query for deleted items older than 30 days
+    final deletedQuery = await _db
+        .collection('pantryItems')
+        .where('householdId', isEqualTo: householdId)
+        .where('status', isEqualTo: 'Deleted')
+        .where('deletedAt', isLessThan: thirtyDaysAgo)
+        .get();
+
+    for (final doc in deletedQuery.docs) {
+      await doc.reference.delete();
+    }
   }
 
   // Get a stream of households for the current user
@@ -254,5 +363,18 @@ class FirestoreService extends ChangeNotifier {
       'householdIds': FieldValue.arrayRemove([householdId]),
     });
     notifyListeners(); // Notify listeners after leaving a household
+  }
+
+  // Delete all history items (consumed and deleted) for a specific household
+  Future<void> deleteAllHistoryItems(String householdId) async {
+    final historyQuery = await _db
+        .collection('pantryItems')
+        .where('householdId', isEqualTo: householdId)
+        .where('status', whereIn: ['Consumed', 'Deleted'])
+        .get();
+
+    for (final doc in historyQuery.docs) {
+      await doc.reference.delete();
+    }
   }
 }
