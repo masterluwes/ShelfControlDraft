@@ -19,6 +19,9 @@ class PantryItemModel {
   DateTime? expirationDate;
   String? netWeight; // New field for net weight
   bool selected; // New field for selection in UI
+  String status; // New field for item status (e.g., "Available", "Active", "At Risk", "Consumed")
+  DateTime? consumedAt; // New field for when the item was consumed
+  DateTime? deletedAt; // New field for when the item was deleted
 
   PantryItemModel({
     this.id,
@@ -39,6 +42,9 @@ class PantryItemModel {
     this.expirationDate,
     this.netWeight, // Add netWeight to constructor
     this.selected = false, // Default to false
+    this.status = 'Available', // Default status to "Available"
+    this.consumedAt, // Add consumedAt to constructor
+    this.deletedAt, // Add deletedAt to constructor
   });
 
   // Factory constructor to create a PantryItemModel from a Firestore document
@@ -63,6 +69,9 @@ class PantryItemModel {
       expirationDate: (data['expirationDate'] as Timestamp?)?.toDate(),
       netWeight: data['netWeight'], // Add netWeight to fromFirestore
       selected: data['selected'] ?? false, // Add selected to fromFirestore
+      status: data['status'] ?? 'Available', // Add status to fromFirestore
+      consumedAt: (data['consumedAt'] as Timestamp?)?.toDate(), // Add consumedAt to fromFirestore
+      deletedAt: (data['deletedAt'] as Timestamp?)?.toDate(), // Add deletedAt to fromFirestore
     );
   }
 
@@ -86,7 +95,37 @@ class PantryItemModel {
       'expirationDate': expirationDate != null ? Timestamp.fromDate(expirationDate!) : null,
       'netWeight': netWeight, // Add netWeight to toFirestore
       'selected': selected, // Add selected to toFirestore
+      'status': status, // Add status to toFirestore
+      'consumedAt': consumedAt != null ? Timestamp.fromDate(consumedAt!) : null, // Add consumedAt to toFirestore
+      'deletedAt': deletedAt != null ? Timestamp.fromDate(deletedAt!) : null, // Add deletedAt to toFirestore
       'timestamp': FieldValue.serverTimestamp(), // Add a timestamp for creation
     };
+  }
+
+  // Method to create a copy of the current object with updated fields
+  PantryItemModel copyWith({String? id, String? status, int? qty, DateTime? consumedAt, DateTime? deletedAt}) {
+    return PantryItemModel(
+      id: id ?? this.id, // Use provided id or current id
+      householdId: householdId,
+      name: name,
+      category: category,
+      imageUrl: imageUrl,
+      qty: qty ?? this.qty, // Use provided qty or current qty
+      expiresText: expiresText,
+      barcode: barcode,
+      brand: brand,
+      quantityUnit: quantityUnit,
+      nutritionFacts: nutritionFacts,
+      shelfLifeDays: shelfLifeDays,
+      shelfLifeWeeks: shelfLifeWeeks,
+      shelfLifeMonths: shelfLifeMonths,
+      manufacturedDate: manufacturedDate,
+      expirationDate: expirationDate,
+      netWeight: netWeight,
+      selected: selected,
+      status: status ?? this.status, // Use provided status or current status
+      consumedAt: consumedAt ?? this.consumedAt, // Use provided consumedAt or current consumedAt
+      deletedAt: deletedAt ?? this.deletedAt, // Use provided deletedAt or current deletedAt
+    );
   }
 }

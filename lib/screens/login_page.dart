@@ -62,9 +62,9 @@ class _LoginPageState extends State<LoginPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Login successful!')),
         );
-        // Navigate to the home screen or feature preview screen upon successful login
+        // Navigate to the dashboard screen upon successful login
         if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/feature-preview');
+        Navigator.pushReplacementNamed(context, '/dashboard');
       } on FirebaseAuthException catch (e) {
         String errorMessage = e.message ?? 'Invalid email or password.';
         // For debugging, you might log the specific error:

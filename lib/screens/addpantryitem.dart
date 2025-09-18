@@ -125,26 +125,31 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
       }
     }
 
-    final newItem = PantryItemModel(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      householdId: firestoreService.selectedHouseholdId!, // Use the provided selected household ID
-      name: _nameCtrl.text,
-      category: _selectedCategory!,
-      imageUrl: imageUrl ?? 'https://via.placeholder.com/150', // Use uploaded image or placeholder
-      qty: int.tryParse(_qtyCtrl.text) ?? 1,
-      expiresText: _expCtrl.text,
-      barcode: _barcodeCtrl.text.isEmpty ? null : _barcodeCtrl.text,
-      brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
-      netWeight: _netWeightCtrl.text.isEmpty ? null : _netWeightCtrl.text,
-      expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text), // Parse expiration date
-    );
-    try {
-      await firestoreService.addPantryItem(newItem); // Add item to Firestore
+      final newItem = PantryItemModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        householdId: firestoreService.selectedHouseholdId!, // Use the provided selected household ID
+        name: _nameCtrl.text,
+        category: _selectedCategory!,
+        imageUrl: imageUrl ?? 'https://via.placeholder.com/150', // Use uploaded image or placeholder
+        qty: int.tryParse(_qtyCtrl.text) ?? 1,
+        expiresText: _expCtrl.text,
+        barcode: _barcodeCtrl.text.isEmpty ? null : _barcodeCtrl.text,
+        brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
+        netWeight: _netWeightCtrl.text.isEmpty ? null : _netWeightCtrl.text,
+        expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text), // Parse expiration date
+        status: 'Available', // Set default status to 'Available'
+      );
+      try {
+        await firestoreService.addPantryItem(newItem); // Add item to Firestore
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Item added successfully!')),
       );
-      Navigator.of(context).pop(); // Pop after adding
+      // Navigate to the DashboardPage with the Pantry tab selected (index 1)
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)),
+        (Route<dynamic> route) => false, // Remove all routes from the stack
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -253,7 +258,7 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                       icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF2E7D32)),
                       onPressed: () {
                         Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(builder: (context) => const DashboardPage()),
+                          MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)), // Navigate back to Dashboard with Pantry tab
                           (Route<dynamic> route) => false, // Remove all routes from the stack
                         );
                       },
@@ -379,7 +384,7 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                     ),
                     onPressed: () {
                       Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (context) => const DashboardPage()),
+                        MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)), // Navigate back to Dashboard with Pantry tab
                         (Route<dynamic> route) => false, // Remove all routes from the stack
                       );
                     },

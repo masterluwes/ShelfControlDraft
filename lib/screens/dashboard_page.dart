@@ -15,6 +15,7 @@ import 'package:shelf_control/screens/household_page.dart';
 import 'package:shelf_control/screens/shoppinglist.dart'; // Import for ShoppingListPage
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:shelf_control/screens/scan_item_screen.dart'; // Import for ScanItemScreen
+import 'package:shelf_control/screens/history_screen.dart'; // Import for HistoryScreen
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:shelf_control/models/household_model.dart'; // Import Household model
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
@@ -22,13 +23,15 @@ import 'package:collection/collection.dart'; // Import for firstWhereOrNull
 import 'package:provider/provider.dart'; // Import provider
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  final int initialIndex; // Add initialIndex parameter
+  const DashboardPage({super.key, this.initialIndex = 0}); // Default to Home (index 0)
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  int _selectedIndex = 0; // Track selected index for bottom navigation
   Widget? _currentBodyWidget;
   bool _isOnNotificationPage = false;
   Widget? _lastPageBeforeNotifications;
@@ -38,31 +41,38 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
-    _currentBodyWidget = const DashboardHome();
+    _selectedIndex = widget.initialIndex; // Set initial index from widget parameter
+    _updateBodyWidget(_selectedIndex); // Set initial body widget
     _listenForNotifications();
+  }
+
+  void _updateBodyWidget(int index) {
+    setState(() {
+      _selectedIndex = index;
+      switch (index) {
+        case 0:
+          _currentBodyWidget = const DashboardHome();
+          break;
+        case 1:
+          _currentBodyWidget = const Pantryinventory();
+          break;
+        case 2:
+          _currentBodyWidget = const Shoppinglist();
+          break;
+        case 3:
+          _currentBodyWidget = const TipsPage();
+          break;
+        default:
+          _currentBodyWidget = const DashboardHome();
+      }
+    });
   }
 
   void _listenForNotifications() {
     // This is a placeholder for future notification backend integration.
   }
 
-  void _showPage(Widget page) {
-    setState(() {
-      _currentBodyWidget = page;
-    });
-  }
-
-  void _showPantryInventory(FirestoreService firestoreService) {
-    _showPage(
-      const Pantryinventory(),
-    );
-  }
-
-  void _showAddPantryItem(FirestoreService firestoreService) {
-    _showPage(
-      const AddPantryItem(),
-    );
-  }
+  // Removed _showPage, _showPantryInventory, _showAddPantryItem as _updateBodyWidget handles navigation within dashboard
 
 
   @override
@@ -147,26 +157,26 @@ class _DashboardPageState extends State<DashboardPage> {
                 Icons.home,
                 Icons.home_outlined,
                 "Home",
-                () => _showPage(const DashboardHome()),
+                0, // Index for Home
               ),
               _navBarItem(
                 Icons.kitchen,
                 Icons.kitchen_outlined,
                 "Pantry",
-                () => _showPantryInventory(firestoreService),
+                1, // Index for Pantry
               ),
               const SizedBox(width: 49),
               _navBarItem(
                 Icons.shopping_cart,
                 Icons.shopping_cart_outlined,
                 "Shopping",
-                () => _showPage(const Shoppinglist()),
+                2, // Index for Shopping
               ),
               _navBarItem(
                 Icons.lightbulb,
                 Icons.lightbulb_outline,
                 "Tips",
-                () => _showPage(const TipsPage()),
+                3, // Index for Tips
               ),
             ],
           ),
@@ -203,8 +213,11 @@ class _DashboardPageState extends State<DashboardPage> {
                 MaterialPageRoute(builder: (context) => const ScanItemScreen()),
               );
               if (scannedItems != null && scannedItems.isNotEmpty) {
-                // No longer adding to _pantryItems directly, as DashboardHome fetches its own data
-                _showPantryInventory(firestoreService); // Refresh pantry inventory to show new items
+                // Navigate to DashboardPage with Pantry tab selected
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)), // 1 for Pantry
+                  (Route<dynamic> route) => false,
+                );
               }
             },
           ),
@@ -213,7 +226,12 @@ class _DashboardPageState extends State<DashboardPage> {
             backgroundColor: Colors.white,
             label: 'Add Manually',
             labelStyle: const TextStyle(fontSize: 18.0, color: Colors.black),
-            onTap: () => _showAddPantryItem(firestoreService),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AddPantryItem()),
+              );
+            },
           ),
         ],
       ),
@@ -225,15 +243,11 @@ class _DashboardPageState extends State<DashboardPage> {
     IconData activeIcon,
     IconData inactiveIcon,
     String label,
-    VoidCallback onTap,
+    int index, // Accept index instead of onTap
   ) {
-    final isActive =
-        (_currentBodyWidget is DashboardHome && label == "Home") ||
-        (_currentBodyWidget is Pantryinventory && label == "Pantry") ||
-        (_currentBodyWidget is Shoppinglist && label == "Shopping") ||
-        (_currentBodyWidget is TipsPage && label == "Tips");
+    final isActive = _selectedIndex == index; // Check if this item is selected
     return InkWell(
-      onTap: onTap,
+      onTap: () => _updateBodyWidget(index), // Call _updateBodyWidget
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -280,6 +294,12 @@ class _DashboardPageState extends State<DashboardPage> {
                 MaterialPageRoute(
                   builder: (context) => const NotificationSettingsPage(),
                 ),
+              );
+            }),
+            _drawerItem(Icons.history, "History", () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HistoryScreen()),
               );
             }),
             _drawerItem(Icons.delete, "Waste Tracker", () {}),

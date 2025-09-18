@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
+import 'package:numberpicker/numberpicker.dart'; // Import numberpicker
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import the new model
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:shelf_control/screens/editpantryitem.dart'; // Import EditPantryItem
 import 'package:provider/provider.dart'; // Import provider
+import 'package:shelf_control/widgets/consume_quantity_bottom_sheet.dart'; // Import the new bottom sheet
 
 class Pantryinventory extends StatefulWidget {
   const Pantryinventory({super.key});
@@ -12,7 +14,8 @@ class Pantryinventory extends StatefulWidget {
   State<Pantryinventory> createState() => _PantryInventoryBodyState();
 }
 
-enum ItemStatus { active, atRisk, available, consumed }
+// Define ItemStatus enum with the new 'consumed' and 'deleted' status
+enum ItemStatus { active, atRisk, available, consumed, deleted }
 
 class _PantryInventoryBodyState extends State<Pantryinventory> {
   // Palette to match your UI
@@ -44,17 +47,26 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   String filterBy = 'All Items';
 
   List<PantryItemModel> _items = [];
+  final Set<String> _selectedItemIds = {}; // To store IDs of selected items
 
   @override
   void initState() {
     super.initState();
   }
 
-  bool get _inSelectMode => _items.any((e) => e.selected);
+  // Determine if selection mode is active
+  bool get _inSelectMode => _selectedItemIds.isNotEmpty;
 
-  // Helper to determine item status based on expiration date
+  // Helper to determine item status based on expiration date and stored status
   ItemStatus _getItemStatus(PantryItemModel item) {
-    if (item.expirationDate == null) return ItemStatus.available; // No expiry, assume available
+    // If the item is already consumed or deleted, return its status directly
+    if (item.status == 'Consumed') return ItemStatus.consumed;
+    if (item.status == 'Deleted') return ItemStatus.deleted; // Add deleted status
+
+    if (item.expirationDate == null) {
+      // If no expiration date, and status is not explicitly set to something else, default to available
+      return ItemStatus.available;
+    }
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -62,14 +74,22 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     final difference = expirationDay.difference(today).inDays;
 
     if (difference < 0) {
-      return ItemStatus.consumed; // Expired
+      // If expired, mark as 'At Risk' (or 'Consumed' if that's the desired behavior for expired items not yet consumed)
+      // For now, let's keep it as 'At Risk' if not explicitly consumed.
+      return ItemStatus.atRisk;
     } else if (difference <= 7) {
-      return ItemStatus.atRisk; // Expiring within 7 days
+      // If expiring within 7 days, mark as 'At Risk'
+      return ItemStatus.atRisk;
+    } else if (item.status == 'Active') {
+      // If manually set to 'Active'
+      return ItemStatus.active;
     } else {
-      return ItemStatus.active; // More than 7 days
+      // Otherwise, default to 'Available'
+      return ItemStatus.available;
     }
   }
 
+  // Helper to get the expiration text
   String _getExpiresText(PantryItemModel item) {
     if (item.expirationDate == null) {
       return 'No expiry date';
@@ -103,7 +123,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
   void _onQueryChanged(String v) => setState(() => _query = v.trim());
 
-  void _deletePantryItem(PantryItemModel item, FirestoreService firestoreService) async {
+  // Delete pantry item
+  Future<void> _deletePantryItem(PantryItemModel item, FirestoreService firestoreService) async {
     if (item.id != null) {
       await firestoreService.deletePantryItem(item.id!);
       if (!mounted) return;
@@ -123,10 +144,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     }
   }
 
+
+
   // ---------- Filtering & Sorting ----------
   List<PantryItemModel> _filteredAndSorted() {
     List<PantryItemModel> list = _items.where((it) {
       final status = _getItemStatus(it);
+      // Apply filter based on selected filterBy option
       switch (filterBy) {
         case 'Active':
           if (status != ItemStatus.active) return false;
@@ -140,9 +164,10 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         case 'Consumed':
           if (status != ItemStatus.consumed) return false;
           break;
-        default:
+        default: // 'All Items'
           break;
       }
+      // Apply search query if active
       if (_query.isNotEmpty) {
         final q = _query.toLowerCase();
         final hit =
@@ -154,40 +179,48 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       return true;
     }).toList();
 
-    switch (sortBy) {
-      case 'Name':
-        list.sort(
-          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-        );
-        break;
-      case 'Quantity':
-        list.sort((a, b) => b.qty.compareTo(a.qty));
-        break;
-      case 'Expiry':
-        list.sort((a, b) {
+    // Custom sorting: At risk first, then by user's preference
+    list.sort((a, b) {
+      final statusA = _getItemStatus(a);
+      final statusB = _getItemStatus(b);
+
+      // Prioritize 'At risk' items
+      if (statusA == ItemStatus.atRisk && statusB != ItemStatus.atRisk) {
+        return -1;
+      }
+      if (statusA != ItemStatus.atRisk && statusB == ItemStatus.atRisk) {
+        return 1;
+      }
+
+      // If both are 'At risk' or neither are 'At risk', apply secondary sort
+      switch (sortBy) {
+        case 'Name':
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        case 'Quantity':
+          return b.qty.compareTo(a.qty);
+        case 'Expiry':
+          // Handle null expiration dates by placing them at the end
           if (a.expirationDate == null && b.expirationDate == null) return 0;
           if (a.expirationDate == null) return 1; // Nulls last
           if (b.expirationDate == null) return -1; // Nulls last
           return a.expirationDate!.compareTo(b.expirationDate!);
-        });
-        break;
-      case 'Category':
-      default:
-        list.sort(
-          (a, b) =>
-              a.category.toLowerCase().compareTo(b.category.toLowerCase()),
-        );
-    }
+        case 'Category':
+        default:
+          return a.category.toLowerCase().compareTo(b.category.toLowerCase());
+      }
+    });
     return list;
   }
 
-  // ---------- UI ----------
-
+  // Widget for the status chip
   Widget _statusChip(PantryItemModel item) {
     String text;
     Color bg;
-    final status = _getItemStatus(item);
-    switch (status) {
+    // Get the current status using the helper function
+    ItemStatus currentStatus = _getItemStatus(item);
+
+    // Determine text and background color based on status
+    switch (currentStatus) {
       case ItemStatus.active:
         text = 'Active';
         bg = const Color(0xFF58A66A); // Green for active
@@ -204,41 +237,177 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         text = 'Consumed';
         bg = Colors.grey.shade500; // Grey for consumed/expired
         break;
+      case ItemStatus.deleted:
+        text = 'Deleted';
+        bg = Colors.black54; // Darker grey for deleted
+        break;
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
+    // Make the chip tappable to change status
+    return GestureDetector(
+      onTap: () => _showStatusChangeDialog(item),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
   }
 
+  // Dialog to change item status
+  void _showStatusChangeDialog(PantryItemModel item) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Change Status'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Available'),
+                onTap: () {
+                  _updateItemStatus(item, 'Available');
+                  Navigator.of(context).pop();
+                },
+              ),
+              ListTile(
+                title: const Text('Active'),
+                onTap: () {
+                  _updateItemStatus(item, 'Active');
+                  Navigator.of(context).pop();
+                },
+              ),
+              ListTile(
+                title: const Text('At risk'),
+                onTap: () {
+                  _updateItemStatus(item, 'At risk');
+                  Navigator.of(context).pop();
+                },
+              ),
+              // Only show 'Consumed' if (item.status != 'Consumed')
+                ListTile(
+                  title: const Text('Consumed'),
+                  onTap: () {
+                    _updateItemStatus(item, 'Consumed');
+                    Navigator.of(context).pop();
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Update item status in Firestore
+  Future<void> _updateItemStatus(PantryItemModel item, String newStatus, {int? consumedQuantity}) async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+
+    if (newStatus == 'Consumed' && consumedQuantity != null) {
+      await firestoreService.recordConsumedItem(item, consumedQuantity);
+    } else if (newStatus == 'Consumed') {
+      // If status is set to consumed without a specific quantity, assume all
+      await firestoreService.recordConsumedItem(item, item.qty);
+    } else {
+      // For other status changes, just update the item
+      PantryItemModel updatedItem = item.copyWith(status: newStatus);
+      await firestoreService.updatePantryItem(updatedItem);
+    }
+  }
+
+  // Dialog to pick quantity for consumption
+  Future<void> _showQuantityPickerDialog(PantryItemModel item) async {
+    int? selectedQuantity = item.qty; // Default to consuming all
+
+    await showDialog<int>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: softCream, // Apply softCream background
+          title: Text(
+            'Consume ${item.name}',
+            style: TextStyle(color: headerGreen, fontWeight: FontWeight.bold), // Apply headerGreen to title
+          ),
+          content: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Available: ${item.qty}', style: const TextStyle(color: Colors.grey)), // Apply grey to available text
+                  NumberPicker(
+                    value: selectedQuantity!,
+                    minValue: 0,
+                    maxValue: item.qty,
+                    onChanged: (value) {
+                      setState(() => selectedQuantity = value);
+                    },
+                    textStyle: const TextStyle(fontSize: 14, color: Colors.black54),
+                    selectedTextStyle: TextStyle(fontSize: 18, color: headerGreen, fontWeight: FontWeight.bold), // Apply headerGreen
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: sep), // Apply sep for border
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              style: TextButton.styleFrom(foregroundColor: headerGreen), // Apply headerGreen to Cancel button
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(selectedQuantity);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: headerGreen), // Apply headerGreen to Consume button
+              child: const Text('Consume', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    ).then((quantity) async {
+      if (quantity != null && quantity > 0) {
+        // Explicitly set newStatus to 'Consumed' when consuming via the dialog
+        await _updateItemStatus(item, 'Consumed', consumedQuantity: quantity);
+      }
+    });
+  }
+
+  // Widget for dropdown pills (Sort by, Filter)
   Widget _dropdownPill({
     required String label,
     required String value,
     required List<String> items,
     required void Function(String?) onChanged,
+    double? width, // Optional width parameter
   }) {
     return Container(
+      width: width, // Apply optional width
       decoration: BoxDecoration(
         color: const Color(0xFFE9E1C7),
         borderRadius: BorderRadius.circular(24),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 4), // Reduced horizontal padding
       margin: const EdgeInsets.only(right: 8),
       child: DropdownButtonHideUnderline(
         child: DropdownButton2<String>(
           value: value,
           customButton: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), // Reduced horizontal padding
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -247,19 +416,24 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     color: Color(0xFF20451F),
+                    fontSize: 13, // Reduced font size
                   ),
                 ),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF20451F),
+                Flexible( // Use Flexible to prevent text overflow
+                  child: Text(
+                    value,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF20451F),
+                      fontSize: 13, // Reduced font size
+                    ),
+                    overflow: TextOverflow.ellipsis, // Add ellipsis for long text
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4), // Reduced spacing
                 const Icon(
                   Icons.keyboard_arrow_down_rounded,
-                  size: 20,
+                  size: 18, // Reduced icon size
                   color: Color(0xFF20451F),
                 ),
               ],
@@ -271,7 +445,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                   value: e,
                   child: Text(
                     e,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13), // Reduced font size
                   ),
                 ),
               )
@@ -286,15 +460,79 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             ),
           ),
           menuItemStyleData: const MenuItemStyleData(
-            height: 40,
-            padding: EdgeInsets.symmetric(horizontal: 12),
+            height: 36, // Reduced item height
+            padding: EdgeInsets.symmetric(horizontal: 10), // Reduced padding
           ),
         ),
       ),
     );
   }
 
-  // Title like the screenshot (inside the cream area)
+  // Selection mode top bar
+  Widget _selectionModeTopBar(FirestoreService firestoreService) {
+    return Container(
+      color: headerGreen,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.check_box_rounded, color: Colors.white),
+            onPressed: () {
+              setState(() {
+                _selectedItemIds.clear();
+              });
+            },
+          ),
+          Text(
+            '${_selectedItemIds.length} Items',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const Spacer(),
+          IconButton(
+            tooltip: 'Mark as Consumed',
+            icon: const Icon(Icons.restaurant_menu, color: Colors.white),
+            onPressed: () async {
+              List<PantryItemModel> itemsToProcess = _selectedItemIds
+                  .map((id) => _items.firstWhere((element) => element.id == id))
+                  .toList();
+
+              if (itemsToProcess.length == 1) {
+                await _showQuantityPickerDialog(itemsToProcess.first);
+              } else if (itemsToProcess.length > 1) {
+                await showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (context) => ConsumeQuantityBottomSheet(items: itemsToProcess),
+                );
+              }
+              setState(() {
+                _selectedItemIds.clear();
+              });
+            },
+          ),
+          IconButton(
+            tooltip: 'Delete Selected',
+            icon: const Icon(Icons.delete, color: Colors.white),
+            onPressed: () async {
+              for (String itemId in _selectedItemIds) {
+                final item = _items.firstWhere((element) => element.id == itemId);
+                await _deletePantryItem(item, firestoreService);
+              }
+              setState(() {
+                _selectedItemIds.clear();
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Title widget
   Widget _bigTitle() {
     return const Padding(
       padding: EdgeInsets.fromLTRB(12, 12, 12, 6),
@@ -302,17 +540,17 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         'Pantry Inventory',
         style: TextStyle(
           color: Color(0xFF20451F),
-          fontSize: 24, // Reduced font size
+          fontSize: 24,
           fontWeight: FontWeight.w900,
         ),
       ),
     );
   }
 
-  // Controls aligned like the picture; pills never overflow because we give them
-  // a horizontal scroll container; the search icon stays at the right edge.
+  // Controls row (Sort by, Filter, Search)
   Widget _controlsRow() {
     if (isSearching) {
+      // Search input field
       return Padding(
         padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
         child: SizedBox(
@@ -356,11 +594,11 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       );
     }
 
+    // Pills for sorting and filtering
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 2, 8, 10),
       child: Row(
         children: [
-          // Pills area that can scroll horizontally to avoid overflow
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -375,6 +613,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                       if (v == null) return;
                       setState(() => sortBy = v);
                     },
+                    width: 120, // Set a fixed width for Sort by
                   ),
                   _dropdownPill(
                     label: 'Filter',
@@ -384,6 +623,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                       if (v == null) return;
                       setState(() => filterBy = v);
                     },
+                    width: 120, // Set a fixed width for Filter
                   ),
                 ],
               ),
@@ -399,22 +639,49 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
+  // Widget for each row in the inventory list
   Widget _rowTile(PantryItemModel item, int visualIndex) {
     return Material(
       color: visualIndex.isEven ? Colors.white : rowAlt,
       child: InkWell(
-        onLongPress: () => setState(() => item.selected = !item.selected),
+        onLongPress: () {
+          setState(() {
+            if (_selectedItemIds.contains(item.id)) {
+              _selectedItemIds.remove(item.id);
+            } else {
+              _selectedItemIds.add(item.id!);
+            }
+          });
+        },
         onTap: () {
-          if (_inSelectMode) setState(() => item.selected = !item.selected);
+          if (_inSelectMode) {
+            setState(() {
+              if (_selectedItemIds.contains(item.id)) {
+                _selectedItemIds.remove(item.id);
+              } else {
+                _selectedItemIds.add(item.id!);
+              }
+            });
+          }
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
+              // Checkbox for selection mode
               Checkbox(
-                value: item.selected,
-                onChanged: (v) => setState(() => item.selected = v ?? false),
+                value: _selectedItemIds.contains(item.id),
+                onChanged: (v) {
+                  setState(() {
+                    if (v == true) {
+                      _selectedItemIds.add(item.id!);
+                    } else {
+                      _selectedItemIds.remove(item.id);
+                    }
+                  });
+                },
               ),
+              // Item image
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Image.network(
@@ -422,10 +689,11 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                   width: 44,
                   height: 44,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, _ , _ ) => const Icon(Icons.image),
+                  errorBuilder: (_, __, _) => const Icon(Icons.image),
                 ),
               ),
               const SizedBox(width: 12),
+              // Item details
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,13 +709,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-                    Column( // Use a Column for vertical alignment
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           '• ${item.category}',
                           style: const TextStyle(
-                            fontSize: 11, // Reduced font size
+                            fontSize: 11,
                             color: Color(0xFF6F6F6F),
                           ),
                         ),
@@ -455,7 +723,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                         Text(
                           'Qty: ${item.qty}',
                           style: const TextStyle(
-                            fontSize: 11, // Reduced font size
+                            fontSize: 11,
                             color: Color(0xFF6F6F6F),
                             fontWeight: FontWeight.w700,
                           ),
@@ -464,7 +732,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                         Text(
                           'Expires in: ${_getExpiresText(item)}',
                           style: const TextStyle(
-                            fontSize: 11, // Reduced font size
+                            fontSize: 11,
                             color: Color(0xFF6F6F6F),
                             fontWeight: FontWeight.w700,
                           ),
@@ -475,6 +743,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                 ),
               ),
               const SizedBox(width: 12),
+              // Status chip
               _statusChip(item),
             ],
           ),
@@ -483,6 +752,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
+  // Widget for dismissible rows (delete/edit)
   Widget _dismissibleRow(List<PantryItemModel> view, int idx, FirestoreService firestoreService) {
     final item = view[idx];
     return Dismissible(
@@ -502,19 +772,20 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          // RIGHT → delete with Undo
-          _deletePantryItem(item, firestoreService);
-          return true; // remove from the visible list
+          // Swipe right to delete
+          await _deletePantryItem(item, firestoreService);
+          return true; // Remove item from the visible list
         } else {
-          // LEFT → go to edit (do NOT dismiss)
+          // Swipe left to edit
           final result = await Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => EditPantryItem(item: item)),
           );
+          // If item was edited, update it in Firestore
           if (result != null && result is PantryItemModel) {
             await firestoreService.updatePantryItem(result);
           }
-          return false;
+          return false; // Do not dismiss the item
         }
       },
       child: _rowTile(item, idx),
@@ -523,42 +794,53 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
   @override
   Widget build(BuildContext context) {
-    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+    final firestoreService = Provider.of<FirestoreService>(context);
 
+    // Show message if no household is selected
     if (firestoreService.selectedHouseholdId == null) {
       return const Center(child: Text('No household selected.'));
     }
 
     return Scaffold(
-      backgroundColor: softCream, // Use your softCream color
+      backgroundColor: softCream,
       body: SafeArea(
         child: StreamBuilder<List<PantryItemModel>>(
+          // Stream to get pantry items for the selected household
           stream: firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
           builder: (context, snapshot) {
+            // Show loading indicator while fetching data
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
+            // Show error message if fetching fails
             if (snapshot.hasError) {
               return Center(child: Text('Error: ${snapshot.error}'));
             }
+            // Show message if no items are found
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
               return const Center(child: Text('No pantry items yet. Add some!'));
             }
 
+            // Update the local items list and filtered/sorted view
             _items = snapshot.data!;
             final view = _filteredAndSorted();
 
+            // Build the main UI layout
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _bigTitle(),
-                _controlsRow(), // pills or search field
+                if (_inSelectMode)
+                  _selectionModeTopBar(firestoreService)
+                else ...[
+                  _bigTitle(), // Pantry Inventory title
+                  _controlsRow(), // Search, Sort, and Filter controls
+                ],
                 const Divider(height: 1, thickness: 1, color: Color(0xFFE9E1C7)),
+                // List of pantry items
                 Expanded(
                   child: ListView.separated(
                     itemCount: view.length,
-                    separatorBuilder: (_, _ ) =>
-                        Divider(height: 1, thickness: 1, color: sep),
+                    separatorBuilder: (_, __) => Divider(height: 1, thickness: 1, color: sep),
                     itemBuilder: (_, i) => _dismissibleRow(view, i, firestoreService),
                   ),
                 ),
