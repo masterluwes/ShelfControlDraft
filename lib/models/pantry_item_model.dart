@@ -22,6 +22,8 @@ class PantryItemModel {
   String status; // New field for item status (e.g., "Available", "Active", "At Risk", "Consumed")
   DateTime? consumedAt; // New field for when the item was consumed
   DateTime? deletedAt; // New field for when the item was deleted
+  String? notes; // New field for notes
+  String? storageLocation; // New field for storage location
 
   PantryItemModel({
     this.id,
@@ -45,6 +47,8 @@ class PantryItemModel {
     this.status = 'Available', // Default status to "Available"
     this.consumedAt, // Add consumedAt to constructor
     this.deletedAt, // Add deletedAt to constructor
+    this.notes, // Add notes to constructor
+    this.storageLocation, // Add storageLocation to constructor
   });
 
   // Factory constructor to create a PantryItemModel from a Firestore document
@@ -72,6 +76,8 @@ class PantryItemModel {
       status: data['status'] ?? 'Available', // Add status to fromFirestore
       consumedAt: (data['consumedAt'] as Timestamp?)?.toDate(), // Add consumedAt to fromFirestore
       deletedAt: (data['deletedAt'] as Timestamp?)?.toDate(), // Add deletedAt to fromFirestore
+      notes: data['notes'], // Add notes to fromFirestore
+      storageLocation: data['storageLocation'], // Add storageLocation to fromFirestore
     );
   }
 
@@ -98,12 +104,22 @@ class PantryItemModel {
       'status': status, // Add status to toFirestore
       'consumedAt': consumedAt != null ? Timestamp.fromDate(consumedAt!) : null, // Add consumedAt to toFirestore
       'deletedAt': deletedAt != null ? Timestamp.fromDate(deletedAt!) : null, // Add deletedAt to toFirestore
+      'notes': notes, // Add notes to toFirestore
+      'storageLocation': storageLocation, // Add storageLocation to toFirestore
       'timestamp': FieldValue.serverTimestamp(), // Add a timestamp for creation
     };
   }
 
   // Method to create a copy of the current object with updated fields
-  PantryItemModel copyWith({String? id, String? status, int? qty, DateTime? consumedAt, DateTime? deletedAt}) {
+  PantryItemModel copyWith({
+    String? id,
+    String? status,
+    int? qty,
+    DateTime? consumedAt,
+    DateTime? deletedAt,
+    String? notes, // Add notes to copyWith
+    String? storageLocation, // Add storageLocation to copyWith
+  }) {
     return PantryItemModel(
       id: id ?? this.id, // Use provided id or current id
       householdId: householdId,
@@ -126,6 +142,8 @@ class PantryItemModel {
       status: status ?? this.status, // Use provided status or current status
       consumedAt: consumedAt ?? this.consumedAt, // Use provided consumedAt or current consumedAt
       deletedAt: deletedAt ?? this.deletedAt, // Use provided deletedAt or current deletedAt
+      notes: notes ?? this.notes, // Use provided notes or current notes
+      storageLocation: storageLocation ?? this.storageLocation, // Use provided storageLocation or current storageLocation
     );
   }
 }
