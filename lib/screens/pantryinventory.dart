@@ -662,6 +662,14 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                 _selectedItemIds.add(item.id!);
               }
             });
+          } else {
+            // Navigate to item details/edit screen in view mode
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => EditPantryItem(item: item, isViewing: true),
+              ),
+            );
           }
         },
         child: Padding(

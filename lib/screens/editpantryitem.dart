@@ -11,8 +11,9 @@ import 'package:firebase_storage/firebase_storage.dart'; // Import firebase_stor
 
 class EditPantryItem extends StatefulWidget {
   final PantryItemModel item;
+  final bool isViewing; // New parameter
 
-  const EditPantryItem({super.key, required this.item});
+  const EditPantryItem({super.key, required this.item, this.isViewing = false});
 
   @override
   State<EditPantryItem> createState() => _EditPantryItemBodyState();
@@ -58,7 +59,7 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
     _qtyCtrl = TextEditingController(text: widget.item.qty.toString());
     _expCtrl = TextEditingController(text: widget.item.expirationDate != null ? DateFormat('MMMM d, yyyy').format(widget.item.expirationDate!) : '');
     _dopCtrl = TextEditingController(text: widget.item.manufacturedDate != null ? DateFormat('MMMM d, yyyy').format(widget.item.manufacturedDate!) : '');
-    _notesCtrl = TextEditingController(text: ''); // Assuming notes are not part of PantryItemModel yet
+    _notesCtrl = TextEditingController(text: widget.item.notes ?? ''); // Initialize with item's notes
     _barcodeCtrl = TextEditingController(text: widget.item.barcode ?? '');
     _brandCtrl = TextEditingController(text: widget.item.brand ?? '');
     _quantityUnitCtrl = TextEditingController(text: widget.item.netWeight ?? '');
@@ -142,6 +143,7 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
       manufacturedDate: _dopCtrl.text.isNotEmpty ? DateFormat('MMMM d, yyyy').parse(_dopCtrl.text) : null,
       expirationDate: _expCtrl.text.isNotEmpty ? DateFormat('MMMM d, yyyy').parse(_expCtrl.text) : null,
       selected: widget.item.selected,
+      notes: _notesCtrl.text.isEmpty ? null : _notesCtrl.text, // Save notes
     );
     await firestoreService.updatePantryItem(updatedItem);
     if (!mounted) return;
@@ -195,11 +197,11 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
   }
 
   // Green dropdown like in the mock
-  Widget _greenDropdown() {
+  Widget _greenDropdown({bool readOnly = false}) {
     return Container(
       height: 40,
       decoration: BoxDecoration(
-        color: headerGreen,
+        color: readOnly ? const Color(0xFFE9E9E9) : headerGreen,
         borderRadius: BorderRadius.circular(8),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -207,11 +209,11 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
         child: DropdownButton<String>(
           isExpanded: true,
           value: _selectedCategory,
-          icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+          icon: Icon(Icons.keyboard_arrow_down, color: readOnly ? Colors.black54 : Colors.white),
           dropdownColor: Colors.white,
-          hint: const Text(
+          hint: Text(
             'Select Category',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            style: TextStyle(color: readOnly ? Colors.black54 : Colors.white, fontWeight: FontWeight.w600),
           ),
           items: _categories
               .map(
@@ -224,15 +226,181 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
                 ),
               )
               .toList(),
-          onChanged: (val) => setState(() => _selectedCategory = val),
+          onChanged: readOnly ? null : (val) => setState(() => _selectedCategory = val),
         ),
       ),
     );
   }
 
+  // Widget to display a read-only value
+  Widget _displayField(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(label),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE9E9E9),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            value.isEmpty ? 'N/A' : value,
+            style: const TextStyle(fontSize: 14, color: Colors.black87),
+          ),
+        ),
+        const SizedBox(height: 14),
+      ],
+    );
+  }
+
+  // Widget for Storage Location
+  Widget _storageLocationSection() {
+    final String storageLocation = widget.item.storageLocation ?? 'Not specified';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label('Storage Location'),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE9E9E9),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            storageLocation,
+            style: const TextStyle(fontSize: 14, color: Colors.black87),
+          ),
+        ),
+        const SizedBox(height: 14),
+      ],
+    );
+  }
+
+  // Widget for Tips Section
+  Widget _tipsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Tips',
+          style: TextStyle(
+            color: headerGreen,
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _tipCard(
+          title: 'Meal Plan Suggestions',
+          content: 'This section will provide meal ideas using ${widget.item.name}.',
+          icon: Icons.restaurant_menu,
+        ),
+        _tipCard(
+          title: 'Proper Storage',
+          content: 'Learn how to store ${widget.item.name} to maximize its shelf life.',
+          icon: Icons.archive,
+        ),
+        _tipCard(
+          title: 'Nutrition Information',
+          content: 'Get detailed nutritional facts for ${widget.item.name}.',
+          icon: Icons.food_bank, // Changed to a valid icon
+        ),
+        const SizedBox(height: 22),
+      ],
+    );
+  }
+
+  // Helper for tip cards
+  Widget _tipCard({required String title, required String content, required IconData icon}) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: headerGreen, size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: headerGreen,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    content,
+                    style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Widget for section titles
+  Widget _sectionTitle(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: headerGreen,
+          fontWeight: FontWeight.w800,
+          fontSize: 18,
+        ),
+      ),
+    );
+  }
+
+  // Helper widget for compact info fields
+  Widget _compactInfoField({
+    required String label,
+    required String value,
+    required bool isViewing,
+    TextEditingController? controller,
+    TextInputType keyboardType = TextInputType.text,
+    bool readOnly = false,
+    VoidCallback? onTap,
+  }) {
+    return SizedBox(
+      width: 150, // Fixed width for compact fields
+      child: isViewing
+          ? _displayField(label, value)
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _label(label),
+                _filledField(
+                  controller!,
+                  readOnly: readOnly,
+                  onTap: onTap,
+                  keyboardType: keyboardType,
+                ),
+                const SizedBox(height: 14),
+              ],
+            ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+    final firestoreService = Provider.of<FirestoreService>(context);
+    final bool isViewing = widget.isViewing; // Get the isViewing state
 
     return Scaffold(
       backgroundColor: softCream,
@@ -260,11 +428,25 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    const Spacer(),
+                    if (isViewing)
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Color(0xFF2E7D32)),
+                        onPressed: () {
+                          // Navigate to edit mode
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => EditPantryItem(item: widget.item, isViewing: false),
+                            ),
+                          );
+                        },
+                      ),
                   ],
                 ),
               ),
               Text(
-                'Edit Pantry Item',
+                isViewing ? 'Pantry Item Details' : 'Edit Pantry Item',
                 style: TextStyle(
                   color: headerGreen,
                   fontWeight: FontWeight.w800,
@@ -276,7 +458,7 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
               // Image placeholder
               Center(
                 child: GestureDetector(
-                  onTap: _pickImage,
+                  onTap: isViewing ? null : _pickImage, // Disable tap if viewing
                   child: CircleAvatar(
                     radius: 50,
                     backgroundColor: Colors.grey[300],
@@ -298,130 +480,188 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
               const SizedBox(height: 24),
 
               // Item Name
-              _label('Item Name'),
-              _filledField(_nameCtrl),
-              const SizedBox(height: 14),
+              _sectionTitle('Item Details'),
+              const SizedBox(height: 12),
+              isViewing
+                  ? _displayField('Item Name', _nameCtrl.text)
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _label('Item Name'),
+                        _filledField(_nameCtrl, readOnly: isViewing),
+                        const SizedBox(height: 14),
+                      ],
+                    ),
 
-              // Barcode
-              _label('Barcode (Optional)'),
-              _filledField(_barcodeCtrl),
-              const SizedBox(height: 14),
-
-              // Brand
-              _label('Brand (Optional)'),
-              _filledField(_brandCtrl),
-              const SizedBox(height: 14),
-
-              // Item Category (green dropdown)
-              _label('Item Category'),
-              _greenDropdown(),
-              const SizedBox(height: 14),
-
-              // Quantity
-              _label('Quantity'),
-              _filledField(_qtyCtrl, keyboardType: TextInputType.number), // Set keyboardType
-              const SizedBox(height: 14),
-
-              // Net Weight
-              _label('Net Weight (e.g., "1L", "397g") (Optional)'),
-              _filledField(_quantityUnitCtrl),
-              const SizedBox(height: 14),
-
-              // Expiration Date
-              _label('Expiration Date'),
-              _filledField(
-                _expCtrl,
-                readOnly: true,
-                onTap: () async {
-                  final pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: DateTime.now(),
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (pickedDate != null) {
-                    setState(() {
-                      _expCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
-                    });
-                  }
-                },
-              ),
-              const SizedBox(height: 14),
-
-              // Date of Purchase
-              _label('Date of Purchase'),
-              _filledField(
-                _dopCtrl,
-                readOnly: true,
-                onTap: () async {
-                  final pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: DateTime.now(),
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (pickedDate != null) {
-                    setState(() {
-                      _dopCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
-                    });
-                  }
-                },
-              ),
-              const SizedBox(height: 14),
-
-              // Notes
-              _label('Notes (Optional)'),
-              _filledField(_notesCtrl, maxLines: 5),
-              const SizedBox(height: 22),
-
-              // Action buttons
-              Row(
+              // Quantity, Net Weight, Expiration Date, Date of Purchase in a more compact layout
+              Wrap(
+                spacing: 12.0, // Horizontal space between chips
+                runSpacing: 12.0, // Vertical space between lines of chips
                 children: [
-                  // Cancel (light with green border)
-                  OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: headerGreen,
-                      side: BorderSide(color: headerGreen, width: 1.2),
-                      backgroundColor: softCream,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      textStyle: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                  _compactInfoField(
+                    label: 'Quantity',
+                    value: _qtyCtrl.text,
+                    isViewing: isViewing,
+                    controller: _qtyCtrl,
+                    keyboardType: TextInputType.number,
                   ),
-                  const SizedBox(width: 12),
-
-                  // Edit (solid green)
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: headerGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 26,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      textStyle: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
-                    onPressed: () => _saveChanges(firestoreService),
-                    child: const Text('Save'),
+                  _compactInfoField(
+                    label: 'Net Weight',
+                    value: _quantityUnitCtrl.text,
+                    isViewing: isViewing,
+                    controller: _quantityUnitCtrl,
+                  ),
+                  _compactInfoField(
+                    label: 'Expiration Date',
+                    value: _expCtrl.text,
+                    isViewing: isViewing,
+                    controller: _expCtrl,
+                    readOnly: true,
+                    onTap: isViewing
+                        ? null
+                        : () async {
+                            final pickedDate = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (pickedDate != null) {
+                              setState(() {
+                                _expCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
+                              });
+                            }
+                          },
+                  ),
+                  _compactInfoField(
+                    label: 'Date of Purchase',
+                    value: _dopCtrl.text,
+                    isViewing: isViewing,
+                    controller: _dopCtrl,
+                    readOnly: true,
+                    onTap: isViewing
+                        ? null
+                        : () async {
+                            final pickedDate = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (pickedDate != null) {
+                              setState(() {
+                                _dopCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
+                              });
+                            }
+                          },
                   ),
                 ],
               ),
+              const SizedBox(height: 14),
+
+              // Barcode and Brand in a row
+              Wrap(
+                spacing: 12.0,
+                runSpacing: 12.0,
+                children: [
+                  _compactInfoField(
+                    label: 'Barcode',
+                    value: _barcodeCtrl.text,
+                    isViewing: isViewing,
+                    controller: _barcodeCtrl,
+                  ),
+                  _compactInfoField(
+                    label: 'Brand',
+                    value: _brandCtrl.text,
+                    isViewing: isViewing,
+                    controller: _brandCtrl,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Item Category
+              _sectionTitle('Item Category'),
+              const SizedBox(height: 12),
+              isViewing
+                  ? _displayField('Category', _selectedCategory ?? 'N/A')
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _greenDropdown(readOnly: isViewing),
+                        const SizedBox(height: 14),
+                      ],
+                    ),
+
+              // Notes
+              _sectionTitle('Notes'),
+              const SizedBox(height: 12),
+              isViewing
+                  ? _displayField('Notes', _notesCtrl.text)
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _label('Notes (Optional)'),
+                        _filledField(_notesCtrl, maxLines: 5, readOnly: isViewing),
+                        const SizedBox(height: 22),
+                      ],
+                    ),
+
+              // Storage Location Section
+              if (isViewing) _storageLocationSection(),
+
+              // Tips Section
+              if (isViewing) _tipsSection(),
+
+              // Action buttons
+              if (!isViewing)
+                Row(
+                  children: [
+                    // Cancel (light with green border)
+                    OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: headerGreen,
+                        side: BorderSide(color: headerGreen, width: 1.2),
+                        backgroundColor: softCream,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 22,
+                          vertical: 8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        textStyle: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Edit (solid green)
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: headerGreen,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 26,
+                          vertical: 10,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        textStyle: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                      onPressed: () => _saveChanges(firestoreService),
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
               const SizedBox(height: 12),
               // Delete button
               Center(
