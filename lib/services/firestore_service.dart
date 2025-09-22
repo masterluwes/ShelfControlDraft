@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart'; // Import for ChangeNotifier
 import 'package:shelf_control/models/pantry_item_model.dart';
 import 'package:shelf_control/models/household_model.dart'; // Import Household model
+import 'package:shelf_control/models/product_model.dart'; // Import Product model
 import 'package:shelf_control/models/user_model.dart'; // Import UserModel
 import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
@@ -376,5 +377,21 @@ class FirestoreService extends ChangeNotifier {
     for (final doc in historyQuery.docs) {
       await doc.reference.delete();
     }
+  }
+
+  // Search for products in the local_products_ph collection
+  Stream<List<Product>> searchProducts(String query) {
+    if (query.isEmpty) {
+      return Stream.value([]);
+    }
+    return _db
+        .collection('local_products_ph')
+        .where('productName', isGreaterThanOrEqualTo: query)
+        .where('productName', isLessThanOrEqualTo: '$query\uf8ff')
+        .limit(10) // Limit to 10 suggestions
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => Product.fromFirestore(doc))
+            .toList());
   }
 }

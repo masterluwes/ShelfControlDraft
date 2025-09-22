@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
+import 'package:shelf_control/models/product_model.dart'; // Import ProductModel
 import 'package:intl/intl.dart';
 import 'dart:io'; // Import dart:io for File
 
@@ -34,6 +35,9 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
   File? _imageFile; // To store the picked image
   final ImagePicker _picker = ImagePicker(); // Image picker instance
 
+  DateTime? _selectedExpDate; // To store the actual expiration date
+  DateTime? _selectedDopDate; // To store the actual date of purchase
+
   final List<String> _categories = <String>[
     'Uncategorized',
     'Beverages',
@@ -50,10 +54,11 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
   @override
   void initState() {
     super.initState();
+    _selectedDopDate = DateTime.now(); // Initialize with today's date
     _nameCtrl = TextEditingController(text: '');
     _qtyCtrl = TextEditingController(text: '1');
     _expCtrl = TextEditingController(text: '');
-    _dopCtrl = TextEditingController(text: DateFormat('MMMM d, yyyy').format(DateTime.now()));
+    _dopCtrl = TextEditingController(text: DateFormat('MMMM d, yyyy').format(_selectedDopDate!));
     _notesCtrl = TextEditingController(text: '');
     _barcodeCtrl = TextEditingController(text: '');
     _brandCtrl = TextEditingController(text: '');
@@ -101,7 +106,7 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
   }
 
   Future<void> _registerItem(FirestoreService firestoreService) async {
-    if (_nameCtrl.text.isEmpty || _selectedCategory == null || _qtyCtrl.text.isEmpty || _expCtrl.text.isEmpty || _dopCtrl.text.isEmpty) {
+    if (_nameCtrl.text.isEmpty || _selectedCategory == null || _qtyCtrl.text.isEmpty || _expCtrl.text.isEmpty || _selectedDopDate == null) {
       if (!mounted) return; // Guard against async gap
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill all required fields')),
@@ -136,7 +141,8 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
         barcode: _barcodeCtrl.text.isEmpty ? null : _barcodeCtrl.text,
         brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
         netWeight: _netWeightCtrl.text.isEmpty ? null : _netWeightCtrl.text,
-        expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text), // Parse expiration date
+        expirationDate: _selectedExpDate, // Use the stored DateTime object
+        manufacturedDate: _selectedDopDate, // Use the stored DateTime object
         status: 'Available', // Set default status to 'Available'
       );
       try {
@@ -305,7 +311,47 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
               ),
               const SizedBox(height: 24),
               label('Item Name'),
-              filledField(_nameCtrl),
+              Autocomplete<Product>(
+                optionsBuilder: (TextEditingValue textEditingValue) {
+                  if (textEditingValue.text.isEmpty) {
+                    return const Iterable<Product>.empty();
+                  }
+                  return firestoreService.searchProducts(textEditingValue.text).first;
+                },
+                displayStringForOption: (Product option) => option.productName,
+                fieldViewBuilder: (BuildContext context,
+                    TextEditingController fieldTextEditingController,
+                    FocusNode fieldFocusNode,
+                    VoidCallback onFieldSubmitted) {
+                  _nameCtrl = fieldTextEditingController; // Keep _nameCtrl updated
+                  return TextField(
+                    controller: fieldTextEditingController,
+                    focusNode: fieldFocusNode,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      filled: true,
+                      fillColor: const Color(0xFFE9E9E9),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    style: const TextStyle(fontSize: 14),
+                  );
+                },
+                onSelected: (Product selection) {
+                  setState(() {
+                    _nameCtrl.text = selection.productName;
+                    _netWeightCtrl.text = selection.netWeight ?? '';
+                    // Optionally set brand if available in Product model
+                    // _brandCtrl.text = selection.brand ?? '';
+                  });
+                },
+              ),
               const SizedBox(height: 14),
               label('Barcode (Optional)'),
               filledField(_barcodeCtrl),
@@ -329,12 +375,13 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                 onTap: () async {
                   final pickedDate = await showDatePicker(
                     context: context,
-                    initialDate: DateTime.now(),
+                    initialDate: _selectedExpDate ?? DateTime.now(),
                     firstDate: DateTime(2000),
                     lastDate: DateTime(2100),
                   );
                   if (pickedDate != null) {
                     setState(() {
+                      _selectedExpDate = pickedDate;
                       _expCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
                     });
                   }
@@ -348,12 +395,13 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                 onTap: () async {
                   final pickedDate = await showDatePicker(
                     context: context,
-                    initialDate: DateTime.now(),
+                    initialDate: _selectedDopDate ?? DateTime.now(),
                     firstDate: DateTime(2000),
                     lastDate: DateTime(2100),
                   );
                   if (pickedDate != null) {
                     setState(() {
+                      _selectedDopDate = pickedDate;
                       _dopCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
                     });
                   }
