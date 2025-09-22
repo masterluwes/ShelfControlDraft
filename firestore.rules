@@ -40,5 +40,10 @@ service cloud.firestore {
       allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]);
       allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
     }
+
+    // Allow authenticated users to read from the local_products_ph collection
+    match /local_products_ph/{productId} {
+      allow read: if request.auth.uid != null;
+    }
   }
 }

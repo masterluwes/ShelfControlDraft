@@ -1,3 +1,4 @@
+import 'dart:async'; // Import for Timer
 import 'package:flutter/material.dart';
 import 'package:shelf_control/services/open_food_facts_service.dart';
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import the new model
@@ -15,6 +16,7 @@ class ScanItemScreen extends StatefulWidget {
 
 class _ScanItemScreenState extends State<ScanItemScreen> {
   bool _isLoading = false;
+  bool _isProcessingBarcode = false; // New flag to prevent re-entry
   final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService();
   final Logger _logger = Logger(); // Initialize logger
   late MobileScannerController _scannerController; // Declare controller
@@ -51,11 +53,30 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
 
   void _onSheetScrolled() {
     if (!mounted) return;
-    final isExpanded = _sheetController.size > 0.2;
-    if (_isSheetExpanded != isExpanded) {
+    final currentSize = _sheetController.size;
+    final wasExpanded = _isSheetExpanded;
+    // Use the hardcoded minChildSize value from the DraggableScrollableSheet
+    const double minSheetSize = 0.12;
+    final isNowExpanded = currentSize > minSheetSize + 0.01; // A small buffer
+
+    if (wasExpanded && !isNowExpanded) {
+      // Sheet is collapsing
       setState(() {
-        _isSheetExpanded = isExpanded;
+        _isSheetExpanded = false;
       });
+      // If the sheet is fully collapsed, restart the scanner
+      if (currentSize <= minSheetSize + 0.01) { // Check if it's at or very near min size
+        _scannerController.start();
+        _logger.d('Scanner restarted due to sheet collapse.');
+      }
+    } else if (!wasExpanded && isNowExpanded) {
+      // Sheet is expanding
+      setState(() {
+        _isSheetExpanded = true;
+      });
+      // Stop scanner when sheet expands
+      _scannerController.stop();
+      _logger.d('Scanner stopped due to sheet expansion.');
     }
   }
 
@@ -73,18 +94,23 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
   }
 
   Future<void> _processBarcode(String barcodeScanRes, FirestoreService firestoreService) async {
-    if (!mounted) return;
-    if (_isLoading) return; // Prevent multiple scans
+    if (!mounted || _isProcessingBarcode) return; // Prevent multiple scans or re-entry
 
     setState(() {
       _isLoading = true;
+      _isProcessingBarcode = true; // Set flag to true
     });
+
+    // Stop scanner immediately after a successful scan
+    _scannerController.stop();
+    _logger.d('Scanner stopped after barcode detection.');
 
     await _fetchProductDetails(barcodeScanRes, firestoreService);
 
     if (mounted) {
       setState(() {
         _isLoading = false;
+        _isProcessingBarcode = false; // Reset flag
       });
     }
   }
@@ -127,24 +153,31 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         _scannedItems.add(newItem);
         _currentItemIndex = _scannedItems.length - 1;
         _updateControllersForItem(_currentItemIndex);
-      _scannerController.stop();
-    });
+      });
 
-    // Expand the sheet after a successful scan, only if attached
-    if (_sheetController.isAttached) {
-      _sheetController.animateTo(
-        0.9,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+      // Expand the sheet after a successful scan, ensuring it happens after the build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_sheetController.isAttached) {
+          _sheetController.animateTo(
+            0.9,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+          _logger.d('DraggableScrollableSheet animated to 0.9 (expanded).');
+        } else {
+          _logger.d('DraggableScrollableSheet not attached, cannot animate.');
+        }
+      });
+
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Product not found or error fetching data.')),
       );
+      // If product not found, restart scanner
+      _scannerController.start();
+      _logger.d('Scanner restarted after product not found.');
     }
-
-  } else {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Product not found or error fetching data.')),
-    );
   }
-}
 
   void _updateControllersForItem(int index) {
     if (index < 0 || index >= _scannedItems.length) return;
@@ -230,6 +263,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
           MobileScanner(
             controller: _scannerController,
             onDetect: (capture) {
+              if (_isProcessingBarcode) return; // Prevent processing if already busy
+
               final List<Barcode> barcodes = capture.barcodes;
               if (barcodes.isNotEmpty) {
                 final String? barcodeScanRes = barcodes.first.rawValue;
@@ -291,8 +326,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
             top: kToolbarHeight + MediaQuery.of(context).padding.top, // Position below AppBar
             child: DraggableScrollableSheet(
               controller: _sheetController,
-              initialChildSize: 0.07, // Adjusted for smaller collapsed state
-              minChildSize: 0.07,    // Adjusted for smaller collapsed state
+              initialChildSize: 0.12, // Adjusted to accommodate the top bar and prevent overflow
+              minChildSize: 0.12,    // Adjusted to accommodate the top bar and prevent overflow
               maxChildSize: 0.9,
               expand: true,
               builder: (BuildContext context, ScrollController scrollController) {
@@ -307,7 +342,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                     GestureDetector(
                       onTap: () {
                         if (_isSheetExpanded) {
-                          _sheetController.animateTo(0.1, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+                          _sheetController.animateTo(0.12, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
                         } else {
                           _sheetController.animateTo(0.9, duration: const Duration(milliseconds: 300), curve: Curves.easeIn);
                         }
@@ -325,7 +360,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                               icon: Icon(_isSheetExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up, color: Colors.white),
                               onPressed: () {
                                 if (_isSheetExpanded) {
-                                  _sheetController.animateTo(0.1, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+                                  _sheetController.animateTo(0.12, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
                                 } else {
                                   _sheetController.animateTo(0.9, duration: const Duration(milliseconds: 300), curve: Curves.easeIn);
                                 }
@@ -342,7 +377,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                   onPressed: () {
                                     _clearCurrentItemControllers();
                                     _scannerController.start();
-                                    _sheetController.animateTo(0.1, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+                                    _sheetController.animateTo(0.12, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
                                   },
                                 ),
                                 IconButton(
