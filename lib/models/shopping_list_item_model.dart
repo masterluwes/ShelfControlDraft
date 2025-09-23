@@ -9,7 +9,7 @@ class ShoppingListItemModel {
   int quantity;
   bool isPurchased;
   bool isBookmarked; // Added isBookmarked field
-  String? notes;
+  String? nutrition; // New: Optional nutrition information
 
   ShoppingListItemModel({
     this.id,
@@ -22,7 +22,7 @@ class ShoppingListItemModel {
     required this.quantity,
     this.isPurchased = false,
     this.isBookmarked = false, // Initialize isBookmarked
-    this.notes,
+    this.nutrition, // Initialize nutrition
   });
 
   // Factory constructor to create a ShoppingListItemModel from a Firestore map
@@ -38,7 +38,7 @@ class ShoppingListItemModel {
       quantity: data['quantity'] ?? 1,
       isPurchased: data['isPurchased'] ?? false,
       isBookmarked: data['isBookmarked'] ?? false, // Deserialize isBookmarked
-      notes: data['notes'],
+      nutrition: data['nutrition'], // Deserialize nutrition
     );
   }
 
@@ -55,7 +55,7 @@ class ShoppingListItemModel {
       'quantity': quantity,
       'isPurchased': isPurchased,
       'isBookmarked': isBookmarked, // Serialize isBookmarked
-      'notes': notes,
+      'nutrition': nutrition, // Serialize nutrition
     };
   }
 
@@ -71,7 +71,7 @@ class ShoppingListItemModel {
     int? quantity,
     bool? isPurchased,
     bool? isBookmarked, // Added to copyWith
-    String? notes,
+    String? nutrition, // Added to copyWith
   }) {
     return ShoppingListItemModel(
       id: id ?? this.id,
@@ -84,7 +84,7 @@ class ShoppingListItemModel {
       quantity: quantity ?? this.quantity,
       isPurchased: isPurchased ?? this.isPurchased,
       isBookmarked: isBookmarked ?? this.isBookmarked, // Copy isBookmarked
-      notes: notes ?? this.notes,
+      nutrition: nutrition ?? this.nutrition, // Copy nutrition
     );
   }
 }

@@ -26,6 +26,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   final ShoppingListService _shoppingListService = ShoppingListService();
   List<ShoppingListModel> _lists = [];
   String? _householdId;
+  late FirestoreService _firestoreService; // Declare the service here
 
   // Listener for FirestoreService changes
   late VoidCallback _firestoreServiceListener;
@@ -33,19 +34,20 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   @override
   void initState() {
     super.initState();
+    _firestoreService = Provider.of<FirestoreService>(context, listen: false); // Initialize here
+
     // Initialize the listener
     _firestoreServiceListener = () {
-      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      if (_householdId != firestoreService.selectedHouseholdId) {
+      if (_householdId != _firestoreService.selectedHouseholdId) {
         setState(() {
-          _householdId = firestoreService.selectedHouseholdId;
+          _householdId = _firestoreService.selectedHouseholdId;
         });
         _fetchLists();
       }
     };
 
     // Add the listener
-    Provider.of<FirestoreService>(context, listen: false).addListener(_firestoreServiceListener);
+    _firestoreService.addListener(_firestoreServiceListener);
 
     // Initial fetch
     _fetchHouseholdAndLists();
@@ -53,14 +55,13 @@ class _ViewAllListsPageState extends State<Viewalllist> {
 
   @override
   void dispose() {
-    // Remove the listener
-    Provider.of<FirestoreService>(context, listen: false).removeListener(_firestoreServiceListener);
+    // Remove the listener using the stored instance
+    _firestoreService.removeListener(_firestoreServiceListener);
     super.dispose();
   }
 
   Future<void> _fetchHouseholdAndLists() async {
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    _householdId = firestoreService.selectedHouseholdId; // Get householdId from service
+    _householdId = _firestoreService.selectedHouseholdId; // Get householdId from service
     _fetchLists();
   }
 
@@ -687,9 +688,9 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                       );
                       _handleListPageResult(result);
                     },
-                    onActivate: () {
+                    onActivate: () async {
                       if (_householdId != null && list.id != null) {
-                        _shoppingListService.setActiveShoppingList(_householdId!, list.id!);
+                        await _shoppingListService.setActiveShoppingList(_householdId!, list.id!);
                         _fetchLists();
                       }
                     },

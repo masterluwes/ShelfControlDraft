@@ -4,6 +4,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:shelf_control/models/shopping_list_item_model.dart';
 import 'package:shelf_control/models/shopping_list_model.dart';
 import 'package:shelf_control/services/shopping_list_service.dart';
+import 'package:shelf_control/services/open_food_facts_service.dart'; // Import OpenFoodFactsService
 
 /// ===== Shared store to broadcast the currently selected shopping list =====
 /// (shoppinglist.dart listens to this and refreshes automatically)
@@ -47,6 +48,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
 
   final ShoppingListService _shoppingListService = ShoppingListService();
+  final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService(); // Initialize OpenFoodFactsService
   late ShoppingListModel _currentShoppingList;
   List<ShoppingListItemModel> _items = [];
 
@@ -66,7 +68,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
   void initState() {
     super.initState();
     _currentShoppingList = widget.shoppingList;
-    _items = List.from(_currentShoppingList.items);
+    _items = _currentShoppingList.items.map((e) => e.copyWith()).toList(); // Deep copy items
     _resort();
   }
 
@@ -99,6 +101,15 @@ class _ListItemsPageState extends State<ListItemsPage> {
       _currentShoppingList.id!,
       _items[i],
     );
+    // Refresh the local list from Firestore to get the item with its ID
+    final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
+    if (updatedList != null) {
+      setState(() {
+        _currentShoppingList = updatedList;
+        _items = _currentShoppingList.items.map((e) => e.copyWith()).toList(); // Deep copy items
+        _resort();
+      });
+    }
     _pulseButton(_items[i], isInc: true);
   }
 
@@ -111,6 +122,15 @@ class _ListItemsPageState extends State<ListItemsPage> {
         _currentShoppingList.id!,
         _items[i],
       );
+      // Refresh the local list from Firestore to get the item with its ID
+      final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
+      if (updatedList != null) {
+        setState(() {
+          _currentShoppingList = updatedList;
+          _items = _currentShoppingList.items.map((e) => e.copyWith()).toList(); // Deep copy items
+          _resort();
+        });
+      }
       _pulseButton(_items[i], isInc: false);
     }
   }
@@ -121,9 +141,10 @@ class _ListItemsPageState extends State<ListItemsPage> {
     final nameCtrl = TextEditingController();
     final brandCtrl = TextEditingController();
     final sizeCtrl = TextEditingController();
+    final unitPriceCtrl = TextEditingController(text: '0.00'); // Controller for unit price
+    final nutritionCtrl = TextEditingController(); // New controller for nutrition
     String? selectedCategory;
     double unitPrice = 0.0; // New field for unit price
-    final unitPriceCtrl = TextEditingController(); // Controller for unit price
 
     InputDecoration deco() => InputDecoration(
       filled: true,
@@ -145,289 +166,308 @@ class _ListItemsPageState extends State<ListItemsPage> {
       builder: (ctx) {
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Container(
-            decoration: BoxDecoration(
-              color: softCream,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: headerGreen.withAlpha((255 * 0.75).round()),
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: headerGreen.withAlpha((255 * 0.30).round()),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+          child: ConstrainedBox( // Wrap with ConstrainedBox to limit dialog size
+            constraints: const BoxConstraints(maxWidth: 400), // Set a max width
+            child: Container(
+              decoration: BoxDecoration(
+                color: softCream,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: headerGreen.withAlpha((255 * 0.75).round()),
+                  width: 1.5,
                 ),
-              ],
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-            child: StatefulBuilder(
-              builder: (context, setLocal) {
-                return Form(
-                  key: formKey,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          'Product Name',
-                          style: TextStyle(
-                            color: headerGreen,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: nameCtrl,
-                          decoration: deco(),
-                          validator: (v) => (v == null || v.trim().isEmpty)
-                              ? 'Please enter a product name'
-                              : null,
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Brand (optional)',
-                          style: TextStyle(
-                            color: headerGreen,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: brandCtrl,
-                          decoration: deco(),
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Size / Weight (e.g., 150g, 1L) – optional',
-                          style: TextStyle(
-                            color: headerGreen,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: sizeCtrl,
-                          decoration: deco(),
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Unit Price',
-                          style: TextStyle(
-                            color: headerGreen,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: unitPriceCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: deco(),
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty) {
-                              return 'Please enter a unit price';
-                            }
-                            if (double.tryParse(v) == null) {
-                              return 'Please enter a valid number';
-                            }
-                            return null;
-                          },
-                          onChanged: (v) => unitPrice = double.tryParse(v) ?? 0.0,
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Category',
-                          style: TextStyle(
-                            color: headerGreen,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        DropdownButtonFormField2<String>(
-                          value: selectedCategory,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: Colors.white,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Colors.black.withAlpha((255 * 0.15).round()),
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: headerGreen,
-                                width: 1.5,
-                              ),
-                            ),
-                          ),
-                          hint: const Text('Select a category'),
-                          items: _categories
-                              .map(
-                                (c) => DropdownMenuItem<String>(
-                                  value: c,
-                                  child: Text(
-                                    c,
-                                    style: const TextStyle(fontSize: 14.5),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) =>
-                              setLocal(() => selectedCategory = v),
-                          validator: (v) => (v == null || v.isEmpty)
-                              ? 'Please select a category'
-                              : null,
-                          buttonStyleData: const ButtonStyleData(
-                            padding: EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                          iconStyleData: IconStyleData(
-                            icon: Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              color: headerGreen,
-                            ),
-                            iconSize: 22,
-                          ),
-                          dropdownStyleData: DropdownStyleData(
-                            maxHeight: 260,
-                            elevation: 2,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withAlpha((255 * 0.06).round()),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            offset: const Offset(0, 12),
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                          ),
-                          menuItemStyleData: const MenuItemStyleData(
-                            height: 44,
-                            padding: EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            InkWell(
-                              onTap: () async {
-                                if (!formKey.currentState!.validate()) return;
-                                final newItem = ShoppingListItemModel(
-                                  name: nameCtrl.text.trim(),
-                                  brand: brandCtrl.text.trim().isEmpty
-                                      ? null
-                                      : brandCtrl.text.trim(),
-                                  netWeight: sizeCtrl.text.trim().isEmpty
-                                      ? null
-                                      : sizeCtrl.text.trim(),
-                                  category: selectedCategory!,
-                                  unitPrice: unitPrice,
-                                  quantity: 1,
-                                );
-
-                                if (_currentShoppingList.id != null) {
-                                  await _shoppingListService.addShoppingListItem(
-                                    _currentShoppingList.id!,
-                                    newItem,
-                                  );
-                                  // Refresh the local list from Firestore to get the item with its ID
-                                  final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
-                                  if (updatedList != null) {
-                                    setState(() {
-                                      _currentShoppingList = updatedList;
-                                      _items = List.from(_currentShoppingList.items);
-                                      _resort();
-                                    });
-                                  }
-                                }
-
-                                if (!mounted) return;
-                                Navigator.of(ctx).pop();
-                                ScaffoldMessenger.of(context)
-                                  ..hideCurrentSnackBar()
-                                  ..showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Item added'),
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
-                              },
-                              borderRadius: BorderRadius.circular(24),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 28,
-                                  vertical: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: headerGreen,
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                                child: const Text(
-                                  'Add',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            InkWell(
-                              onTap: () => Navigator.of(ctx).pop(),
-                              borderRadius: BorderRadius.circular(24),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 22,
-                                  vertical: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: headerGreen,
-                                    width: 2,
-                                  ),
-                                ),
-                                child: Text(
-                                  'Cancel',
-                                  style: TextStyle(
-                                    color: headerGreen,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                boxShadow: [
+                  BoxShadow(
+                    color: headerGreen.withAlpha((255 * 0.30).round()),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                );
-              },
+                ],
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+              child: StatefulBuilder(
+                builder: (context, setLocal) {
+                  return Form(
+                    key: formKey,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'Product Name',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: nameCtrl,
+                            decoration: deco(),
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Please enter a product name'
+                                : null,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Brand (optional)',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: brandCtrl,
+                            decoration: deco(),
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Size / Weight (e.g., 150g, 1L) – optional',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: sizeCtrl,
+                            decoration: deco(),
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Unit Price (₱)',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: unitPriceCtrl,
+                            decoration: deco(),
+                            keyboardType: TextInputType.number,
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Please enter a unit price';
+                              }
+                              if (double.tryParse(v.trim()) == null) {
+                                return 'Please enter a valid number';
+                              }
+                              return null;
+                            },
+                            onChanged: (v) => unitPrice = double.tryParse(v) ?? 0.0,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Nutrition (optional)',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: nutritionCtrl,
+                            decoration: deco(),
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Category',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField2<String>(
+                            value: selectedCategory,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Colors.black.withAlpha((255 * 0.15).round()),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: headerGreen,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                            hint: const Text('Select a category'),
+                            items: _categories
+                                .map(
+                                  (c) => DropdownMenuItem<String>(
+                                    value: c,
+                                    child: Text(
+                                      c,
+                                      style: const TextStyle(fontSize: 14.5),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) =>
+                                setLocal(() => selectedCategory = v),
+                            validator: (v) => (v == null || v.isEmpty)
+                                ? 'Please select a category'
+                                : null,
+                            buttonStyleData: const ButtonStyleData(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                            ),
+                            iconStyleData: IconStyleData(
+                              icon: Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: headerGreen,
+                              ),
+                              iconSize: 22,
+                            ),
+                            dropdownStyleData: DropdownStyleData(
+                              maxHeight: 260,
+                              elevation: 2,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withAlpha((255 * 0.06).round()),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              offset: const Offset(0, 12),
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                            ),
+                            menuItemStyleData: const MenuItemStyleData(
+                              height: 44,
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              InkWell(
+                                onTap: () async {
+                                  if (!formKey.currentState!.validate()) return;
+                                  final newItem = ShoppingListItemModel(
+                                    name: nameCtrl.text.trim(),
+                                    brand: brandCtrl.text.trim().isEmpty
+                                        ? null
+                                        : brandCtrl.text.trim(),
+                                    netWeight: sizeCtrl.text.trim().isEmpty
+                                        ? null
+                                        : sizeCtrl.text.trim(),
+                                    category: selectedCategory!,
+                                    unitPrice: double.parse(unitPriceCtrl.text.trim()), // Ensure unitPrice is parsed from controller
+                                    quantity: 1,
+                                    nutrition: nutritionCtrl.text.trim().isEmpty ? null : nutritionCtrl.text.trim(),
+                                  );
+
+                                  if (_currentShoppingList.id != null) {
+                                    await _shoppingListService.addShoppingListItem(
+                                      _currentShoppingList.id!,
+                                      newItem,
+                                    );
+                                    // Refresh the local list from Firestore to get the item with its ID
+                                    final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
+                                    if (updatedList != null) {
+                                      setState(() {
+                                        _currentShoppingList = updatedList;
+                                        _items = _currentShoppingList.items.map((e) => e.copyWith()).toList(); // Deep copy items
+                                        _resort();
+                                      });
+                                    }
+                                  }
+
+                                  if (!mounted) return;
+                                  Navigator.of(ctx).pop();
+                                  ScaffoldMessenger.of(context)
+                                    ..hideCurrentSnackBar()
+                                    ..showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Item added'),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                },
+                                borderRadius: BorderRadius.circular(24),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 28,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: headerGreen,
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  child: const Text(
+                                    'Add',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () => Navigator.of(ctx).pop(),
+                                borderRadius: BorderRadius.circular(24),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 22,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(24),
+                                    border: Border.all(
+                                      color: headerGreen,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Cancel',
+                                    style: TextStyle(
+                                      color: headerGreen,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         );
@@ -440,197 +480,344 @@ class _ListItemsPageState extends State<ListItemsPage> {
     final nameCtrl = TextEditingController(text: it.name);
     final brandCtrl = TextEditingController(text: it.brand ?? '');
     final sizeCtrl = TextEditingController(text: it.netWeight ?? '');
-    String category = it.category ?? _categories.first;
+    final nutritionCtrl = TextEditingController(text: it.nutrition ?? ''); // Add nutrition controller
+    String category = it.category ?? _categories.first; // Ensure category is not null
     int qty = it.quantity;
     double unitPrice = it.unitPrice;
     final unitPriceCtrl = TextEditingController(text: it.unitPrice.toStringAsFixed(2));
 
+    InputDecoration deco() => InputDecoration(
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.black.withAlpha((255 * 0.15).round())),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: headerGreen, width: 1.5),
+      ),
+    );
+
     await showDialog<void>(
       context: context,
-      useRootNavigator: true,
       barrierDismissible: false,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (ctx, setLocal) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              title: Text(
-                'Edit Item',
-                style: TextStyle(
-                  color: headerGreen,
-                  fontWeight: FontWeight.w800,
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+          child: ConstrainedBox( // Wrap with ConstrainedBox to limit dialog size
+            constraints: const BoxConstraints(maxWidth: 400), // Set a max width
+            child: Container(
+              decoration: BoxDecoration(
+                color: softCream,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: headerGreen.withAlpha((255 * 0.75).round()),
+                  width: 1.5,
                 ),
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: nameCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Item name',
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: sep),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: brandCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Brand (optional)',
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: sep),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: sizeCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Size (e.g. 1L, 600g)',
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: sep),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: unitPriceCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: 'Unit Price',
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: sep),
-                        ),
-                      ),
-                      onChanged: (v) => unitPrice = double.tryParse(v) ?? 0.0,
-                    ),
-                    const SizedBox(height: 10),
-                    InputDecorator(
-                      decoration: InputDecoration(
-                        labelText: 'Category',
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: sep),
-                        ),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: category,
-                          isExpanded: true,
-                          items: _categories
-                              .map(
-                                (c) =>
-                                    DropdownMenuItem(value: c, child: Text(c)),
-                              )
-                              .toList(),
-                          onChanged: (v) =>
-                              setLocal(() => category = v ?? category),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        const Text(
-                          'Quantity',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        const Spacer(),
-                        _EditQtyButton(
-                          icon: Icons.remove,
-                          enabled: qty > 0,
-                          onTap: () =>
-                              setLocal(() => qty = (qty > 0) ? qty - 1 : qty),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '$qty',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(width: 8),
-                        _EditQtyButton(
-                          icon: Icons.add,
-                          enabled: true,
-                          onTap: () => setLocal(() => qty++),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    if (!mounted) return;
-                    Navigator.of(dialogCtx, rootNavigator: true).pop();
-                  },
-                  child: Text('Cancel', style: TextStyle(color: headerGreen)),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: headerGreen,
-                    foregroundColor: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: headerGreen.withAlpha((255 * 0.30).round()),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                  onPressed: () async {
-                    setState(() {
-                      it.name = nameCtrl.text.trim().isEmpty
-                          ? it.name
-                          : nameCtrl.text.trim();
-                      it.brand = brandCtrl.text.trim().isEmpty
-                          ? null
-                          : brandCtrl.text.trim();
-                      it.netWeight = sizeCtrl.text.trim().isEmpty
-                          ? null
-                          : sizeCtrl.text.trim();
-                      it.category = category;
-                      it.quantity = qty;
-                      it.unitPrice = unitPrice;
-                    });
-                    if (_currentShoppingList.id != null) {
-                      await _shoppingListService.updateShoppingListItem(
-                        _currentShoppingList.id!,
-                        it,
-                      );
-                      // Refresh the local list from Firestore to ensure consistency
-                      final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
-                      if (updatedList != null) {
-                        setState(() {
-                          _currentShoppingList = updatedList;
-                          _items = List.from(_currentShoppingList.items);
-                          _resort();
-                        });
-                      }
-                    }
-                    if (!mounted) return;
-                    Navigator.of(dialogCtx, rootNavigator: true).pop();
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
+                ],
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+              child: StatefulBuilder(
+                builder: (context, setLocal) {
+                  return Form(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'Edit Item',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Product Name',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: nameCtrl,
+                            decoration: deco(),
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Please enter a product name'
+                                : null,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Brand (optional)',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: brandCtrl,
+                            decoration: deco(),
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Size / Weight (optional)',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: sizeCtrl,
+                            decoration: deco(),
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Unit Price (₱)',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: unitPriceCtrl,
+                            decoration: deco(),
+                            keyboardType: TextInputType.number,
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Please enter a unit price';
+                              }
+                              if (double.tryParse(v.trim()) == null) {
+                                return 'Please enter a valid number';
+                              }
+                              return null;
+                            },
+                            onChanged: (v) => unitPrice = double.tryParse(v) ?? 0.0,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Nutrition (optional)',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: nutritionCtrl,
+                            decoration: deco(),
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Category',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField2<String>(
+                            value: category,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Colors.black.withAlpha((255 * 0.15).round()),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: headerGreen,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                            hint: const Text('Select a category'),
+                            items: _categories
+                                .map(
+                                  (c) => DropdownMenuItem<String>(
+                                    value: c,
+                                    child: Text(
+                                      c,
+                                      style: const TextStyle(fontSize: 14.5),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) =>
+                                setLocal(() => category = v!), // Assert v is not null
+                            validator: (v) => (v == null || v.isEmpty)
+                                ? 'Please select a category'
+                                : null,
+                            buttonStyleData: const ButtonStyleData(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                            ),
+                            iconStyleData: IconStyleData(
+                              icon: Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: headerGreen,
+                              ),
+                              iconSize: 22,
+                            ),
+                            dropdownStyleData: DropdownStyleData(
+                              maxHeight: 260,
+                              elevation: 2,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withAlpha((255 * 0.06).round()),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              offset: const Offset(0, 12),
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                            ),
+                            menuItemStyleData: const MenuItemStyleData(
+                              height: 44,
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              InkWell(
+                                onTap: () async {
+                                  final updatedItem = it.copyWith(
+                                    id: it.id, // Explicitly pass the ID
+                                    name: nameCtrl.text.trim().isEmpty
+                                        ? it.name
+                                        : nameCtrl.text.trim(),
+                                    brand: brandCtrl.text.trim().isEmpty
+                                        ? null
+                                        : brandCtrl.text.trim(),
+                                    netWeight: sizeCtrl.text.trim().isEmpty
+                                        ? null
+                                        : sizeCtrl.text.trim(),
+                                    category: category,
+                                    quantity: qty,
+                                    unitPrice: unitPrice,
+                                    nutrition: nutritionCtrl.text.trim().isEmpty ? null : nutritionCtrl.text.trim(),
+                                    isPurchased: it.isPurchased, // Preserve existing state
+                                    isBookmarked: it.isBookmarked, // Preserve existing state
+                                  );
+
+                                  setState(() {
+                                    _items[index] = updatedItem;
+                                  });
+
+                                  if (_currentShoppingList.id != null) {
+                                    await _shoppingListService.updateShoppingListItem(
+                                      _currentShoppingList.id!,
+                                      updatedItem,
+                                    );
+                                    // Refresh the local list from Firestore to ensure consistency
+                                    final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
+                                    if (updatedList != null) {
+                                      setState(() {
+                                        _currentShoppingList = updatedList;
+                                        _items = _currentShoppingList.items.map((e) => e.copyWith()).toList(); // Deep copy items
+                                        _resort();
+                                      });
+                                    }
+                                  }
+                                  if (!mounted) return;
+                                  Navigator.of(ctx).pop();
+                                },
+                                borderRadius: BorderRadius.circular(24),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 28,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: headerGreen,
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  child: const Text(
+                                    'Save',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () => Navigator.of(ctx).pop(),
+                                borderRadius: BorderRadius.circular(24),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 22,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(24),
+                                    border: Border.all(
+                                      color: headerGreen,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Cancel',
+                                    style: TextStyle(
+                                      color: headerGreen,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
         );
       },
     );
@@ -658,7 +845,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
         if (updatedList != null) {
           setState(() {
             _currentShoppingList = updatedList;
-            _items = List.from(_currentShoppingList.items);
+            _items = _currentShoppingList.items.map((e) => e.copyWith()).toList(); // Deep copy items
             _resort();
           });
         }
@@ -679,7 +866,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
   void _useAsCurrent() {
     MainShoppingListStore.instance.setMainList(
       title: _currentShoppingList.name,
-      items: _items,
+      items: _items.map((e) => e.copyWith()).toList(), // Ensure deep copy when setting to store
     );
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -828,28 +1015,44 @@ class _ListItemsPageState extends State<ListItemsPage> {
                             headerGreen: headerGreen,
                             grey: grey,
                             onToggleInCart: (v) async {
-                              setState(() => it.isPurchased = v ?? false);
                               if (_currentShoppingList.id != null) {
+                                final updatedItem = it.copyWith(isPurchased: v ?? false);
                                 await _shoppingListService.updateShoppingListItem(
                                   _currentShoppingList.id!,
-                                  it,
+                                  updatedItem,
                                 );
+                                // Refresh the local list from Firestore
+                                final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
+                                if (updatedList != null) {
+                                  setState(() {
+                                    _currentShoppingList = updatedList;
+                                    _items = _currentShoppingList.items.map((e) => e.copyWith()).toList(); // Deep copy items
+                                    _resort();
+                                  });
+                                }
                               }
                             },
                             onToggleBookmark: () async {
-                              setState(() {
-                                it.isBookmarked = !it.isBookmarked;
-                                _resort();
-                              });
                               if (_currentShoppingList.id != null) {
+                                final updatedItem = it.copyWith(isBookmarked: !it.isBookmarked);
                                 await _shoppingListService.updateShoppingListItem(
                                   _currentShoppingList.id!,
-                                  it,
+                                  updatedItem,
                                 );
+                                // Refresh the local list from Firestore
+                                final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
+                                if (updatedList != null) {
+                                  setState(() {
+                                    _currentShoppingList = updatedList;
+                                    _items = _currentShoppingList.items.map((e) => e.copyWith()).toList(); // Deep copy items
+                                    _resort();
+                                  });
+                                }
                               }
                             },
                             onDecrement: () => _dec(index),
                             onIncrement: () => _inc(index),
+                            openFoodFactsService: _openFoodFactsService, // Pass the service
                           ),
                         ),
                         if (it.isPurchased)
@@ -940,6 +1143,7 @@ class _ShoppingRowSL extends StatelessWidget {
     required this.onToggleBookmark,
     required this.onDecrement,
     required this.onIncrement,
+    required this.openFoodFactsService, // Add this parameter
   });
 
   final ShoppingListItemModel item;
@@ -949,6 +1153,7 @@ class _ShoppingRowSL extends StatelessWidget {
   final VoidCallback onToggleBookmark;
   final VoidCallback onDecrement;
   final VoidCallback onIncrement;
+  final OpenFoodFactsService openFoodFactsService; // Declare the parameter
 
   @override
   Widget build(BuildContext context) {
@@ -1058,6 +1263,15 @@ class _ShoppingRowSL extends StatelessWidget {
                   color: selected ? Colors.black45 : Colors.black54,
                 ),
               ),
+              if (item.nutrition != null && item.nutrition!.isNotEmpty)
+                Text(
+                  'Nutri-score: ${item.nutrition!.toUpperCase()}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? Colors.grey.shade500 : Colors.grey.shade600,
+                  ),
+                ),
             ],
           ),
         ),
@@ -1071,24 +1285,62 @@ class _ShoppingRowSL extends StatelessWidget {
           splashRadius: 20,
           tooltip: item.isBookmarked ? 'Unpin' : 'Pin (priority)',
         ),
-        pulseIcon(
-          active: false, // item.decPulse, // Removed local pulse state
-          outlineIcon: Icons.remove_circle_outline_rounded,
-          filledIcon: Icons.remove_circle,
-          onPressed: onDecrement,
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Colors.grey, width: 2)),
-          ),
-          child: Text('${item.quantity}', style: const TextStyle(fontSize: 16)),
-        ),
-        pulseIcon(
-          active: false, // item.incPulse, // Removed local pulse state
-          outlineIcon: Icons.add_circle_outline_rounded,
-          filledIcon: Icons.add_circle,
-          onPressed: onIncrement,
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // Compact quantity controls
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: Icon(Icons.remove_circle_outline_rounded, color: grey, size: 20),
+                    onPressed: onDecrement,
+                    splashRadius: 18,
+                  ),
+                ),
+                Container(
+                  width: 30,
+                  alignment: Alignment.center,
+                  child: Text(
+                    '${item.quantity}',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: Icon(Icons.add_circle_outline_rounded, color: grey, size: 20),
+                    onPressed: onIncrement,
+                    splashRadius: 18,
+                  ),
+                ),
+              ],
+            ),
+            // Unit price (smaller)
+            Text(
+              '₱${item.unitPrice.toStringAsFixed(2)}/item',
+              style: TextStyle(
+                fontSize: 11,
+                color: selected ? Colors.grey.shade500 : Colors.grey.shade600,
+              ),
+            ),
+            // Total price for quantity
+            Text(
+              '₱${(item.unitPrice * item.quantity).toStringAsFixed(2)}',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: selected ? Colors.grey.shade600 : headerGreen,
+              ),
+            ),
+          ],
         ),
       ],
     );

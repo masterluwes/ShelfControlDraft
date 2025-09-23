@@ -6,6 +6,7 @@ import 'package:logger/logger.dart'; // Import the logger package
 class OpenFoodFactsService {
   static const String _baseUrl = 'https://world.openfoodfacts.org/api/v2/product/';
   final Logger _logger = Logger(); // Initialize logger
+  final Map<String, String?> _nutriScoreCache = {}; // In-memory cache for Nutri-scores
 
 
   // Function to fetch product data by barcode
@@ -57,6 +58,12 @@ class OpenFoodFactsService {
 
   // Function to get Nutri-score for a product by name
   Future<String?> getNutriScore(String productName) async {
+    // Check cache first
+    if (_nutriScoreCache.containsKey(productName)) {
+      _logger.d('Nutri-score for "$productName" found in cache.');
+      return _nutriScoreCache[productName];
+    }
+
     final searchUrl = Uri.parse('https://world.openfoodfacts.org/cgi/search.pl?search_terms=$productName&search_simple=1&action=process&json=1');
 
     String platform = 'Unknown';
@@ -85,9 +92,12 @@ class OpenFoodFactsService {
         if (data['products'] != null && data['products'].isNotEmpty) {
           // Take the first product from the search results
           final product = data['products'][0];
-          return product['nutriscore_grade'] as String?;
+          final nutriScore = product['nutriscore_grade'] as String?;
+          _nutriScoreCache[productName] = nutriScore; // Cache the result
+          return nutriScore;
         } else {
           _logger.i('No product found for name: $productName');
+          _nutriScoreCache[productName] = null; // Cache null to avoid repeated searches
           return null;
         }
       } else {

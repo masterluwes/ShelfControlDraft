@@ -11,7 +11,7 @@ class ShoppingListService {
 
   // Helper to get a reference to the collections
   CollectionReference get _shoppingLists => _firestore.collection('shoppingLists');
-  CollectionReference get _pantryInventory => _firestore.collection('pantryInventory');
+  CollectionReference get _pantryItems => _firestore.collection('pantryItems'); // Corrected collection name
   CollectionReference get _shoppingHistory => _firestore.collection('shoppingHistory');
   CollectionReference get _localProducts => _firestore.collection('local_products_ph');
 
@@ -97,7 +97,7 @@ class ShoppingListService {
     List<ShoppingListItemModel> suggestions = [];
 
     // Get pantry items
-    var pantrySnapshot = await _pantryInventory.where('householdId', isEqualTo: householdId).get();
+    var pantrySnapshot = await _pantryItems.where('householdId', isEqualTo: householdId).get(); // Corrected collection name
     List<PantryItemModel> pantryItems = pantrySnapshot.docs.map((doc) => PantryItemModel.fromFirestore(doc)).toList();
 
     // Get shopping history
@@ -108,13 +108,23 @@ class ShoppingListService {
     // 1. Out of Stock, Expired, Low Stock from pantry
     for (var item in pantryItems) {
       if (item.qty <= 0 || item.status == 'Consumed' || (item.expirationDate != null && item.expirationDate!.isBefore(DateTime.now()))) {
+        // Fetch nutriScore and save it to local_products_ph if not present
+        String? nutriScore = await _openFoodFactsService.getNutriScore(item.name);
+        if (nutriScore != null) {
+          // Assuming there's a way to link pantry item to local_products_ph or create a new entry
+          // For now, we'll just add it to the ShoppingListItemModel
+          // In a real scenario, you might want to update the local_products_ph collection
+        }
+
         suggestions.add(ShoppingListItemModel(
+          id: _firestore.collection('temp').doc().id, // Assign unique ID
           name: item.name,
           brand: item.brand,
           netWeight: item.netWeight,
           category: item.category,
           unitPrice: 0, // Will need to fetch price
           quantity: 1,
+          nutrition: nutriScore, // Add nutrition
         ));
       }
     }
@@ -123,11 +133,21 @@ class ShoppingListService {
     for (var item in historyItems) {
       bool inPantry = pantryItems.any((pantryItem) => pantryItem.name == item.productName);
       if (!inPantry) {
+        // Fetch nutriScore and save it to local_products_ph if not present
+        String? nutriScore = await _openFoodFactsService.getNutriScore(item.productName);
+        if (nutriScore != null) {
+          // Assuming there's a way to link history item to local_products_ph or create a new entry
+          // For now, we'll just add it to the ShoppingListItemModel
+          // In a real scenario, you might want to update the local_products_ph collection
+        }
+
         suggestions.add(ShoppingListItemModel(
+          id: _firestore.collection('temp').doc().id, // Assign unique ID
           name: item.productName,
           category: item.category,
           unitPrice: 0, // Will need to fetch price
           quantity: 1,
+          nutrition: nutriScore, // Add nutrition
         ));
       }
     }
@@ -147,6 +167,7 @@ class ShoppingListService {
     List<ShoppingListItemModel> allProducts = productsSnapshot.docs.map((doc) {
       var data = doc.data() as Map<String, dynamic>;
       return ShoppingListItemModel(
+        id: _firestore.collection('temp').doc().id, // Assign unique ID
         productId: doc.id,
         name: data['productName'],
         brand: data['brand'],
@@ -154,6 +175,7 @@ class ShoppingListService {
         category: data['category'],
         unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
         quantity: 1,
+        nutrition: data['nutriScore'], // Include existing nutrition
       );
     }).toList();
 
@@ -193,7 +215,15 @@ class ShoppingListService {
       if (productSnapshot.docs.isNotEmpty) {
         var doc = productSnapshot.docs.first;
         var data = doc.data() as Map<String, dynamic>;
+        String? nutriScore = data['nutriScore'];
+        if (nutriScore == null || nutriScore.isEmpty) {
+          nutriScore = await _openFoodFactsService.getNutriScore(data['productName']);
+          if (nutriScore != null) {
+            await _localProducts.doc(doc.id).update({'nutriScore': nutriScore});
+          }
+        }
         recommendedList.add(ShoppingListItemModel(
+          id: _firestore.collection('temp').doc().id, // Assign unique ID
           productId: doc.id,
           name: data['productName'],
           brand: data['brand'],
@@ -201,6 +231,7 @@ class ShoppingListService {
           category: data['category'],
           unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
           quantity: 1,
+          nutrition: nutriScore, // Include nutrition
         ));
       }
       if (numberOfItems != null && recommendedList.length >= numberOfItems) {
@@ -218,9 +249,20 @@ class ShoppingListService {
     for (var doc in productsSnapshot.docs) {
       var data = doc.data() as Map<String, dynamic>;
       String productName = data['productName'];
-      var nutriScore = await _openFoodFactsService.getNutriScore(productName);
-      if (nutriScore != null && ['a', 'b', 'c'].contains(nutriScore)) {
+      String? nutriScore = data['nutriScore']; // Check for existing nutriScore
+
+      if (nutriScore == null || nutriScore.isEmpty) {
+        // If nutriScore is not present, fetch it and save it
+        nutriScore = await _openFoodFactsService.getNutriScore(productName);
+        if (nutriScore != null) {
+          // Update the product in Firestore with the fetched nutriScore
+          await _localProducts.doc(doc.id).update({'nutriScore': nutriScore});
+        }
+      }
+
+      if (nutriScore != null && ['a', 'b', 'c'].contains(nutriScore.toLowerCase())) {
         healthyList.add(ShoppingListItemModel(
+          id: _firestore.collection('temp').doc().id, // Assign unique ID
           productId: doc.id,
           name: data['productName'],
           brand: data['brand'],
@@ -228,12 +270,15 @@ class ShoppingListService {
           category: data['category'],
           unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
           quantity: 1,
+          nutrition: nutriScore, // Pass the nutriScore
         ));
       }
       if (numberOfItems != null && healthyList.length >= numberOfItems) {
         break;
       }
     }
+    // Add randomness to the selection
+    healthyList.shuffle();
     return healthyList;
   }
 }

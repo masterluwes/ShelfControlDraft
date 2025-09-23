@@ -17,6 +17,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:provider/provider.dart'; // Import provider
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:shelf_control/services/open_food_facts_service.dart'; // Import OpenFoodFactsService
 
 class Shoppinglist extends StatefulWidget {
   const Shoppinglist({super.key});
@@ -26,7 +27,7 @@ class Shoppinglist extends StatefulWidget {
 
 class _ShoppinglistState extends State<Shoppinglist> {
   // Palette
-  final Color headerGreen = const Color(0xFF2E7D32);
+  final Color headerGreen = const Color(0xFF2E7D32); // Minor change to trigger linter refresh
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
   // Deeper green for "View All List"
@@ -42,6 +43,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
   ShoppingListModel? _activeList;
   String? _householdId;
   final ShoppingListService _shoppingListService = ShoppingListService();
+  final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService();
 
   // Guest limit
   static const int maxGuestItems = 15;
@@ -113,7 +115,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
         if (snapshot.docs.isNotEmpty) {
           _activeList = ShoppingListModel.fromFirestore(snapshot.docs.first);
           _currentTitle = _activeList!.name;
-          items = _activeList!.items;
+          items = _activeList!.items.map((e) => e.copyWith()).toList(); // Deep copy items
           _reorderByBookmark();
         } else {
           _activeList = null;
@@ -442,7 +444,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
         setState(() {
           _activeList = newDefaultList;
           _currentTitle = _activeList!.name;
-          items = _activeList!.items;
+          items = _activeList!.items.map((e) => e.copyWith()).toList(); // Deep copy items
           _reorderByBookmark();
         });
         _showTopSnack("Created a new default shopping list.");
@@ -464,6 +466,8 @@ class _ShoppinglistState extends State<Shoppinglist> {
     final nameCtrl = TextEditingController();
     final brandCtrl = TextEditingController();
     final sizeCtrl = TextEditingController();
+    final unitPriceCtrl = TextEditingController(text: '0.00');
+    final nutritionCtrl = TextEditingController();
     String? selectedCategory;
 
     InputDecoration deco() => InputDecoration(
@@ -486,7 +490,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
       builder: (ctx) {
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40),
           child: Container(
             decoration: BoxDecoration(
               color: softCream,
@@ -557,6 +561,46 @@ class _ShoppinglistState extends State<Shoppinglist> {
                         const SizedBox(height: 6),
                         TextFormField(
                           controller: sizeCtrl,
+                          decoration: deco(),
+                          textInputAction: TextInputAction.next,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Unit Price (₱)',
+                          style: TextStyle(
+                            color: headerGreen,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: unitPriceCtrl,
+                          decoration: deco(),
+                          keyboardType: TextInputType.number,
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) {
+                              return 'Please enter a unit price';
+                            }
+                            if (double.tryParse(v.trim()) == null) {
+                              return 'Please enter a valid number';
+                            }
+                            return null;
+                          },
+                          textInputAction: TextInputAction.next,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Nutrition (optional)',
+                          style: TextStyle(
+                            color: headerGreen,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: nutritionCtrl,
                           decoration: deco(),
                           textInputAction: TextInputAction.next,
                         ),
@@ -649,28 +693,26 @@ class _ShoppinglistState extends State<Shoppinglist> {
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             InkWell(
-                              onTap: () {
+                              onTap: () async {
                                 if (!formKey.currentState!.validate()) return;
                                 if (items.length >= maxGuestItems) {
                                   _showLimitDialog();
                                   return;
                                 }
                                 final newItem = ShoppingListItemModel(
-                                  id: 'id_${DateTime.now().millisecondsSinceEpoch}',
+                                  id: null, // Let the service generate the ID
                                   name: nameCtrl.text.trim(),
                                   brand: brandCtrl.text.trim().isEmpty ? null : brandCtrl.text.trim(),
                                   netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
                                   category: selectedCategory!,
-                                  unitPrice: 0, // Default price
+                                  unitPrice: double.parse(unitPriceCtrl.text.trim()),
                                   quantity: 1,
+                                  nutrition: nutritionCtrl.text.trim().isEmpty ? null : nutritionCtrl.text.trim(),
                                 );
-                                setState(() {
-                                  items.insert(0, newItem);
-                                  _reorderByBookmark();
-                                });
+
                                 if (_activeList != null) {
-                                  _activeList!.items = items;
-                                  FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                                  await _shoppingListService.addShoppingListItem(_activeList!.id!, newItem);
+                                  await _fetchHouseholdAndListsAndSuggestions(); // Refresh the list
                                 }
                                 if (!mounted) return;
                                 Navigator.of(ctx).pop();
@@ -741,6 +783,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
     final nameCtrl = TextEditingController(text: item.name);
     final brandCtrl = TextEditingController(text: item.brand ?? '');
     final sizeCtrl = TextEditingController(text: item.netWeight ?? '');
+    final nutritionCtrl = TextEditingController(text: item.nutrition ?? '');
     String? selectedCategory = item.category;
 
     InputDecoration deco() => InputDecoration(
@@ -763,7 +806,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
       builder: (ctx) {
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40),
           child: Container(
             decoration: BoxDecoration(
               color: softCream,
@@ -849,6 +892,21 @@ class _ShoppinglistState extends State<Shoppinglist> {
                         ),
                         const SizedBox(height: 12),
                         Text(
+                          'Nutrition (optional)',
+                          style: TextStyle(
+                            color: headerGreen,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: nutritionCtrl,
+                          decoration: deco(),
+                          textInputAction: TextInputAction.next,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
                           'Category',
                           style: TextStyle(
                             color: headerGreen,
@@ -936,18 +994,32 @@ class _ShoppinglistState extends State<Shoppinglist> {
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             InkWell(
-                              onTap: () {
+                              onTap: () async {
                                 if (!formKey.currentState!.validate()) return;
+
+                                final updatedItem = item.copyWith(
+                                  name: nameCtrl.text.trim(),
+                                  brand: brandCtrl.text.trim().isEmpty ? null : brandCtrl.text.trim(),
+                                  netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
+                                  category: selectedCategory!,
+                                  nutrition: nutritionCtrl.text.trim().isEmpty ? null : nutritionCtrl.text.trim(),
+                                  isPurchased: item.isPurchased, // Preserve existing state
+                                  isBookmarked: item.isBookmarked, // Preserve existing state
+                                );
+
                                 setState(() {
-                                  item.name = nameCtrl.text.trim();
-                                  item.brand = brandCtrl.text.trim().isEmpty ? null : brandCtrl.text.trim();
-                                  item.netWeight = sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim();
-                                  item.category = selectedCategory!;
+                                  final index = items.indexWhere((e) => e.id == item.id);
+                                  if (index != -1) {
+                                    items[index] = updatedItem;
+                                  }
                                 });
+
                                 if (_activeList != null) {
-                                  _activeList!.items = items;
-                                  FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                                  _activeList!.items = items; // Assign the updated local list
+                                  await FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                                  await _fetchHouseholdAndListsAndSuggestions(); // Refresh the list
                                 }
+                                if (!mounted) return;
                                 Navigator.of(ctx).pop();
                                 _showTopSnack('Item updated');
                               },
@@ -1013,6 +1085,8 @@ class _ShoppinglistState extends State<Shoppinglist> {
 
   @override
   Widget build(BuildContext context) {
+    double totalListPrice = items.fold(0.0, (sum, item) => sum + (item.unitPrice * item.quantity));
+
     return Column(
       children: [
         // Header
@@ -1026,15 +1100,38 @@ class _ShoppinglistState extends State<Shoppinglist> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ===== NEW: show the current main list title if available =====
-              Text(
-                _currentTitle,
-                style: TextStyle(
-                  color: const Color(0xFF347928),
-                  fontFamily: 'Inter',
-                  fontSize: 34,
-                  fontWeight: FontWeight.w900,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Shopping List',
+                    style: TextStyle(
+                      color: const Color(0xFF347928),
+                      fontFamily: 'Inter',
+                      fontSize: 34,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    'Total: ₱${totalListPrice.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      color: headerGreen,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ),
+              if (_activeList != null && _activeList!.name != 'Shopping List') ...[
+                Text(
+                  _activeList!.name,
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -1111,28 +1208,25 @@ class _ShoppinglistState extends State<Shoppinglist> {
                         suggestion: s,
                         sep: sep,
                         headerGreen: headerGreen,
-                        onAdd: () {
+                        onAdd: () async {
                           if (items.length >= maxGuestItems) {
                             _showLimitDialog();
                             return;
                           }
                           final newItem = ShoppingListItemModel(
-                            id: 'sugg_${DateTime.now().millisecondsSinceEpoch}',
+                            id: null, // Let the service generate the ID
                             name: s.name,
                             brand: s.brand,
                             netWeight: s.sizeText,
                             category: s.category,
                             unitPrice: 0, // Default price
                             quantity: 1,
+                            nutrition: s.nutrition, // Pass nutrition from suggestion
                           );
-                          setState(() {
-                            items.insert(0, newItem);
-                            _reorderByBookmark();
-                            _suggestions.remove(s);
-                          });
+
                           if (_activeList != null) {
-                            _activeList!.items = items;
-                            FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                            await _shoppingListService.addShoppingListItem(_activeList!.id!, newItem);
+                            await _fetchHouseholdAndListsAndSuggestions(); // Refresh the list
                           }
                           _showTopSnack('Added "${s.name}"');
                         },
@@ -1179,12 +1273,12 @@ class _ShoppinglistState extends State<Shoppinglist> {
                         borderRadius: BorderRadius.circular(0),
                       ),
                       SlidableAction(
-                        onPressed: (_) {
+                        onPressed: (_) async { // Mark as async
                           final removed = item;
-                          setState(() => items.remove(removed));
+                          setState(() => items.removeWhere((e) => e.id == removed.id)); // Remove by ID
                           if (_activeList != null) {
                             _activeList!.items = items;
-                            FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                            await FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
                           }
                           _showTopSnack('Deleted "${removed.name}"');
                         },
@@ -1209,39 +1303,52 @@ class _ShoppinglistState extends State<Shoppinglist> {
                           child: _ShoppingRow(
                             item: item,
                             headerGreen: headerGreen,
-                            onToggleInCart: (v) {
-                              setState(() => item.isPurchased = v ?? false);
+                            onToggleInCart: (v) async {
+                              final updatedItem = item.copyWith(isPurchased: v ?? false);
+                              setState(() {
+                                final index = items.indexWhere((e) => e.id == item.id);
+                                if (index != -1) items[index] = updatedItem;
+                              });
                               if (_activeList != null) {
-                                _activeList!.items = items;
-                                FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                                await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
                               }
                             },
-                            onToggleBookmark: () {
+                            onToggleBookmark: () async {
+                              final updatedItem = item.copyWith(isBookmarked: !item.isBookmarked);
                               setState(() {
-                                item.isBookmarked = !item.isBookmarked;
+                                final index = items.indexWhere((e) => e.id == item.id);
+                                if (index != -1) items[index] = updatedItem;
                                 _reorderByBookmark();
                               });
                               if (_activeList != null) {
-                                _activeList!.items = items;
-                                FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                                await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
                               }
                             },
-                            onDecrement: () {
-                              setState(() => item.quantity = (item.quantity > 0) ? item.quantity - 1 : 0);
-                              if (_activeList != null) {
-                                _activeList!.items = items;
-                                FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                            onDecrement: () async {
+                              if (item.quantity > 0) {
+                                final updatedItem = item.copyWith(quantity: item.quantity - 1);
+                                setState(() {
+                                  final index = items.indexWhere((e) => e.id == item.id);
+                                  if (index != -1) items[index] = updatedItem;
+                                });
+                                if (_activeList != null) {
+                                  await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
+                                }
                               }
                             },
-                            onIncrement: () {
-                              setState(() => item.quantity += 1);
+                            onIncrement: () async {
+                              final updatedItem = item.copyWith(quantity: item.quantity + 1);
+                              setState(() {
+                                final index = items.indexWhere((e) => e.id == item.id);
+                                if (index != -1) items[index] = updatedItem;
+                              });
                               if (_activeList != null) {
-                                _activeList!.items = items;
-                                FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                                await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
                               }
                             },
                             onDelete: () {}, // kept for compatibility
                             onEdit: () {}, // disabled (no tap-to-edit on name)
+                            openFoodFactsService: _openFoodFactsService, // Pass the service
                           ),
                         ),
                         if (item.isPurchased)
@@ -1295,12 +1402,14 @@ class _Suggestion {
   final String? sizeText; // NEW
   final String note; // e.g., "Low Stock", "Out of Stock"
   final String category;
+  final String? nutrition; // New: Optional nutrition information
   _Suggestion({
     required this.name,
     required this.note,
     required this.category,
     this.brand,
     this.sizeText,
+    this.nutrition,
   });
 }
 
@@ -1315,7 +1424,7 @@ class _SuggestionCard extends StatelessWidget {
   final _Suggestion suggestion;
   final Color sep;
   final Color headerGreen;
-  final VoidCallback onAdd;
+  final Future<void> Function() onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -1381,11 +1490,22 @@ class _SuggestionCard extends StatelessWidget {
                         height: 1.1,
                       ),
                     ),
+                    if (suggestion.nutrition != null && suggestion.nutrition!.isNotEmpty)
+                      Text(
+                        'Nutri-score: ${suggestion.nutrition!.toUpperCase()}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
                   ],
                 ),
               ),
               IconButton(
-                onPressed: onAdd,
+                onPressed: () async {
+                  await onAdd();
+                },
                 icon: const Icon(Icons.add_circle_outline_rounded),
                 color: headerGreen,
                 splashRadius: 20,
@@ -1410,6 +1530,7 @@ class _ShoppingRow extends StatelessWidget {
     required this.onIncrement,
     required this.onDelete,
     required this.onEdit,
+    required this.openFoodFactsService, // Add this parameter
   });
 
   final ShoppingListItemModel item;
@@ -1420,6 +1541,7 @@ class _ShoppingRow extends StatelessWidget {
   final VoidCallback onIncrement;
   final VoidCallback onDelete; // (unused now; kept for compatibility)
   final VoidCallback onEdit;
+  final OpenFoodFactsService openFoodFactsService; // Declare the parameter
 
   @override
   Widget build(BuildContext context) {
@@ -1507,6 +1629,15 @@ class _ShoppingRow extends StatelessWidget {
                   color: selected ? Colors.black45 : Colors.black54,
                 ),
               ),
+              if (item.nutrition != null && item.nutrition!.isNotEmpty)
+                Text(
+                  'Nutri-score: ${item.nutrition!.toUpperCase()}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? Colors.grey.shade500 : Colors.grey.shade600,
+                  ),
+                ),
             ],
           ),
         ),
@@ -1528,44 +1659,34 @@ class _ShoppingRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 SizedBox(
-                  width: 24,
-                  height: 24,
+                  width: 28,
+                  height: 28,
                   child: IconButton(
                     padding: EdgeInsets.zero,
-                    icon: Icon(Icons.remove_circle_outline_rounded, color: grey, size: 18),
+                    icon: Icon(Icons.remove_circle_outline_rounded, color: grey, size: 20),
                     onPressed: onDecrement,
-                    splashRadius: 16,
+                    splashRadius: 18,
                   ),
                 ),
                 Container(
-                  width: 26,
+                  width: 30,
                   alignment: Alignment.center,
                   child: Text(
                     '${item.quantity}',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                   ),
                 ),
                 SizedBox(
-                  width: 24,
-                  height: 24,
+                  width: 28,
+                  height: 28,
                   child: IconButton(
                     padding: EdgeInsets.zero,
-                    icon: Icon(Icons.add_circle_outline_rounded, color: grey, size: 18),
+                    icon: Icon(Icons.add_circle_outline_rounded, color: grey, size: 20),
                     onPressed: onIncrement,
-                    splashRadius: 16,
+                    splashRadius: 18,
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 4),
-            // Price
-            Text(
-              '₱${(item.unitPrice * item.quantity).toStringAsFixed(2)}',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: selected ? Colors.grey.shade600 : headerGreen,
-              ),
             ),
             // Unit price (smaller)
             Text(
@@ -1573,6 +1694,15 @@ class _ShoppingRow extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 color: selected ? Colors.grey.shade500 : Colors.grey.shade600,
+              ),
+            ),
+            // Total price for quantity
+            Text(
+              '₱${(item.unitPrice * item.quantity).toStringAsFixed(2)}',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: selected ? Colors.grey.shade600 : headerGreen,
               ),
             ),
           ],
