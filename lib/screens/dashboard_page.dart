@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shelf_control/screens/privacy_policy_screen.dart';
+import 'package:shelf_control/screens/meal_planner_page.dart';
 import 'package:shelf_control/screens/terms_and_conditions_screen.dart';
 import 'package:shelf_control/screens/notification_settings_page.dart';
 import 'package:shelf_control/screens/profile_page.dart';
@@ -53,21 +54,18 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _showPantryInventory(FirestoreService firestoreService) {
-    _showPage(
-      const Pantryinventory(),
-    );
+    _showPage(const Pantryinventory());
   }
 
   void _showAddPantryItem(FirestoreService firestoreService) {
-    _showPage(
-      const AddPantryItem(),
-    );
+    _showPage(const AddPantryItem());
   }
-
 
   @override
   Widget build(BuildContext context) {
-    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+    final firestoreService = Provider.of<FirestoreService>(
+      context,
+    ); // Get the FirestoreService instance
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFFBE6),
@@ -81,6 +79,15 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.brunch_dining, color: Colors.white),
+            tooltip: 'Meal Planner',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MealPlannerPage()),
+              );
+            },
+          ),
           Stack(
             children: [
               IconButton(
@@ -204,7 +211,9 @@ class _DashboardPageState extends State<DashboardPage> {
               );
               if (scannedItems != null && scannedItems.isNotEmpty) {
                 // No longer adding to _pantryItems directly, as DashboardHome fetches its own data
-                _showPantryInventory(firestoreService); // Refresh pantry inventory to show new items
+                _showPantryInventory(
+                  firestoreService,
+                ); // Refresh pantry inventory to show new items
               }
             },
           ),
@@ -381,7 +390,9 @@ class DashboardHome extends StatefulWidget {
 class _DashboardHomeState extends State<DashboardHome> {
   @override
   Widget build(BuildContext context) {
-    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+    final firestoreService = Provider.of<FirestoreService>(
+      context,
+    ); // Get the FirestoreService instance
 
     return Column(
       children: [
@@ -401,7 +412,9 @@ class _DashboardHomeState extends State<DashboardHome> {
                   overflow: TextOverflow.ellipsis, // Add ellipsis for long text
                 ),
               ),
-              const SizedBox(width: 10), // Add some spacing between the text and dropdown
+              const SizedBox(
+                width: 10,
+              ), // Add some spacing between the text and dropdown
               Flexible(
                 fit: FlexFit.tight,
                 child: StreamBuilder<List<Household>>(
@@ -428,15 +441,18 @@ class _DashboardHomeState extends State<DashboardHome> {
 
                     // Find the currently selected household
                     Household? selectedHousehold = households.firstWhereOrNull(
-                        (h) => h.id == firestoreService.selectedHouseholdId);
+                      (h) => h.id == firestoreService.selectedHouseholdId,
+                    );
 
                     // If no household is selected, or the selected one is no longer valid,
                     // default to the personal household or the first available.
                     if (selectedHousehold == null && households.isNotEmpty) {
                       selectedHousehold = households.firstWhere(
-                          (h) => h.isPersonal,
-                          orElse: () => households.first);
-                      firestoreService.selectedHouseholdId = selectedHousehold.id;
+                        (h) => h.isPersonal,
+                        orElse: () => households.first,
+                      );
+                      firestoreService.selectedHouseholdId =
+                          selectedHousehold.id;
                     }
 
                     return Container(
@@ -453,8 +469,11 @@ class _DashboardHomeState extends State<DashboardHome> {
                               (h) => DropdownMenuItem(
                                 value: h.id,
                                 child: Text(
-                                  h.isPersonal ? "${h.name} (Personal)" : h.name,
-                                  overflow: TextOverflow.ellipsis, // Add ellipsis for long names
+                                  h.isPersonal
+                                      ? "${h.name} (Personal)"
+                                      : h.name,
+                                  overflow: TextOverflow
+                                      .ellipsis, // Add ellipsis for long names
                                 ),
                               ),
                             )
@@ -466,7 +485,10 @@ class _DashboardHomeState extends State<DashboardHome> {
                         },
                         dropdownColor: const Color(0xFF2E7D32),
                         underline: Container(),
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
                         iconEnabledColor: Colors.white,
                       ),
                     );
@@ -504,7 +526,9 @@ class _DashboardHomeState extends State<DashboardHome> {
                 StreamBuilder<List<PantryItemModel>>(
                   stream: firestoreService.selectedHouseholdId == null
                       ? Stream.value([])
-                      : firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
+                      : firestoreService.getPantryItemsForHousehold(
+                          firestoreService.selectedHouseholdId!,
+                        ),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const CircularProgressIndicator();
