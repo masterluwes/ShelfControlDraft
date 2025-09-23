@@ -5,6 +5,9 @@ import 'package:shelf_control/models/pantry_item_model.dart';
 import 'package:shelf_control/models/household_model.dart'; // Import Household model
 import 'package:shelf_control/models/product_model.dart'; // Import Product model
 import 'package:shelf_control/models/user_model.dart'; // Import UserModel
+import 'package:shelf_control/models/shopping_list_model.dart'; // Import ShoppingListModel
+import 'package:shelf_control/models/shopping_list_item_model.dart'; // Import ShoppingListItemModel
+import 'package:shelf_control/models/shopping_history_item_model.dart'; // Import ShoppingHistoryItemModel
 import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 
@@ -127,15 +130,137 @@ class FirestoreService extends ChangeNotifier {
     await _db.collection('pantryItems').doc(item.id).update(item.toFirestore());
   }
 
+  // --- Shopping List Methods ---
+
+  // Get a stream of shopping lists for a specific household
+  Stream<List<ShoppingListModel>> getShoppingListsForHousehold(String householdId) {
+    return _db
+        .collection('shoppingLists')
+        .where('householdId', isEqualTo: householdId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => ShoppingListModel.fromFirestore(doc))
+            .toList());
+  }
+
+  // Add a new shopping list for the currently selected household
+  Future<void> addShoppingList(ShoppingListModel list) async {
+    if (selectedHouseholdId == null) {
+      throw Exception("No household selected.");
+    }
+    await _db.collection('shoppingLists').add(list.toFirestore());
+  }
+
+  // Update an existing shopping list for the currently selected household
+  Future<void> updateShoppingList(ShoppingListModel list) async {
+    if (selectedHouseholdId == null || list.id == null) {
+      throw Exception("No household selected or list ID is missing.");
+    }
+    await _db.collection('shoppingLists').doc(list.id).update(list.toFirestore());
+  }
+
+  // Delete a shopping list
+  Future<void> deleteShoppingList(String listId) async {
+    if (selectedHouseholdId == null) {
+      throw Exception("No household selected.");
+    }
+    await _db.collection('shoppingLists').doc(listId).delete();
+  }
+
+  // Set a specific shopping list as active and deactivate all others for the household
+  Future<void> setActiveShoppingList(String listId, String householdId) async {
+    // Deactivate all other lists for this household
+    final querySnapshot = await _db
+        .collection('shoppingLists')
+        .where('householdId', isEqualTo: householdId)
+        .where('isActive', isEqualTo: true)
+        .get();
+
+    for (final doc in querySnapshot.docs) {
+      await _db.collection('shoppingLists').doc(doc.id).update({'isActive': false});
+    }
+
+    // Activate the selected list
+    await _db.collection('shoppingLists').doc(listId).update({'isActive': true});
+  }
+
+  // Get the currently active shopping list for a household
+  Stream<ShoppingListModel?> getActiveShoppingListForHousehold(String householdId) {
+    return _db
+        .collection('shoppingLists')
+        .where('householdId', isEqualTo: householdId)
+        .where('isActive', isEqualTo: true)
+        .limit(1)
+        .snapshots()
+        .map((snapshot) {
+          if (snapshot.docs.isNotEmpty) {
+            return ShoppingListModel.fromFirestore(snapshot.docs.first);
+          }
+          return null;
+        });
+  }
+
+  // --- Shopping History Methods (new model) ---
+
+  // Add an item to shopping history
+  Future<void> addShoppingHistoryItem(ShoppingHistoryItemModel item) async {
+    if (selectedHouseholdId == null) {
+      throw Exception("No household selected.");
+    }
+    await _db.collection('shoppingHistory').add(item.toFirestore());
+  }
+
+  // Get a stream of shopping history items for a specific household
+  Stream<List<ShoppingHistoryItemModel>> getShoppingHistoryForHousehold(String householdId) {
+    return _db
+        .collection('shoppingHistory')
+        .where('householdId', isEqualTo: householdId)
+        .orderBy('purchaseDate', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => ShoppingHistoryItemModel.fromFirestore(doc))
+            .toList());
+  }
+
   // Mark a pantry item as deleted for the currently selected household
   Future<void> deletePantryItem(String itemId) async {
     if (selectedHouseholdId == null) {
       throw Exception("No household selected.");
     }
+
+    // Get the item details before deleting/updating
+    final itemDoc = await _db.collection('pantryItems').doc(itemId).get();
+    if (!itemDoc.exists) {
+      return; // Item doesn't exist
+    }
+    final item = PantryItemModel.fromFirestore(itemDoc);
+
+    // Determine productId from local_products_ph if barcode is available
+    String? productId;
+    if (item.barcode != null && item.barcode!.isNotEmpty) {
+      final productQuery = await _db.collection('local_products_ph').where('barcode', isEqualTo: item.barcode).limit(1).get();
+      if (productQuery.docs.isNotEmpty) {
+        productId = productQuery.docs.first.id;
+      }
+    }
+
+    // Update the status to 'Deleted'
     await _db.collection('pantryItems').doc(itemId).update({
       'status': 'Deleted',
       'deletedAt': FieldValue.serverTimestamp(),
     });
+
+    // Add a record to the shopping history for the deletion
+    final historyItem = ShoppingHistoryItemModel(
+      householdId: selectedHouseholdId!,
+      productId: productId, // Use the fetched productId
+      productName: item.name,
+      category: item.category,
+      quantity: item.qty, // Log the quantity that was deleted
+      purchaseDate: DateTime.now(), // Represents deletion date
+    );
+    await _db.collection('shoppingHistory').add(historyItem.toFirestore());
   }
 
   // Record consumed items
@@ -158,88 +283,38 @@ class FirestoreService extends ChangeNotifier {
       await _db.collection('pantryItems').doc(item.id).delete();
     }
 
-    // Now, handle the consumed portion for history
-    QuerySnapshot existingConsumedItems;
+    // Determine productId from local_products_ph if barcode is available
+    String? productId;
     if (item.barcode != null && item.barcode!.isNotEmpty) {
-      // Try to find an existing consumed item by barcode
-      existingConsumedItems = await _db
-          .collection('pantryItems')
-          .where('householdId', isEqualTo: selectedHouseholdId)
-          .where('status', isEqualTo: 'Consumed')
-          .where('barcode', isEqualTo: item.barcode)
-          .limit(1)
-          .get();
-    } else {
-      // Fallback to name if no barcode
-      existingConsumedItems = await _db
-          .collection('pantryItems')
-          .where('householdId', isEqualTo: selectedHouseholdId)
-          .where('status', isEqualTo: 'Consumed')
-          .where('name', isEqualTo: item.name)
-          .limit(1)
-          .get();
+      final productQuery = await _db.collection('local_products_ph').where('barcode', isEqualTo: item.barcode).limit(1).get();
+      if (productQuery.docs.isNotEmpty) {
+        productId = productQuery.docs.first.id;
+      }
     }
 
-    if (existingConsumedItems.docs.isNotEmpty) {
-      // Update existing consumed item
-      final existingDoc = existingConsumedItems.docs.first;
-      final existingItem = PantryItemModel.fromFirestore(existingDoc);
-      await _db.collection('pantryItems').doc(existingDoc.id).update({
-        'qty': existingItem.qty + consumedQty,
-        'consumedAt': FieldValue.serverTimestamp(), // Update to latest consumption time
-      });
-    } else {
-      // Create a new consumed entry
-      final consumedItem = item.copyWith(
-        id: null, // Let Firestore generate a new ID
-        qty: consumedQty,
-        status: 'Consumed',
-        consumedAt: DateTime.now(),
-        // Ensure other fields like barcode, name, etc., are copied for identification
-      );
-      await _db.collection('pantryItems').add(consumedItem.toFirestore());
-    }
+    // Add a record to the shopping history
+    final historyItem = ShoppingHistoryItemModel(
+      householdId: selectedHouseholdId!,
+      productId: productId, // Use the fetched productId
+      productName: item.name,
+      category: item.category,
+      quantity: consumedQty,
+      purchaseDate: DateTime.now(), // Represents consumption date
+    );
+    await _db.collection('shoppingHistory').add(historyItem.toFirestore());
   }
 
-  // Get a stream of history items (consumed or deleted) for a specific household
-  Stream<List<PantryItemModel>> getHistoryItemsForHousehold(String householdId) {
-    return _db
-        .collection('pantryItems')
-        .where('householdId', isEqualTo: householdId)
-        .where('status', whereIn: ['Consumed', 'Deleted'])
-        .orderBy('consumedAt', descending: true) // Order by consumedAt first
-        .orderBy('deletedAt', descending: true) // Then by deletedAt
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => PantryItemModel.fromFirestore(doc))
-            .toList());
-  }
-
-  // Clean up history items older than 30 days
-  Future<void> cleanUpHistoryItems(String householdId) async {
+  // Clean up old shopping history items (e.g., older than 30 days)
+  Future<void> cleanUpShoppingHistoryItems(String householdId) async {
     final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
 
-    // Query for consumed items older than 30 days
-    final consumedQuery = await _db
-        .collection('pantryItems')
+    final historyQuery = await _db
+        .collection('shoppingHistory')
         .where('householdId', isEqualTo: householdId)
-        .where('status', isEqualTo: 'Consumed')
-        .where('consumedAt', isLessThan: thirtyDaysAgo)
+        .where('purchaseDate', isLessThan: thirtyDaysAgo)
         .get();
 
-    for (final doc in consumedQuery.docs) {
-      await doc.reference.delete();
-    }
-
-    // Query for deleted items older than 30 days
-    final deletedQuery = await _db
-        .collection('pantryItems')
-        .where('householdId', isEqualTo: householdId)
-        .where('status', isEqualTo: 'Deleted')
-        .where('deletedAt', isLessThan: thirtyDaysAgo)
-        .get();
-
-    for (final doc in deletedQuery.docs) {
+    for (final doc in historyQuery.docs) {
       await doc.reference.delete();
     }
   }
@@ -366,12 +441,11 @@ class FirestoreService extends ChangeNotifier {
     notifyListeners(); // Notify listeners after leaving a household
   }
 
-  // Delete all history items (consumed and deleted) for a specific household
-  Future<void> deleteAllHistoryItems(String householdId) async {
+  // Delete all shopping history items for a specific household
+  Future<void> deleteAllShoppingHistoryItems(String householdId) async {
     final historyQuery = await _db
-        .collection('pantryItems')
+        .collection('shoppingHistory')
         .where('householdId', isEqualTo: householdId)
-        .where('status', whereIn: ['Consumed', 'Deleted'])
         .get();
 
     for (final doc in historyQuery.docs) {

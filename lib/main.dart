@@ -7,8 +7,6 @@ import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/feature_preview_screen.dart';
 import 'package:shelf_control/screens/dashboard_page.dart'; // Import DashboardPage
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart'; // Required for kReleaseMode
-import 'package:device_preview/device_preview.dart'; // Import DevicePreview
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import provider
 

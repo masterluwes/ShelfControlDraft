@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shelf_control/models/pantry_item_model.dart';
+import 'package:shelf_control/models/shopping_history_item_model.dart'; // Use new history model
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:intl/intl.dart'; // For date formatting
 
@@ -19,7 +19,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final firestoreService = Provider.of<FirestoreService>(context, listen: false);
       if (firestoreService.selectedHouseholdId != null) {
-        firestoreService.cleanUpHistoryItems(firestoreService.selectedHouseholdId!);
+        firestoreService.cleanUpShoppingHistoryItems(firestoreService.selectedHouseholdId!);
       }
     });
   }
@@ -46,7 +46,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
 
     if (confirm == true && firestoreService.selectedHouseholdId != null) {
-      await firestoreService.deleteAllHistoryItems(firestoreService.selectedHouseholdId!);
+      await firestoreService.deleteAllShoppingHistoryItems(firestoreService.selectedHouseholdId!);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('History cleared successfully!')),
@@ -76,8 +76,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
       body: firestoreService.selectedHouseholdId == null
           ? const Center(child: Text('Please select a household to view history.'))
-          : StreamBuilder<List<PantryItemModel>>(
-              stream: firestoreService.getHistoryItemsForHousehold(firestoreService.selectedHouseholdId!),
+          : StreamBuilder<List<ShoppingHistoryItemModel>>(
+              stream: firestoreService.getShoppingHistoryForHousehold(firestoreService.selectedHouseholdId!),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -96,9 +96,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   itemCount: historyItems.length,
                   itemBuilder: (context, index) {
                     final item = historyItems[index];
-                    final actionDate = item.consumedAt ?? item.deletedAt;
-                    final actionType = item.status == 'Consumed' ? 'Consumed' : 'Deleted';
-                    final formattedDate = actionDate != null ? DateFormat('MMM d, yyyy h:mm a').format(actionDate) : 'N/A';
+                    final formattedDate = DateFormat('MMM d, yyyy h:mm a').format(item.purchaseDate);
 
                     return Card(
                       margin: const EdgeInsets.symmetric(vertical: 8.0),
@@ -111,7 +109,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              item.name,
+                              item.productName,
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -120,14 +118,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Quantity: ${item.qty}',
+                              'Quantity: ${item.quantity}',
                               style: const TextStyle(fontSize: 14, color: Colors.black87),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '$actionType on: $formattedDate',
+                              'Purchased on: $formattedDate',
                               style: const TextStyle(fontSize: 14, color: Colors.black54),
                             ),
+                            if (item.category != null && item.category!.isNotEmpty)
+                              Text(
+                                'Category: ${item.category}',
+                                style: const TextStyle(fontSize: 14, color: Colors.black54),
+                              ),
                           ],
                         ),
                       ),

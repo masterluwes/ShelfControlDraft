@@ -18,7 +18,6 @@ import 'package:shelf_control/screens/scan_item_screen.dart'; // Import for Scan
 import 'package:shelf_control/screens/history_screen.dart'; // Import for HistoryScreen
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:shelf_control/models/household_model.dart'; // Import Household model
-import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:collection/collection.dart'; // Import for firstWhereOrNull
 import 'package:provider/provider.dart'; // Import provider
 
@@ -77,7 +76,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFFBE6),
@@ -207,12 +205,14 @@ class _DashboardPageState extends State<DashboardPage> {
             label: 'Add by Camera',
             labelStyle: const TextStyle(fontSize: 18.0, color: Colors.black),
             onTap: () async {
+              if (!mounted) return;
               debugPrint('Add by Camera tapped! Navigating to ScanItemScreen.');
               final List<PantryItemModel>? scannedItems = await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const ScanItemScreen()),
               );
               if (scannedItems != null && scannedItems.isNotEmpty) {
+                if (!mounted) return;
                 // Navigate to DashboardPage with Pantry tab selected
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)), // 1 for Pantry

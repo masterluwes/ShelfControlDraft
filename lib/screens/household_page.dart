@@ -14,7 +14,6 @@ class HouseholdPage extends StatefulWidget {
 }
 
 class _HouseholdPageState extends State<HouseholdPage> {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   void _showJoinDialog(BuildContext context, FirestoreService firestoreService) {
     final codeController = TextEditingController();
@@ -101,12 +100,11 @@ class _HouseholdPageState extends State<HouseholdPage> {
                               return;
                             }
                             try {
-                              final currentContext = context; // Capture context before async gap
                               await firestoreService.joinHousehold(code);
                               if (!mounted) return;
-                              Navigator.of(currentContext).pop();
-                              if (!mounted) return; // Re-add check before ScaffoldMessenger
-                              ScaffoldMessenger.of(currentContext).showSnackBar(
+                              Navigator.of(context).pop();
+                              if (!mounted) return; 
+                              ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Successfully joined household!')),
                               );
                               // No need for setState here, Provider will handle rebuilds
@@ -224,12 +222,11 @@ class _HouseholdPageState extends State<HouseholdPage> {
                               return;
                             }
                             try {
-                              final currentContext = context; // Capture context before async gap
                               await firestoreService.createHousehold(name);
                               if (!mounted) return;
-                              Navigator.of(currentContext).pop();
-                              if (!mounted) return; // Re-add check before ScaffoldMessenger
-                              ScaffoldMessenger.of(currentContext).showSnackBar(
+                              Navigator.of(context).pop();
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Household created successfully!')),
                               );
                               // No need for setState here, Provider will handle rebuilds

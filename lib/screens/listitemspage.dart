@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:shelf_control/models/shopping_list_item_model.dart';
+import 'package:shelf_control/models/shopping_list_model.dart';
+import 'package:shelf_control/services/shopping_list_service.dart';
 
 /// ===== Shared store to broadcast the currently selected shopping list =====
 /// (shoppinglist.dart listens to this and refreshes automatically)
@@ -9,12 +12,12 @@ class MainShoppingListStore extends ChangeNotifier {
   static final MainShoppingListStore instance = MainShoppingListStore._();
 
   String? currentListTitle;
-  List<Item> currentItems = const [];
+  List<ShoppingListItemModel> currentItems = const [];
 
-  void setMainList({required String title, required List<Item> items}) {
+  void setMainList({required String title, required List<ShoppingListItemModel> items}) {
     currentListTitle = title;
     // deep copy so edits on this page won’t mutate the active list
-    currentItems = items.map((e) => e.copy()).toList(growable: false);
+    currentItems = items.map((e) => e.copyWith()).toList(growable: false);
     notifyListeners();
   }
 
@@ -28,50 +31,10 @@ class MainShoppingListStore extends ChangeNotifier {
   bool get hasMain => currentListTitle != null && currentItems.isNotEmpty;
 }
 
-/// ===== Internal model used by both pages =====
-class Item {
-  Item({
-    required this.id,
-    required this.name,
-    required this.category,
-    this.brand,
-    this.sizeText,
-    this.qty = 1,
-    this.inCart = false,
-    this.bookmarked = false,
-    this.incPulse = false,
-    this.decPulse = false,
-  });
-
-  final String id;
-  String name;
-  String category;
-  String? brand; // e.g. Gardenia
-  String? sizeText; // e.g. 1L, 600g
-  int qty;
-  bool inCart; // checkbox (purchased) state
-  bool bookmarked; // “pin” to top
-  bool incPulse;
-  bool decPulse;
-
-  Item copy() => Item(
-    id: id,
-    name: name,
-    category: category,
-    brand: brand,
-    sizeText: sizeText,
-    qty: qty,
-    inCart: inCart,
-    bookmarked: bookmarked,
-    incPulse: incPulse,
-    decPulse: decPulse,
-  );
-}
-
 /// ===== Page =====
 class ListItemsPage extends StatefulWidget {
-  const ListItemsPage({super.key, required this.listTitle});
-  final String listTitle;
+  const ListItemsPage({super.key, required this.shoppingList});
+  final ShoppingListModel shoppingList;
 
   @override
   State<ListItemsPage> createState() => _ListItemsPageState();
@@ -82,6 +45,10 @@ class _ListItemsPageState extends State<ListItemsPage> {
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
+
+  final ShoppingListService _shoppingListService = ShoppingListService();
+  late ShoppingListModel _currentShoppingList;
+  List<ShoppingListItemModel> _items = [];
 
   // Categories (same set as Shoppinglist)
   final List<String> _categories = const [
@@ -95,38 +62,20 @@ class _ListItemsPageState extends State<ListItemsPage> {
     'Other',
   ];
 
-  // Demo content (replace with your data source if needed)
-  final List<Item> _items = [
-    Item(
-      id: 'oj',
-      name: 'Orange Juice',
-      brand: 'Fruit Soda Orange',
-      sizeText: '1L',
-      category: 'Beverages',
-      qty: 2,
-    ),
-    Item(
-      id: 'bread',
-      name: 'Bread',
-      brand: 'Gardenia Wheat Bread',
-      category: 'Baked Goods',
-      qty: 1,
-    ),
-    Item(
-      id: 'mayo',
-      name: 'Mayonnaise',
-      brand: 'Ladies Choice Mayonnaise',
-      category: 'Condiments',
-      qty: 1,
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _currentShoppingList = widget.shoppingList;
+    _items = List.from(_currentShoppingList.items);
+    _resort();
+  }
 
   // ===== Helpers =====
   void _resort() {
     // Bookmarked items first, then the rest. Keep original relative order.
     setState(() {
-      final bookmarked = _items.where((e) => e.bookmarked).toList();
-      final others = _items.where((e) => !e.bookmarked).toList();
+      final bookmarked = _items.where((e) => e.isBookmarked).toList();
+      final others = _items.where((e) => !e.isBookmarked).toList();
       _items
         ..clear()
         ..addAll(bookmarked)
@@ -134,30 +83,34 @@ class _ListItemsPageState extends State<ListItemsPage> {
     });
   }
 
-  Future<void> _pulseButton(Item item, {required bool isInc}) async {
-    if (isInc) {
-      item.incPulse = true;
-    } else {
-      item.decPulse = true;
-    }
+  Future<void> _pulseButton(ShoppingListItemModel item, {required bool isInc}) async {
+    // No direct pulse fields on ShoppingListItemModel, so we'll manage this locally if needed for UI
+    // For now, just update quantity and save
     if (mounted) setState(() {});
     await Future.delayed(const Duration(milliseconds: 160));
-    if (isInc) {
-      item.incPulse = false;
-    } else {
-      item.decPulse = false;
-    }
     if (mounted) setState(() {});
   }
 
-  void _inc(int i) {
-    setState(() => _items[i].qty++);
+  Future<void> _inc(int i) async {
+    setState(() {
+      _items[i].quantity++;
+    });
+    await _shoppingListService.updateShoppingListItem(
+      _currentShoppingList.id!,
+      _items[i],
+    );
     _pulseButton(_items[i], isInc: true);
   }
 
-  void _dec(int i) {
-    if (_items[i].qty > 0) {
-      setState(() => _items[i].qty--);
+  Future<void> _dec(int i) async {
+    if (_items[i].quantity > 0) {
+      setState(() {
+        _items[i].quantity--;
+      });
+      await _shoppingListService.updateShoppingListItem(
+        _currentShoppingList.id!,
+        _items[i],
+      );
       _pulseButton(_items[i], isInc: false);
     }
   }
@@ -169,6 +122,8 @@ class _ListItemsPageState extends State<ListItemsPage> {
     final brandCtrl = TextEditingController();
     final sizeCtrl = TextEditingController();
     String? selectedCategory;
+    double unitPrice = 0.0; // New field for unit price
+    final unitPriceCtrl = TextEditingController(); // Controller for unit price
 
     InputDecoration deco() => InputDecoration(
       filled: true,
@@ -266,6 +221,32 @@ class _ListItemsPageState extends State<ListItemsPage> {
                         ),
                         const SizedBox(height: 12),
                         Text(
+                          'Unit Price',
+                          style: TextStyle(
+                            color: headerGreen,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: unitPriceCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: deco(),
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) {
+                              return 'Please enter a unit price';
+                            }
+                            if (double.tryParse(v) == null) {
+                              return 'Please enter a valid number';
+                            }
+                            return null;
+                          },
+                          onChanged: (v) => unitPrice = double.tryParse(v) ?? 0.0,
+                          textInputAction: TextInputAction.next,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
                           'Category',
                           style: TextStyle(
                             color: headerGreen,
@@ -353,28 +334,37 @@ class _ListItemsPageState extends State<ListItemsPage> {
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             InkWell(
-                              onTap: () {
+                              onTap: () async {
                                 if (!formKey.currentState!.validate()) return;
-                                final id =
-                                    'id_${DateTime.now().millisecondsSinceEpoch}';
-                                setState(() {
-                                  _items.insert(
-                                    0,
-                                    Item(
-                                      id: id,
-                                      name: nameCtrl.text.trim(),
-                                      brand: brandCtrl.text.trim().isEmpty
-                                          ? null
-                                          : brandCtrl.text.trim(),
-                                      sizeText: sizeCtrl.text.trim().isEmpty
-                                          ? null
-                                          : sizeCtrl.text.trim(),
-                                      category: selectedCategory!,
-                                      qty: 1,
-                                    ),
+                                final newItem = ShoppingListItemModel(
+                                  name: nameCtrl.text.trim(),
+                                  brand: brandCtrl.text.trim().isEmpty
+                                      ? null
+                                      : brandCtrl.text.trim(),
+                                  netWeight: sizeCtrl.text.trim().isEmpty
+                                      ? null
+                                      : sizeCtrl.text.trim(),
+                                  category: selectedCategory!,
+                                  unitPrice: unitPrice,
+                                  quantity: 1,
+                                );
+
+                                if (_currentShoppingList.id != null) {
+                                  await _shoppingListService.addShoppingListItem(
+                                    _currentShoppingList.id!,
+                                    newItem,
                                   );
-                                  _resort();
-                                });
+                                  // Refresh the local list from Firestore to get the item with its ID
+                                  final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
+                                  if (updatedList != null) {
+                                    setState(() {
+                                      _currentShoppingList = updatedList;
+                                      _items = List.from(_currentShoppingList.items);
+                                      _resort();
+                                    });
+                                  }
+                                }
+
                                 if (!mounted) return;
                                 Navigator.of(ctx).pop();
                                 ScaffoldMessenger.of(context)
@@ -449,9 +439,11 @@ class _ListItemsPageState extends State<ListItemsPage> {
     final it = _items[index];
     final nameCtrl = TextEditingController(text: it.name);
     final brandCtrl = TextEditingController(text: it.brand ?? '');
-    final sizeCtrl = TextEditingController(text: it.sizeText ?? '');
-    String category = it.category;
-    int qty = it.qty;
+    final sizeCtrl = TextEditingController(text: it.netWeight ?? '');
+    String category = it.category ?? _categories.first;
+    int qty = it.quantity;
+    double unitPrice = it.unitPrice;
+    final unitPriceCtrl = TextEditingController(text: it.unitPrice.toStringAsFixed(2));
 
     await showDialog<void>(
       context: context,
@@ -512,6 +504,21 @@ class _ListItemsPageState extends State<ListItemsPage> {
                           borderSide: BorderSide(color: sep),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: unitPriceCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Unit Price',
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: sep),
+                        ),
+                      ),
+                      onChanged: (v) => unitPrice = double.tryParse(v) ?? 0.0,
                     ),
                     const SizedBox(height: 10),
                     InputDecorator(
@@ -586,7 +593,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
                     backgroundColor: headerGreen,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: () {
+                  onPressed: () async {
                     setState(() {
                       it.name = nameCtrl.text.trim().isEmpty
                           ? it.name
@@ -594,12 +601,28 @@ class _ListItemsPageState extends State<ListItemsPage> {
                       it.brand = brandCtrl.text.trim().isEmpty
                           ? null
                           : brandCtrl.text.trim();
-                      it.sizeText = sizeCtrl.text.trim().isEmpty
+                      it.netWeight = sizeCtrl.text.trim().isEmpty
                           ? null
                           : sizeCtrl.text.trim();
                       it.category = category;
-                      it.qty = qty;
+                      it.quantity = qty;
+                      it.unitPrice = unitPrice;
                     });
+                    if (_currentShoppingList.id != null) {
+                      await _shoppingListService.updateShoppingListItem(
+                        _currentShoppingList.id!,
+                        it,
+                      );
+                      // Refresh the local list from Firestore to ensure consistency
+                      final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
+                      if (updatedList != null) {
+                        setState(() {
+                          _currentShoppingList = updatedList;
+                          _items = List.from(_currentShoppingList.items);
+                          _resort();
+                        });
+                      }
+                    }
                     if (!mounted) return;
                     Navigator.of(dialogCtx, rootNavigator: true).pop();
                   },
@@ -625,7 +648,21 @@ class _ListItemsPageState extends State<ListItemsPage> {
       ),
     );
     if (confirmed == true && mounted) {
-      setState(() => _items.removeAt(index));
+      if (_currentShoppingList.id != null && it.id != null) {
+        await _shoppingListService.removeShoppingListItem(
+          _currentShoppingList.id!,
+          it.id!,
+        );
+        // Refresh the local list from Firestore
+        final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
+        if (updatedList != null) {
+          setState(() {
+            _currentShoppingList = updatedList;
+            _items = List.from(_currentShoppingList.items);
+            _resort();
+          });
+        }
+      }
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
@@ -641,7 +678,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
   // Switches this list to be the active one used by shoppinglist.dart
   void _useAsCurrent() {
     MainShoppingListStore.instance.setMainList(
-      title: widget.listTitle,
+      title: _currentShoppingList.name,
       items: _items,
     );
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -661,14 +698,18 @@ class _ListItemsPageState extends State<ListItemsPage> {
       builder: (_) => _DeleteConfirmDialog(
         headerGreen: headerGreen,
         title: 'Delete shopping list',
-        message: 'Are you sure you want to delete “${widget.listTitle}”?',
+        message: 'Are you sure you want to delete “${_currentShoppingList.name}”?',
       ),
     );
 
     if (confirmed == true && mounted) {
+      if (_currentShoppingList.id != null) {
+        await _shoppingListService.deleteShoppingList(_currentShoppingList.id!);
+      }
+
       // If this was the active list, clear shared store safely
       final store = MainShoppingListStore.instance;
-      if (store.currentListTitle == widget.listTitle) {
+      if (store.currentListTitle == _currentShoppingList.name) {
         store.clearMain();
       }
 
@@ -686,7 +727,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
       if (!mounted) return;
       Navigator.of(
         context,
-      ).pop({'deleted': true, 'listTitle': widget.listTitle});
+      ).pop({'deleted': true, 'listTitle': _currentShoppingList.name});
     }
   }
 
@@ -715,7 +756,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    widget.listTitle,
+                    _currentShoppingList.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -786,19 +827,32 @@ class _ListItemsPageState extends State<ListItemsPage> {
                             item: it,
                             headerGreen: headerGreen,
                             grey: grey,
-                            onToggleInCart: (v) =>
-                                setState(() => it.inCart = v ?? false),
-                            onToggleBookmark: () {
+                            onToggleInCart: (v) async {
+                              setState(() => it.isPurchased = v ?? false);
+                              if (_currentShoppingList.id != null) {
+                                await _shoppingListService.updateShoppingListItem(
+                                  _currentShoppingList.id!,
+                                  it,
+                                );
+                              }
+                            },
+                            onToggleBookmark: () async {
                               setState(() {
-                                it.bookmarked = !it.bookmarked;
+                                it.isBookmarked = !it.isBookmarked;
                                 _resort();
                               });
+                              if (_currentShoppingList.id != null) {
+                                await _shoppingListService.updateShoppingListItem(
+                                  _currentShoppingList.id!,
+                                  it,
+                                );
+                              }
                             },
                             onDecrement: () => _dec(index),
                             onIncrement: () => _inc(index),
                           ),
                         ),
-                        if (it.inCart)
+                        if (it.isPurchased)
                           Positioned.fill(
                             child: IgnorePointer(
                               ignoring: true,
@@ -888,7 +942,7 @@ class _ShoppingRowSL extends StatelessWidget {
     required this.onIncrement,
   });
 
-  final Item item;
+  final ShoppingListItemModel item;
   final Color headerGreen;
   final Color grey;
   final ValueChanged<bool?> onToggleInCart;
@@ -898,7 +952,7 @@ class _ShoppingRowSL extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool selected = item.inCart;
+    final bool selected = item.isPurchased;
 
     Widget pulseIcon({
       required bool active,
@@ -925,9 +979,9 @@ class _ShoppingRowSL extends StatelessWidget {
     // Compose the "brand · size" subline
     String? subline;
     if ((item.brand != null && item.brand!.trim().isNotEmpty) ||
-        (item.sizeText != null && item.sizeText!.trim().isNotEmpty)) {
+        (item.netWeight != null && item.netWeight!.trim().isNotEmpty)) {
       final b = (item.brand ?? '').trim();
-      final s = (item.sizeText ?? '').trim();
+      final s = (item.netWeight ?? '').trim();
       subline = (b.isNotEmpty && s.isNotEmpty)
           ? '$b · $s'
           : (b.isNotEmpty ? b : s);
@@ -954,7 +1008,7 @@ class _ShoppingRowSL extends StatelessWidget {
           ),
           alignment: Alignment.center,
           child: Icon(
-            _iconForName(item.name, item.category),
+            _iconForName(item.name, item.category ?? 'Other'),
             size: 18,
             color: headerGreen,
           ),
@@ -998,7 +1052,7 @@ class _ShoppingRowSL extends StatelessWidget {
               ],
               const SizedBox(height: 2),
               Text(
-                item.category,
+                item.category ?? 'Other',
                 style: TextStyle(
                   fontSize: 12.5,
                   color: selected ? Colors.black45 : Colors.black54,
@@ -1010,15 +1064,15 @@ class _ShoppingRowSL extends StatelessWidget {
 
         IconButton(
           icon: Icon(
-            item.bookmarked ? Icons.bookmark : Icons.bookmark_border,
-            color: item.bookmarked ? headerGreen : grey,
+            item.isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+            color: item.isBookmarked ? headerGreen : grey,
           ),
           onPressed: onToggleBookmark,
           splashRadius: 20,
-          tooltip: item.bookmarked ? 'Unpin' : 'Pin (priority)',
+          tooltip: item.isBookmarked ? 'Unpin' : 'Pin (priority)',
         ),
         pulseIcon(
-          active: item.decPulse,
+          active: false, // item.decPulse, // Removed local pulse state
           outlineIcon: Icons.remove_circle_outline_rounded,
           filledIcon: Icons.remove_circle,
           onPressed: onDecrement,
@@ -1028,10 +1082,10 @@ class _ShoppingRowSL extends StatelessWidget {
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: Colors.grey, width: 2)),
           ),
-          child: Text('${item.qty}', style: const TextStyle(fontSize: 16)),
+          child: Text('${item.quantity}', style: const TextStyle(fontSize: 16)),
         ),
         pulseIcon(
-          active: item.incPulse,
+          active: false, // item.incPulse, // Removed local pulse state
           outlineIcon: Icons.add_circle_outline_rounded,
           filledIcon: Icons.add_circle,
           onPressed: onIncrement,

@@ -45,5 +45,19 @@ service cloud.firestore {
     match /local_products_ph/{productId} {
       allow read: if request.auth.uid != null;
     }
+
+    // Allow read/write for shopping lists within a household
+    match /shoppingLists/{listId} {
+      allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+    }
+
+    // Allow read/write for shopping history items within a household
+    match /shoppingHistory/{historyItemId} {
+      allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+    }
   }
 }

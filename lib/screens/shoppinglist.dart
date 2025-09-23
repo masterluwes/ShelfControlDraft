@@ -6,12 +6,17 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
-import 'package:shelf_control/screens/viewalllists.dart';
-import 'package:shelf_control/screens/listitemspage.dart'
-    show MainShoppingListStore;
+import 'package:shelf_control/models/shopping_list_item_model.dart';
+import 'package:shelf_control/models/shopping_list_model.dart';
+import 'package:shelf_control/screens/viewalllists.dart' hide Text, Navigator;
+import 'package:shelf_control/services/shopping_list_service.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:provider/provider.dart'; // Import provider
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 
 class Shoppinglist extends StatefulWidget {
   const Shoppinglist({super.key});
@@ -33,14 +38,16 @@ class _ShoppinglistState extends State<Shoppinglist> {
   // For PNG export — wrap the list with a RepaintBoundary
   final GlobalKey _captureKey = GlobalKey();
 
-  // ===== NEW: current title reflects the “Main” list when present =====
   String _currentTitle = 'Shopping List';
-
-  // ===== NEW: store listener for live updates from ListItemsPage =====
-  VoidCallback? _storeListener;
+  ShoppingListModel? _activeList;
+  String? _householdId;
+  final ShoppingListService _shoppingListService = ShoppingListService();
 
   // Guest limit
   static const int maxGuestItems = 15;
+
+  // Listener for FirestoreService changes
+  late VoidCallback _firestoreServiceListener;
 
   final List<String> _categories = const [
     'Beverages',
@@ -53,193 +60,95 @@ class _ShoppinglistState extends State<Shoppinglist> {
     'Other',
   ];
 
-  // Shopping list items (no thumbnails)
-  final items = <ShoppingItem>[
-    ShoppingItem(
-      id: 'oj1',
-      name: 'Orange Juice',
-      brand: 'Fruit Soda Orange',
-      sizeText: '1L',
-      category: 'Beverages',
-      imageUrl: null,
-      qty: 2,
-    ),
-    ShoppingItem(
-      id: 'wb1',
-      name: 'Bread',
-      brand: 'Gardenia Wheat Bread',
-      sizeText: null,
-      category: 'Baked Goods',
-      imageUrl: null,
-      qty: 1,
-    ),
-    ShoppingItem(
-      id: 'mayo1',
-      name: 'Mayonnaise',
-      brand: 'Ladies Choice Mayonnaise',
-      sizeText: null,
-      category: 'Condiments',
-      imageUrl: null,
-      qty: 1,
-    ),
-    ShoppingItem(
-      id: 'canned1',
-      name: 'Canned Meats',
-      brand: 'Argentina',
-      sizeText: '150g',
-      category: 'Canned Goods',
-      imageUrl: null,
-      qty: 5,
-    ),
-    ShoppingItem(
-      id: 'mush1',
-      name: 'Mushrooms',
-      brand: 'Jolly',
-      sizeText: '400g',
-      category: 'Canned Goods',
-      imageUrl: null,
-      qty: 2,
-    ),
-    // Added examples
-    ShoppingItem(
-      id: 'milk1',
-      name: 'Fresh Milk',
-      brand: 'Selecta Fortified',
-      sizeText: '1L',
-      category: 'Dairy',
-      imageUrl: null,
-      qty: 2,
-    ),
-    ShoppingItem(
-      id: 'cheese1',
-      name: 'Cheddar Cheese',
-      brand: 'Eden',
-      sizeText: '165g',
-      category: 'Dairy',
-      imageUrl: null,
-      qty: 1,
-    ),
-    ShoppingItem(
-      id: 'apple1',
-      name: 'Red Apples',
-      brand: null,
-      sizeText: '6 pcs',
-      category: 'Produce',
-      imageUrl: null,
-      qty: 6,
-    ),
-    ShoppingItem(
-      id: 'banana1',
-      name: 'Bananas',
-      brand: null,
-      sizeText: '5 pcs',
-      category: 'Produce',
-      imageUrl: null,
-      qty: 5,
-    ),
-    ShoppingItem(
-      id: 'chips1',
-      name: 'Potato Chips',
-      brand: 'Lay’s',
-      sizeText: '150g',
-      category: 'Snacks',
-      imageUrl: null,
-      qty: 3,
-    ),
-    ShoppingItem(
-      id: 'cookies1',
-      name: 'Chocolate Chip Cookies',
-      brand: 'Chips Ahoy!',
-      sizeText: '128g',
-      category: 'Snacks',
-      imageUrl: null,
-      qty: 2,
-    ),
-    ShoppingItem(
-      id: 'water1',
-      name: 'Bottled Water',
-      brand: 'Nature Spring',
-      sizeText: '500ml',
-      category: 'Beverages',
-      imageUrl: null,
-      qty: 12,
-    ),
-    ShoppingItem(
-      id: 'rice1',
-      name: 'White Rice',
-      brand: 'Sinandomeng',
-      sizeText: '5kg',
-      category: 'Other',
-      imageUrl: null,
-      qty: 1,
-    ),
-    ShoppingItem(
-      id: 'egg1',
-      name: 'Eggs',
-      brand: null,
-      sizeText: '1 dozen',
-      category: 'Dairy',
-      imageUrl: null,
-      qty: 1,
-    ),
-  ];
+  List<ShoppingListItemModel> items = [];
 
   // ------- Suggestions dropdown (collapsible) -------
   bool _suggestionsOpen = true;
 
   /// Suggestions now include optional brand & size
-  final List<_Suggestion> _suggestions = [
-    _Suggestion(
-      name: 'Mushrooms',
-      brand: 'Jolly',
-      sizeText: '400g',
-      note: 'Low Stock',
-      category: 'Canned Goods',
-    ),
-    _Suggestion(
-      name: 'Canned Meats',
-      brand: 'Argentina',
-      sizeText: '150g',
-      note: 'Out of Stock',
-      category: 'Canned Goods',
-    ),
-    _Suggestion(
-      name: 'Orange Juice',
-      brand: 'Fruit Soda Orange',
-      sizeText: '1L',
-      note: 'Low Stock',
-      category: 'Beverages',
-    ),
-  ];
+  List<_Suggestion> _suggestions = [];
 
-  // ===== NEW: Apply the “Main” list from the shared store =====
-  void _applyMainStore(MainShoppingListStore store, {bool showToast = false}) {
-    if (!store.hasMain) return;
-    final incoming = store.currentItems;
-    // Replace local title + items with copies from store
-    _currentTitle = store.currentListTitle ?? 'Shopping List';
-    items
-      ..clear()
-      ..addAll(incoming.map(_mapFromStoreItem));
-    _reorderByBookmark(); // keep your bookmark-first rule
-    if (showToast) {
-      _showTopSnack('Loaded main list: “$_currentTitle”');
-    }
-    setState(() {});
+  @override
+  void initState() {
+    super.initState();
+    // Initialize the listener
+    _firestoreServiceListener = () {
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+      if (_householdId != firestoreService.selectedHouseholdId) {
+        setState(() {
+          _householdId = firestoreService.selectedHouseholdId;
+        });
+        _fetchHouseholdAndListsAndSuggestions();
+      }
+    };
+
+    // Add the listener
+    Provider.of<FirestoreService>(context, listen: false).addListener(_firestoreServiceListener);
+
+    // Initial fetch
+    _fetchHouseholdAndListsAndSuggestions();
   }
 
-  // Map `_Item` (from ListItemsPage) -> `ShoppingItem` (this page)
-  ShoppingItem _mapFromStoreItem(dynamic it) => ShoppingItem(
-    id: it.id,
-    name: it.name,
-    brand: it.brand,
-    sizeText: it.sizeText,
-    category: it.category,
-    imageUrl: null,
-    qty: it.qty,
-    inCart: it.inCart,
-    bookmarked: it.bookmarked,
-  );
+  @override
+  void dispose() {
+    // Remove the listener
+    Provider.of<FirestoreService>(context, listen: false).removeListener(_firestoreServiceListener);
+    super.dispose();
+  }
+
+  Future<void> _fetchHouseholdAndListsAndSuggestions() async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    _householdId = firestoreService.selectedHouseholdId; // Get householdId from service
+
+    if (_householdId != null) {
+      // Fetch active list
+      var snapshot = await FirebaseFirestore.instance
+          .collection('shoppingLists')
+          .where('householdId', isEqualTo: _householdId)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+      if (!mounted) return;
+      setState(() {
+        if (snapshot.docs.isNotEmpty) {
+          _activeList = ShoppingListModel.fromFirestore(snapshot.docs.first);
+          _currentTitle = _activeList!.name;
+          items = _activeList!.items;
+          _reorderByBookmark();
+        } else {
+          _activeList = null;
+          _currentTitle = 'Shopping List';
+          items = [];
+        }
+      });
+
+      // Fetch suggestions
+      await _fetchSuggestions();
+    } else {
+      if (!mounted) return;
+      setState(() {
+        _activeList = null;
+        _currentTitle = 'Shopping List';
+        items = [];
+        _suggestions = [];
+      });
+    }
+  }
+
+  Future<void> _fetchSuggestions() async {
+    if (_householdId != null) {
+      List<ShoppingListItemModel> generatedSuggestions = await _shoppingListService.generateHassleFreeSuggestions(_householdId!);
+      setState(() {
+        _suggestions = generatedSuggestions.map((item) => _Suggestion(
+          name: item.name,
+          brand: item.brand,
+          sizeText: item.netWeight,
+          note: 'Suggested', // You might want to refine this note based on the actual reason for suggestion (e.g., 'Low Stock', 'Out of Stock')
+          category: item.category ?? 'Other',
+        )).toList();
+      });
+    }
+  }
 
   // ---------- Helpers: compute top margin under header ----------
   double _topSnackMargin() {
@@ -266,27 +175,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
     );
   }
 
-  // Same as above but with action (for UNDO etc.)
-  void _showTopSnackWithAction({
-    required String message,
-    required String actionLabel,
-    required VoidCallback onAction,
-    Duration duration = const Duration(seconds: 3),
-  }) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: duration,
-        behavior: SnackBarBehavior.floating,
-        dismissDirection: DismissDirection.up,
-        margin: EdgeInsets.fromLTRB(16, _topSnackMargin(), 16, 0),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        action: SnackBarAction(label: actionLabel, onPressed: onAction),
-      ),
-    );
-  }
 
   // ---------- limit banner ----------
   Future<void> _showLimitDialog() async {
@@ -373,10 +261,10 @@ class _ShoppinglistState extends State<Shoppinglist> {
   }
 
   void _reorderByBookmark() {
-    final bookmarked = <ShoppingItem>[];
-    final others = <ShoppingItem>[];
+    final bookmarked = <ShoppingListItemModel>[];
+    final others = <ShoppingListItemModel>[];
     for (final it in items) {
-      (it.bookmarked ? bookmarked : others).add(it);
+      (it.isBookmarked ? bookmarked : others).add(it);
     }
     items
       ..clear()
@@ -392,13 +280,13 @@ class _ShoppinglistState extends State<Shoppinglist> {
       ..writeln();
 
     for (final it in items) {
-      final checked = it.inCart ? 'x' : ' ';
+      final checked = it.isPurchased ? 'x' : ' ';
       final sub = [
         if ((it.brand ?? '').trim().isNotEmpty) it.brand!.trim(),
-        if ((it.sizeText ?? '').trim().isNotEmpty) it.sizeText!.trim(),
+        if ((it.netWeight ?? '').trim().isNotEmpty) it.netWeight!.trim(),
       ].join(' · ');
       final name = sub.isEmpty ? it.name : '${it.name} ($sub)';
-      buf.writeln('[$checked] $name  —  Qty: ${it.qty}  ·  ${it.category}');
+      buf.writeln('[$checked] $name  —  Qty: ${it.quantity}  ·  ${it.category}  ·  ₱${(it.unitPrice * it.quantity).toStringAsFixed(2)}');
     }
     return buf.toString();
   }
@@ -514,6 +402,59 @@ class _ShoppinglistState extends State<Shoppinglist> {
 
   // ---------- Add Item Dialog ----------
   Future<void> _showAddItemDialog() async {
+    if (_householdId == null) {
+      _showTopSnack("Household not found. Please log in again.");
+      return;
+    }
+
+    // If no active list, try to find or create a default "My Shopping List"
+    if (_activeList == null) {
+      // Check for an existing manual list
+      var existingManualListSnapshot = await FirebaseFirestore.instance
+          .collection('shoppingLists')
+          .where('householdId', isEqualTo: _householdId)
+          .where('type', isEqualTo: 'Manual')
+          .limit(1)
+          .get();
+
+      if (existingManualListSnapshot.docs.isNotEmpty) {
+        // Use the existing manual list
+        setState(() {
+          _activeList = ShoppingListModel.fromFirestore(existingManualListSnapshot.docs.first);
+          _currentTitle = _activeList!.name;
+          items = _activeList!.items;
+          _reorderByBookmark();
+        });
+        _showTopSnack("Using existing manual list: ${_activeList!.name}");
+      } else {
+        // Create a new default manual list
+        final newDefaultList = ShoppingListModel(
+          householdId: _householdId!,
+          name: 'My Shopping List',
+          createdAt: DateTime.now(),
+          items: [],
+          type: 'Manual',
+          isActive: false, // Manual lists are not "active" in the generated sense
+        );
+        DocumentReference docRef = await FirebaseFirestore.instance.collection('shoppingLists').add(newDefaultList.toFirestore());
+        newDefaultList.id = docRef.id;
+
+        setState(() {
+          _activeList = newDefaultList;
+          _currentTitle = _activeList!.name;
+          items = _activeList!.items;
+          _reorderByBookmark();
+        });
+        _showTopSnack("Created a new default shopping list.");
+      }
+    }
+
+    // After ensuring _activeList is not null (either found or created)
+    if (_activeList == null) {
+      _showTopSnack("Could not create or find a shopping list.");
+      return;
+    }
+
     if (items.length >= maxGuestItems) {
       _showLimitDialog();
       return;
@@ -714,27 +655,24 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                   _showLimitDialog();
                                   return;
                                 }
-                                final id =
-                                    'id_${DateTime.now().millisecondsSinceEpoch}';
+                                final newItem = ShoppingListItemModel(
+                                  id: 'id_${DateTime.now().millisecondsSinceEpoch}',
+                                  name: nameCtrl.text.trim(),
+                                  brand: brandCtrl.text.trim().isEmpty ? null : brandCtrl.text.trim(),
+                                  netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
+                                  category: selectedCategory!,
+                                  unitPrice: 0, // Default price
+                                  quantity: 1,
+                                );
                                 setState(() {
-                                  items.insert(
-                                    0,
-                                    ShoppingItem(
-                                      id: id,
-                                      name: nameCtrl.text.trim(),
-                                      brand: brandCtrl.text.trim().isEmpty
-                                          ? null
-                                          : brandCtrl.text.trim(),
-                                      sizeText: sizeCtrl.text.trim().isEmpty
-                                          ? null
-                                          : sizeCtrl.text.trim(),
-                                      category: selectedCategory!,
-                                      imageUrl: null,
-                                      qty: 1,
-                                    ),
-                                  );
+                                  items.insert(0, newItem);
                                   _reorderByBookmark();
                                 });
+                                if (_activeList != null) {
+                                  _activeList!.items = items;
+                                  FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                                }
+                                if (!mounted) return;
                                 Navigator.of(ctx).pop();
                                 _showTopSnack('Item added');
                               },
@@ -798,11 +736,11 @@ class _ShoppinglistState extends State<Shoppinglist> {
   }
 
   // ---------- Edit Item Dialog ----------
-  Future<void> _showEditItemDialog(ShoppingItem item) async {
+  Future<void> _showEditItemDialog(ShoppingListItemModel item) async {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController(text: item.name);
     final brandCtrl = TextEditingController(text: item.brand ?? '');
-    final sizeCtrl = TextEditingController(text: item.sizeText ?? '');
+    final sizeCtrl = TextEditingController(text: item.netWeight ?? '');
     String? selectedCategory = item.category;
 
     InputDecoration deco() => InputDecoration(
@@ -1001,16 +939,15 @@ class _ShoppinglistState extends State<Shoppinglist> {
                               onTap: () {
                                 if (!formKey.currentState!.validate()) return;
                                 setState(() {
-                                  item
-                                    ..name = nameCtrl.text.trim()
-                                    ..brand = brandCtrl.text.trim().isEmpty
-                                        ? null
-                                        : brandCtrl.text.trim()
-                                    ..sizeText = sizeCtrl.text.trim().isEmpty
-                                        ? null
-                                        : sizeCtrl.text.trim()
-                                    ..category = selectedCategory!;
+                                  item.name = nameCtrl.text.trim();
+                                  item.brand = brandCtrl.text.trim().isEmpty ? null : brandCtrl.text.trim();
+                                  item.netWeight = sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim();
+                                  item.category = selectedCategory!;
                                 });
+                                if (_activeList != null) {
+                                  _activeList!.items = items;
+                                  FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                                }
                                 Navigator.of(ctx).pop();
                                 _showTopSnack('Item updated');
                               },
@@ -1073,47 +1010,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
     );
   }
 
-  // Small helper to trigger a short "pressed" pulse for +/-"
-  Future<void> _pulseButton(ShoppingItem item, {required bool isInc}) async {
-    if (isInc) {
-      item.incPulse = true;
-    } else {
-      item.decPulse = true;
-    }
-    if (mounted) setState(() {});
-    await Future.delayed(const Duration(milliseconds: 160));
-    if (isInc) {
-      item.incPulse = false;
-    } else {
-      item.decPulse = false;
-    }
-    if (mounted) setState(() {});
-  }
-
-  // ===== NEW: hook up to the store =====
-  @override
-  void initState() {
-    super.initState();
-    final store = MainShoppingListStore.instance;
-    // Load immediately if a main list already exists
-    if (store.hasMain) {
-      _applyMainStore(store);
-    }
-    // Listen for future changes (e.g., when user taps "Use as current" elsewhere)
-    _storeListener = () {
-      _applyMainStore(store, showToast: true);
-    };
-    store.addListener(_storeListener!);
-  }
-
-  @override
-  void dispose() {
-    final store = MainShoppingListStore.instance;
-    if (_storeListener != null) {
-      store.removeListener(_storeListener!);
-    }
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1152,11 +1048,10 @@ class _ShoppinglistState extends State<Shoppinglist> {
                     label: 'View All List',
                     color: darkGreen,
                     onTap: () async {
-                      // Navigate to View All; if user sets a main list there,
-                      // the store listener above will auto-apply on return.
                       await Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const Viewalllist()),
                       );
+                      _fetchHouseholdAndListsAndSuggestions(); // Refresh active list when returning
                     },
                   ),
                   const Spacer(),
@@ -1221,22 +1116,24 @@ class _ShoppinglistState extends State<Shoppinglist> {
                             _showLimitDialog();
                             return;
                           }
+                          final newItem = ShoppingListItemModel(
+                            id: 'sugg_${DateTime.now().millisecondsSinceEpoch}',
+                            name: s.name,
+                            brand: s.brand,
+                            netWeight: s.sizeText,
+                            category: s.category,
+                            unitPrice: 0, // Default price
+                            quantity: 1,
+                          );
                           setState(() {
-                            items.insert(
-                              0,
-                              ShoppingItem(
-                                id: 'sugg_${DateTime.now().millisecondsSinceEpoch}',
-                                name: s.name,
-                                brand: s.brand,
-                                sizeText: s.sizeText,
-                                category: s.category,
-                                imageUrl: null,
-                                qty: 1,
-                              ),
-                            );
+                            items.insert(0, newItem);
                             _reorderByBookmark();
                             _suggestions.remove(s);
                           });
+                          if (_activeList != null) {
+                            _activeList!.items = items;
+                            FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                          }
                           _showTopSnack('Added "${s.name}"');
                         },
                       ),
@@ -1284,20 +1181,12 @@ class _ShoppinglistState extends State<Shoppinglist> {
                       SlidableAction(
                         onPressed: (_) {
                           final removed = item;
-                          final removedIndex = index;
-                          setState(() => items.removeAt(removedIndex));
-
-                          _showTopSnackWithAction(
-                            message: 'Deleted "${removed.name}"',
-                            actionLabel: 'UNDO',
-                            onAction: () => setState(() {
-                              final safeIndex = removedIndex.clamp(
-                                0,
-                                items.length,
-                              );
-                              items.insert(safeIndex, removed);
-                            }),
-                          );
+                          setState(() => items.remove(removed));
+                          if (_activeList != null) {
+                            _activeList!.items = items;
+                            FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                          }
+                          _showTopSnack('Deleted "${removed.name}"');
                         },
                         icon: Icons.delete_outline,
                         label: 'Delete',
@@ -1320,31 +1209,42 @@ class _ShoppinglistState extends State<Shoppinglist> {
                           child: _ShoppingRow(
                             item: item,
                             headerGreen: headerGreen,
-                            onToggleInCart: (v) =>
-                                setState(() => item.inCart = v ?? false),
+                            onToggleInCart: (v) {
+                              setState(() => item.isPurchased = v ?? false);
+                              if (_activeList != null) {
+                                _activeList!.items = items;
+                                FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                              }
+                            },
                             onToggleBookmark: () {
                               setState(() {
-                                item.bookmarked = !item.bookmarked;
+                                item.isBookmarked = !item.isBookmarked;
                                 _reorderByBookmark();
                               });
+                              if (_activeList != null) {
+                                _activeList!.items = items;
+                                FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                              }
                             },
                             onDecrement: () {
-                              setState(
-                                () => item.qty = (item.qty > 0)
-                                    ? item.qty - 1
-                                    : 0,
-                              );
-                              _pulseButton(item, isInc: false);
+                              setState(() => item.quantity = (item.quantity > 0) ? item.quantity - 1 : 0);
+                              if (_activeList != null) {
+                                _activeList!.items = items;
+                                FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                              }
                             },
                             onIncrement: () {
-                              setState(() => item.qty += 1);
-                              _pulseButton(item, isInc: true);
+                              setState(() => item.quantity += 1);
+                              if (_activeList != null) {
+                                _activeList!.items = items;
+                                FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                              }
                             },
                             onDelete: () {}, // kept for compatibility
                             onEdit: () {}, // disabled (no tap-to-edit on name)
                           ),
                         ),
-                        if (item.inCart)
+                        if (item.isPurchased)
                           Positioned.fill(
                             child: IgnorePointer(
                               ignoring: true,
@@ -1499,35 +1399,6 @@ class _SuggestionCard extends StatelessWidget {
   }
 }
 
-// ======================= Model =======================
-class ShoppingItem {
-  final String id;
-  String name;
-  String? brand; // NEW
-  String? sizeText; // NEW e.g., 150g, 1L, 5kg, 6 pcs
-  String category;
-  final String? imageUrl;
-  int qty;
-  bool inCart;
-  bool bookmarked;
-  bool incPulse;
-  bool decPulse;
-
-  ShoppingItem({
-    required this.id,
-    required this.name,
-    required this.category,
-    required this.imageUrl,
-    this.brand,
-    this.sizeText,
-    this.qty = 1,
-    this.inCart = false,
-    this.bookmarked = false,
-    this.incPulse = false,
-    this.decPulse = false,
-  });
-}
-
 // ======================= Row =======================
 class _ShoppingRow extends StatelessWidget {
   const _ShoppingRow({
@@ -1541,7 +1412,7 @@ class _ShoppingRow extends StatelessWidget {
     required this.onEdit,
   });
 
-  final ShoppingItem item;
+  final ShoppingListItemModel item;
   final Color headerGreen;
   final ValueChanged<bool?> onToggleInCart;
   final VoidCallback onToggleBookmark;
@@ -1553,36 +1424,14 @@ class _ShoppingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final grey = Colors.grey[700];
-    final bool selected = item.inCart;
-
-    Widget pulseIcon({
-      required bool active,
-      required IconData outlineIcon,
-      required IconData filledIcon,
-      required VoidCallback onPressed,
-    }) {
-      final bg = active ? headerGreen.withAlpha((255 * 0.12).round()) : Colors.transparent;
-      final iconData = active ? filledIcon : outlineIcon;
-      final iconColor = active ? headerGreen : grey;
-
-      return AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeInOut,
-        decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-        child: IconButton(
-          icon: Icon(iconData, color: iconColor),
-          onPressed: onPressed,
-          splashRadius: 20,
-        ),
-      );
-    }
+    final bool selected = item.isPurchased;
 
     // Compose the "brand · size" subline
     String? subline;
     if ((item.brand != null && item.brand!.trim().isNotEmpty) ||
-        (item.sizeText != null && item.sizeText!.trim().isNotEmpty)) {
+        (item.netWeight != null && item.netWeight!.trim().isNotEmpty)) {
       final b = (item.brand ?? '').trim();
-      final s = (item.sizeText ?? '').trim();
+      final s = (item.netWeight ?? '').trim();
       subline = (b.isNotEmpty && s.isNotEmpty)
           ? '$b · $s'
           : (b.isNotEmpty ? b : s);
@@ -1608,7 +1457,7 @@ class _ShoppingRow extends StatelessWidget {
             shape: BoxShape.circle,
           ),
           child: Icon(
-            iconForCategory(item.category),
+            iconForCategory(item.category ?? 'Other'),
             size: 18,
             color: headerGreen,
           ),
@@ -1652,7 +1501,7 @@ class _ShoppingRow extends StatelessWidget {
               ],
               const SizedBox(height: 2),
               Text(
-                item.category,
+                item.category ?? 'Other',
                 style: TextStyle(
                   fontSize: 12.5,
                   color: selected ? Colors.black45 : Colors.black54,
@@ -1663,31 +1512,70 @@ class _ShoppingRow extends StatelessWidget {
         ),
         IconButton(
           icon: Icon(
-            item.bookmarked ? Icons.bookmark : Icons.bookmark_border,
-            color: item.bookmarked ? headerGreen : grey,
+            item.isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+            color: item.isBookmarked ? headerGreen : grey,
           ),
           onPressed: onToggleBookmark,
           splashRadius: 20,
-          tooltip: item.bookmarked ? 'Unpin' : 'Pin (priority)',
+          tooltip: item.isBookmarked ? 'Unpin' : 'Pin (priority)',
         ),
-        pulseIcon(
-          active: item.decPulse,
-          outlineIcon: Icons.remove_circle_outline_rounded,
-          filledIcon: Icons.remove_circle,
-          onPressed: onDecrement,
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Colors.grey, width: 2)),
-          ),
-          child: Text('${item.qty}', style: const TextStyle(fontSize: 16)),
-        ),
-        pulseIcon(
-          active: item.incPulse,
-          outlineIcon: Icons.add_circle_outline_rounded,
-          filledIcon: Icons.add_circle,
-          onPressed: onIncrement,
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // Compact quantity controls
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: Icon(Icons.remove_circle_outline_rounded, color: grey, size: 18),
+                    onPressed: onDecrement,
+                    splashRadius: 16,
+                  ),
+                ),
+                Container(
+                  width: 26,
+                  alignment: Alignment.center,
+                  child: Text(
+                    '${item.quantity}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: Icon(Icons.add_circle_outline_rounded, color: grey, size: 18),
+                    onPressed: onIncrement,
+                    splashRadius: 16,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            // Price
+            Text(
+              '₱${(item.unitPrice * item.quantity).toStringAsFixed(2)}',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: selected ? Colors.grey.shade600 : headerGreen,
+              ),
+            ),
+            // Unit price (smaller)
+            Text(
+              '₱${item.unitPrice.toStringAsFixed(2)}/item',
+              style: TextStyle(
+                fontSize: 11,
+                color: selected ? Colors.grey.shade500 : Colors.grey.shade600,
+              ),
+            ),
+          ],
         ),
       ],
     );

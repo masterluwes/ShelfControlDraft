@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:shelf_control/models/shopping_list_item_model.dart';
+import 'package:shelf_control/models/shopping_list_model.dart';
+import 'package:shelf_control/services/shopping_list_service.dart';
 import 'listitemspage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart'; // Import provider
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 
 // ===== Top-level enum =====
 enum GenMode { recommended, budget, healthy }
@@ -16,20 +23,59 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
 
-  final _lists = <ListMeta>[
-    ListMeta(
-      title: 'Weekly Grocery',
-      created: DateTime(2025, 8, 28),
-      itemsCount: 10,
-      icon: Icons.shopping_cart_outlined,
-    ),
-    ListMeta(
-      title: "Sunday's Best",
-      created: DateTime(2025, 7, 5),
-      itemsCount: 69,
-      icon: Icons.storefront_outlined,
-    ),
-  ];
+  final ShoppingListService _shoppingListService = ShoppingListService();
+  List<ShoppingListModel> _lists = [];
+  String? _householdId;
+
+  // Listener for FirestoreService changes
+  late VoidCallback _firestoreServiceListener;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize the listener
+    _firestoreServiceListener = () {
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+      if (_householdId != firestoreService.selectedHouseholdId) {
+        setState(() {
+          _householdId = firestoreService.selectedHouseholdId;
+        });
+        _fetchLists();
+      }
+    };
+
+    // Add the listener
+    Provider.of<FirestoreService>(context, listen: false).addListener(_firestoreServiceListener);
+
+    // Initial fetch
+    _fetchHouseholdAndLists();
+  }
+
+  @override
+  void dispose() {
+    // Remove the listener
+    Provider.of<FirestoreService>(context, listen: false).removeListener(_firestoreServiceListener);
+    super.dispose();
+  }
+
+  Future<void> _fetchHouseholdAndLists() async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    _householdId = firestoreService.selectedHouseholdId; // Get householdId from service
+    _fetchLists();
+  }
+
+  Future<void> _fetchLists() async {
+    if (_householdId != null) {
+      var snapshot = await FirebaseFirestore.instance
+          .collection('shoppingLists')
+          .where('householdId', isEqualTo: _householdId)
+          .get();
+      if (!mounted) return;
+      setState(() {
+        _lists = snapshot.docs.map((doc) => ShoppingListModel.fromFirestore(doc)).toList();
+      });
+    }
+  }
 
   String _formatCreated(DateTime d) {
     const months = [
@@ -52,14 +98,9 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   // ===== Common result handler from ListItemsPage =====
   void _handleListPageResult(dynamic result) {
     if (!mounted) return;
-    if (result is Map && result['deleted'] == true) {
-      final String? title = result['listTitle'] as String?;
-      if (title != null) {
-        setState(() {
-          _lists.removeWhere((m) => m.title == title);
-        });
-      }
-    } else if (result is bool && result == true) {
+      if (result is Map && result['deleted'] == true) {
+        _fetchLists();
+      } else if (result is bool && result == true) {
       // Backward-compat: if any older page returns just `true`,
       // we don't know which one—so we won't remove anything here.
     }
@@ -264,24 +305,32 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                           final name = nameCtrl.text.trim();
                           if (!mounted) return;
 
-                          final newMeta = ListMeta(
-                            title: name,
-                            created: DateTime.now(),
-                            itemsCount: 0,
-                            icon: chosenIcon,
-                          );
-                          setState(() => _lists.insert(0, newMeta));
+                          ShoppingListModel? newList;
+                          if (_householdId != null) {
+                            newList = ShoppingListModel(
+                              householdId: _householdId!,
+                              name: name,
+                              createdAt: DateTime.now(),
+                              items: [],
+                              type: 'Manual',
+                              isActive: false,
+                            );
+                            DocumentReference docRef = await FirebaseFirestore.instance.collection('shoppingLists').add(newList.toFirestore());
+                            newList.id = docRef.id; // Assign the Firestore ID to the model
+                            _fetchLists();
+                          }
 
                           Navigator.of(dialogCtx, rootNavigator: true).pop();
+                          if (!mounted) return;
 
-                          final result = await Navigator.of(parentContext).push(
-                            MaterialPageRoute(
-                              builder: (_) => ListItemsPage(listTitle: name),
-                            ),
-                          );
-
-                          // If the list was deleted from inside ListItemsPage, remove it here.
-                          if (mounted) _handleListPageResult(result);
+                          if (newList != null) {
+                            final result = await Navigator.of(parentContext).push(
+                              MaterialPageRoute(
+                                builder: (_) => ListItemsPage(shoppingList: newList!),
+                              ),
+                            );
+                            if (mounted) _handleListPageResult(result);
+                          }
                         }
                       : null,
                   child: const Text('Continue'),
@@ -300,11 +349,13 @@ class _ViewAllListsPageState extends State<Viewalllist> {
 
     GenMode mode = GenMode.recommended;
     double sliderValue = 1500;
+    int numberOfItems = 10;
     const double minBudget = 200;
     const double maxBudget = 10000;
     final budgetCtrl = TextEditingController(
       text: sliderValue.toStringAsFixed(0),
     );
+    final itemsCtrl = TextEditingController(text: numberOfItems.toString());
 
     String formatPhp(double v) => '₱${v.toStringAsFixed(0)}';
 
@@ -353,6 +404,40 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                       headerGreen: headerGreen,
                       sep: sep,
                     ),
+                    if (mode == GenMode.recommended || mode == GenMode.healthy) ...[
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Number of Items',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey.shade800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: itemsCtrl,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: sep),
+                          ),
+                        ),
+                        onChanged: (value) {
+                          numberOfItems = int.tryParse(value) ?? 10;
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     _RadioTile<GenMode>(
                       value: GenMode.budget,
@@ -485,40 +570,58 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                         break;
                     }
 
-                    // === Generate TEMP items grouped by their categories ===
-                    final tempItems = _generateItemsForMode(
-                      mode,
-                      budget: sliderValue,
-                    );
+                    List<ShoppingListItemModel> generatedItems = [];
+                    if (_householdId != null) {
+                      switch (mode) {
+                        case GenMode.recommended:
+                          generatedItems = await _shoppingListService.generateMostRecommendedList(_householdId!, numberOfItems: numberOfItems);
+                          break;
+                        case GenMode.budget:
+                          generatedItems = await _shoppingListService.generateBudgetFriendlyList(_householdId!, sliderValue, numberOfItems: numberOfItems);
+                          break;
+                        case GenMode.healthy:
+                          generatedItems = await _shoppingListService.generateHealthyOptionList(_householdId!, numberOfItems: numberOfItems);
+                          break;
+                      }
+                    }
 
                     if (!mounted) return;
 
-                    final newMeta = ListMeta(
-                      title: title,
-                      created: DateTime.now(),
-                      itemsCount: tempItems.length,
-                      icon: icon,
-                    );
+                    ShoppingListModel? newList;
+                    if (_householdId != null) {
+                      newList = ShoppingListModel(
+                        householdId: _householdId!,
+                        name: 'Auto: $title', // Add "Auto:" prefix for generated lists
+                        createdAt: DateTime.now(),
+                        items: generatedItems,
+                        type: mode.name,
+                        isActive: false,
+                      );
+                      // Save the new list to Firestore and get its ID
+                      DocumentReference docRef = await FirebaseFirestore.instance.collection('shoppingLists').add(newList.toFirestore());
+                      newList.id = docRef.id; // Assign the Firestore ID to the model
+                      _fetchLists(); // Refresh the list view
 
-                    setState(() => _lists.insert(0, newMeta));
-                    Navigator.of(dialogCtx, rootNavigator: true).pop();
+                      Navigator.of(dialogCtx, rootNavigator: true).pop();
+                      if (!mounted) return;
 
-                    // Pass seed items to ListItemsPage using RouteSettings.arguments
-                    final result = await Navigator.of(parentContext).push(
-                      MaterialPageRoute(
-                        builder: (_) => ListItemsPage(listTitle: title),
-                        settings: RouteSettings(
-                          arguments: {
-                            'seedItems': tempItems,
-                            'isGeneratedTemp': true,
-                            'genMode': mode.name,
-                            'budget': sliderValue,
-                          },
-                        ),
-                      ),
-                    );
-
-                    if (mounted) _handleListPageResult(result);
+                      if (newList != null) {
+                        final result = await Navigator.of(parentContext).push(
+                          MaterialPageRoute(
+                            builder: (_) => ListItemsPage(shoppingList: newList!),
+                            settings: RouteSettings(
+                              arguments: {
+                                'seedItems': generatedItems,
+                                'isGeneratedTemp': true,
+                                'genMode': mode.name,
+                                'budget': sliderValue,
+                              },
+                            ),
+                          ),
+                        );
+                        if (mounted) _handleListPageResult(result);
+                      }
+                    }
                   },
                   child: const Text('Generate'),
                 ),
@@ -528,187 +631,6 @@ class _ViewAllListsPageState extends State<Viewalllist> {
         );
       },
     );
-  }
-
-  // ===== TEMP item generator (keeps items under proper categories) =====
-  List<GenItem> _generateItemsForMode(GenMode mode, {double budget = 0}) {
-    final base = <GenItem>[
-      GenItem(
-        name: 'Orange Juice',
-        brand: 'Minute Maid',
-        grams: 1000,
-        qty: 1,
-        category: 'Beverages',
-      ),
-      GenItem(
-        name: 'Wheat Bread',
-        brand: 'Gardenia',
-        grams: 600,
-        qty: 1,
-        category: 'Baked Goods',
-      ),
-      GenItem(
-        name: 'Mayonnaise',
-        brand: 'Lady’s Choice',
-        grams: 470,
-        qty: 1,
-        category: 'Condiments',
-      ),
-      GenItem(
-        name: 'Tuna Flakes',
-        brand: 'Century',
-        grams: 180,
-        qty: 2,
-        category: 'Canned Goods',
-      ),
-      GenItem(
-        name: 'Fresh Milk',
-        brand: 'Cowhead',
-        grams: 1000,
-        qty: 1,
-        category: 'Dairy',
-      ),
-      GenItem(
-        name: 'Bananas',
-        brand: 'Local',
-        grams: 1000,
-        qty: 1,
-        category: 'Produce',
-      ),
-      GenItem(
-        name: 'Crackers',
-        brand: 'SkyFlakes',
-        grams: 250,
-        qty: 1,
-        category: 'Snacks',
-      ),
-    ];
-
-    switch (mode) {
-      case GenMode.recommended:
-        return base;
-      case GenMode.budget:
-        if (budget <= 800) {
-          return [
-            GenItem(
-              name: 'Instant Coffee',
-              brand: 'Great Taste',
-              grams: 50,
-              qty: 1,
-              category: 'Beverages',
-            ),
-            GenItem(
-              name: 'Pandesal Pack',
-              brand: 'Local Bakery',
-              grams: 300,
-              qty: 1,
-              category: 'Baked Goods',
-            ),
-            GenItem(
-              name: 'Sardines',
-              brand: '555',
-              grams: 155,
-              qty: 2,
-              category: 'Canned Goods',
-            ),
-            GenItem(
-              name: 'Bananas',
-              brand: 'Local',
-              grams: 800,
-              qty: 1,
-              category: 'Produce',
-            ),
-            GenItem(
-              name: 'Soy Sauce',
-              brand: 'Datu Puti',
-              grams: 350,
-              qty: 1,
-              category: 'Condiments',
-            ),
-          ];
-        } else if (budget <= 2000) {
-          return [
-            ...base.where((x) => x.category != 'Snacks'),
-            GenItem(
-              name: 'Rice',
-              brand: 'Sinandomeng',
-              grams: 2000,
-              qty: 1,
-              category: 'Other',
-            ),
-          ];
-        } else {
-          return [
-            ...base,
-            GenItem(
-              name: 'Greek Yogurt',
-              brand: 'Almarai',
-              grams: 500,
-              qty: 1,
-              category: 'Dairy',
-            ),
-            GenItem(
-              name: 'Mixed Veggies',
-              brand: 'Del Monte',
-              grams: 400,
-              qty: 1,
-              category: 'Canned Goods',
-            ),
-            GenItem(
-              name: 'Granola',
-              brand: 'Quaker',
-              grams: 380,
-              qty: 1,
-              category: 'Snacks',
-            ),
-          ];
-        }
-      case GenMode.healthy:
-        return [
-          GenItem(
-            name: 'Rolled Oats',
-            brand: 'Quaker',
-            grams: 800,
-            qty: 1,
-            category: 'Baked Goods',
-          ),
-          GenItem(
-            name: 'Low-Fat Milk',
-            brand: 'Bear Brand',
-            grams: 1000,
-            qty: 1,
-            category: 'Dairy',
-          ),
-          GenItem(
-            name: 'Chicken Breast',
-            brand: 'Fresh Cut',
-            grams: 1000,
-            qty: 1,
-            category: 'Other',
-          ),
-          GenItem(
-            name: 'Spinach',
-            brand: 'Local',
-            grams: 300,
-            qty: 1,
-            category: 'Produce',
-          ),
-          GenItem(
-            name: 'Olive Oil',
-            brand: 'Bertolli',
-            grams: 500,
-            qty: 1,
-            category: 'Condiments',
-          ),
-          GenItem(
-            name: 'Tuna in Water',
-            brand: 'Century',
-            grams: 180,
-            qty: 2,
-            category: 'Canned Goods',
-          ),
-        ];
-    }
   }
 
   // ===== UI =====
@@ -748,22 +670,28 @@ class _ViewAllListsPageState extends State<Viewalllist> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
               children: [
-                ..._lists.asMap().entries.map((entry) {
-                  final m = entry.value;
+                ..._lists.map((list) {
                   return _ListCard(
-                    meta: m,
-                    createdText: 'Created ${_formatCreated(m.created)}',
+                    list: list,
+                    createdText: 'Created ${_formatCreated(list.createdAt)}',
                     sep: sep,
+                    headerGreen: headerGreen, // Pass headerGreen
                     onTap: () {
-                      _openEditListDialog(m);
+                      _openEditListDialog(list);
                     },
                     onChevronTap: () async {
                       final result = await Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => ListItemsPage(listTitle: m.title),
+                          builder: (_) => ListItemsPage(shoppingList: list),
                         ),
                       );
                       _handleListPageResult(result);
+                    },
+                    onActivate: () {
+                      if (_householdId != null && list.id != null) {
+                        _shoppingListService.setActiveShoppingList(_householdId!, list.id!);
+                        _fetchLists();
+                      }
                     },
                   );
                 }),
@@ -796,9 +724,9 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   }
 
   // ===== Edit dialog used when tapping a card =====
-  Future<void> _openEditListDialog(ListMeta meta) async {
-    final nameCtrl = TextEditingController(text: meta.title);
-    IconData tempIcon = meta.icon;
+  Future<void> _openEditListDialog(ShoppingListModel list) async {
+    final nameCtrl = TextEditingController(text: list.name);
+    IconData tempIcon = Icons.list_alt_outlined; // Default icon
 
     await showDialog<void>(
       context: context,
@@ -880,7 +808,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                     const SizedBox(height: 6),
                     TextField(
                       controller: TextEditingController(
-                        text: _formatCreated(meta.created),
+                        text: _formatCreated(list.createdAt),
                       ),
                       readOnly: true,
                       enabled: false,
@@ -913,7 +841,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
-                        '${meta.itemsCount} Items',
+                        '${list.items.length} Items',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -934,12 +862,12 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                     backgroundColor: headerGreen,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: () {
+                  onPressed: () async {
                     final newName = nameCtrl.text.trim();
-                    setState(() {
-                      if (newName.isNotEmpty) meta.title = newName;
-                      meta.icon = tempIcon;
-                    });
+                    if (newName.isNotEmpty && list.id != null) {
+                      await FirebaseFirestore.instance.collection('shoppingLists').doc(list.id).update({'name': newName});
+                      _fetchLists();
+                    }
                     Navigator.of(dialogCtx, rootNavigator: true).pop();
                   },
                   child: const Text('Save'),
@@ -951,54 +879,26 @@ class _ViewAllListsPageState extends State<Viewalllist> {
       },
     );
   }
-}
+} // End of _ViewAllListsPageState class
 
-// ===== Model =====
-class ListMeta {
-  String title;
-  final DateTime created;
-  int itemsCount;
-  IconData icon;
-  ListMeta({
-    required this.title,
-    required this.created,
-    required this.itemsCount,
-    required this.icon,
-  });
-}
-
-// ===== TEMP item model for generator =====
-class GenItem {
-  final String name;
-  final String brand;
-  final int grams; // use grams or mL depending on item
-  final int qty;
-  final String category; // MUST match your app categories
-
-  const GenItem({
-    required this.name,
-    required this.brand,
-    required this.grams,
-    required this.qty,
-    required this.category,
-  });
-}
-
-// ===== Card widgets =====
 class _ListCard extends StatelessWidget {
   const _ListCard({
-    required this.meta,
+    required this.list,
     required this.createdText,
     required this.sep,
     required this.onTap,
     required this.onChevronTap,
+    required this.onActivate,
+    required this.headerGreen,
   });
 
-  final ListMeta meta;
+  final ShoppingListModel list;
   final String createdText;
   final Color sep;
   final VoidCallback onTap;
   final VoidCallback onChevronTap;
+  final VoidCallback onActivate;
+  final Color headerGreen;
 
   @override
   Widget build(BuildContext context) {
@@ -1032,7 +932,7 @@ class _ListCard extends StatelessWidget {
                     color: const Color(0xFFEEEEEE),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(meta.icon, size: 26, color: Colors.grey.shade800),
+                  child: Icon(Icons.list_alt_outlined, size: 26, color: Colors.grey.shade800),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1040,7 +940,7 @@ class _ListCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        meta.title,
+                        list.name,
                         style: const TextStyle(
                           fontSize: 16.5,
                           fontWeight: FontWeight.w800,
@@ -1057,7 +957,7 @@ class _ListCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${meta.itemsCount} Items',
+                        '${list.items.length} Items',
                         style: TextStyle(
                           fontSize: 12.5,
                           color: Colors.grey.shade700,
@@ -1065,6 +965,14 @@ class _ListCard extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    list.isActive ? Icons.shopping_cart : Icons.shopping_cart_checkout,
+                    color: list.isActive ? headerGreen : Colors.grey,
+                  ),
+                  onPressed: onActivate,
+                  tooltip: 'Set as Active List',
                 ),
                 IconButton(
                   icon: const Icon(Icons.chevron_right),

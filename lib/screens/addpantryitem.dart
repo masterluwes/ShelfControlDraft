@@ -8,7 +8,6 @@ import 'package:shelf_control/services/firestore_service.dart'; // Import Firest
 import 'package:provider/provider.dart'; // Import provider
 import 'package:image_picker/image_picker.dart'; // Import image_picker
 import 'package:firebase_storage/firebase_storage.dart'; // Import firebase_storage
-import 'package:shelf_control/screens/pantryinventory.dart'; // Import Pantryinventory
 import 'package:shelf_control/screens/dashboard_page.dart'; // Import DashboardPage
 
 class AddPantryItem extends StatefulWidget {
