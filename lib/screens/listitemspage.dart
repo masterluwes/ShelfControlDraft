@@ -976,7 +976,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
           Expanded(
             child: ListView.separated(
               itemCount: _items.length,
-              separatorBuilder: (_, _) => Divider(color: sep, height: 1),
+              separatorBuilder: (_, __) => Divider(color: sep, height: 1),
               itemBuilder: (context, index) {
                 final it = _items[index];
 

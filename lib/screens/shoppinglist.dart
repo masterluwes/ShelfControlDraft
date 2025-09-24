@@ -1252,7 +1252,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
             key: _captureKey,
             child: ListView.separated(
               itemCount: items.length,
-              separatorBuilder: (_, _ ) =>
+              separatorBuilder: (context, index ) =>
                   Divider(height: 1, thickness: 1, color: sep),
               itemBuilder: (context, index) {
                 final item = items[index];

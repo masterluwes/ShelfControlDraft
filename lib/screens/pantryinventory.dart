@@ -494,7 +494,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             },
           ),
           Text(
-            '${_selectedItemIds.length} Items',
+            '\${_selectedItemIds.length} Items',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -707,7 +707,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                   width: 44,
                   height: 44,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, _) => const Icon(Icons.image),
+                  errorBuilder: (error, stackTrace, hint) => const Icon(Icons.image),
                 ),
               ),
               const SizedBox(width: 12),
@@ -769,7 +769,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                         },
                       ),
                       Text(
-                        '${item.qty}',
+                        '\${item.qty}',
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                       IconButton(
@@ -862,7 +862,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             }
             // Show error message if fetching fails
             if (snapshot.hasError) {
-              return Center(child: Text('Error: ${snapshot.error}'));
+              return Center(child: Text('Error: \${snapshot.error}'));
             }
             // Show message if no items are found
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
