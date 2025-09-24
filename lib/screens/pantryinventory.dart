@@ -768,10 +768,10 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                           }
                         },
                       ),
-                      Text(
-                        '\${item.qty}',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
+Text(
+  '${item.qty}',
+  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+),
                       IconButton(
                         icon: const Icon(Icons.add_circle_outline, size: 20),
                         onPressed: () => _updateItemQuantity(item, item.qty + 1),
