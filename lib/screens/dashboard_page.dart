@@ -21,6 +21,7 @@ import 'package:shelf_control/services/firestore_service.dart'; // Import Firest
 import 'package:shelf_control/models/household_model.dart'; // Import Household model
 import 'package:collection/collection.dart'; // Import for firstWhereOrNull
 import 'package:provider/provider.dart'; // Import provider
+import 'package:shelf_control/screens/waste_tracker_page.dart';
 
 class DashboardPage extends StatefulWidget {
   final int initialIndex; // Add initialIndex parameter
@@ -71,9 +72,6 @@ class _DashboardPageState extends State<DashboardPage> {
   void _listenForNotifications() {
     // This is a placeholder for future notification backend integration.
   }
-
-  // Removed _showPage, _showPantryInventory, _showAddPantryItem as _updateBodyWidget handles navigation within dashboard
-
 
   @override
   Widget build(BuildContext context) {
@@ -303,7 +301,14 @@ class _DashboardPageState extends State<DashboardPage> {
                 MaterialPageRoute(builder: (context) => const HistoryScreen()),
               );
             }),
-            _drawerItem(Icons.delete, "Waste Tracker", () {}),
+            _drawerItem(Icons.delete, "Waste Tracker", () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const WasteTrackerPage(),
+                ),
+              );
+            }),
             _drawerItem(Icons.info, "User Guide", () {
               Navigator.push(
                 context,
