@@ -259,6 +259,7 @@ class FirestoreService extends ChangeNotifier {
       category: item.category,
       quantity: item.qty, // Log the quantity that was deleted
       purchaseDate: DateTime.now(), // Represents deletion date
+      actionType: 'Deleted', // Set action type to 'Deleted'
     );
     await _db.collection('shoppingHistory').add(historyItem.toFirestore());
   }
@@ -300,6 +301,7 @@ class FirestoreService extends ChangeNotifier {
       category: item.category,
       quantity: consumedQty,
       purchaseDate: DateTime.now(), // Represents consumption date
+      actionType: 'Consumed', // Set action type to 'Consumed'
     );
     await _db.collection('shoppingHistory').add(historyItem.toFirestore());
   }

@@ -131,6 +131,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 'Category: ${item.category}',
                                 style: const TextStyle(fontSize: 14, color: Colors.black54),
                               ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Action: ${item.actionType}', // Display action type
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: item.actionType == 'Deleted' ? Colors.red : Colors.green, // Color based on action
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ],
                         ),
                       ),

@@ -8,6 +8,7 @@ class ShoppingHistoryItemModel {
   String? category;
   int quantity;
   DateTime purchaseDate;
+  String actionType; // New field: 'Consumed' or 'Deleted'
 
   ShoppingHistoryItemModel({
     this.id,
@@ -17,6 +18,7 @@ class ShoppingHistoryItemModel {
     this.category,
     required this.quantity,
     required this.purchaseDate,
+    this.actionType = 'Consumed', // Default to 'Consumed'
   });
 
   // Factory constructor to create a ShoppingHistoryItemModel from a Firestore document
@@ -30,6 +32,7 @@ class ShoppingHistoryItemModel {
       category: data['category'],
       quantity: data['quantity'] ?? 1,
       purchaseDate: (data['purchaseDate'] as Timestamp).toDate(),
+      actionType: data['actionType'] ?? 'Consumed', // Add actionType to fromFirestore
     );
   }
 
@@ -42,6 +45,7 @@ class ShoppingHistoryItemModel {
       'category': category,
       'quantity': quantity,
       'purchaseDate': Timestamp.fromDate(purchaseDate),
+      'actionType': actionType, // Add actionType to toFirestore
       'timestamp': FieldValue.serverTimestamp(), // Add a timestamp for creation
     };
   }
@@ -55,6 +59,7 @@ class ShoppingHistoryItemModel {
     String? category,
     int? quantity,
     DateTime? purchaseDate,
+    String? actionType, // Add actionType to copyWith
   }) {
     return ShoppingHistoryItemModel(
       id: id ?? this.id,
@@ -64,6 +69,7 @@ class ShoppingHistoryItemModel {
       category: category ?? this.category,
       quantity: quantity ?? this.quantity,
       purchaseDate: purchaseDate ?? this.purchaseDate,
+      actionType: actionType ?? this.actionType, // Use provided actionType or current actionType
     );
   }
 }

@@ -8,6 +8,7 @@ import 'package:shelf_control/screens/user_guide_page.dart';
 import 'package:shelf_control/screens/notification_page.dart';
 import 'package:shelf_control/services/auth_service.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
+import 'package:shelf_control/screens/feedback.dart'; // Import FeedbackPage
 import 'package:shelf_control/screens/pantryinventory.dart'; // Import for Pantryinventory
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import for PantryItemModel
 import 'package:shelf_control/screens/addpantryitem.dart';
@@ -309,37 +310,12 @@ class _DashboardPageState extends State<DashboardPage> {
                 MaterialPageRoute(builder: (context) => const UserGuidePage()),
               );
             }),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.feedback, color: Colors.white),
-                  title: const Text(
-                    "Feedback",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  subtitle: const Text(
-                    "We would love to hear from you.",
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      shape: const StadiumBorder(),
-                      minimumSize: const Size(double.infinity, 36),
-                    ),
-                    child: const Text(
-                      "Email Us",
-                      style: TextStyle(color: Colors.black),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            _drawerItem(Icons.feedback, "Feedback", () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const FeedbackPage()),
+              );
+            }),
             _drawerItem(Icons.description, "Terms and Conditions", () {
               Navigator.push(
                 context,

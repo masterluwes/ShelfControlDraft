@@ -15,7 +15,7 @@ class Pantryinventory extends StatefulWidget {
 }
 
 // Define ItemStatus enum with the new 'consumed' and 'deleted' status
-enum ItemStatus { active, atRisk, available, consumed, deleted }
+enum ItemStatus { active, atRisk, available, consumed, expired }
 
 class _PantryInventoryBodyState extends State<Pantryinventory> {
   // Palette to match your UI
@@ -41,9 +41,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     'Active',
     'At risk',
     'Available',
-    'Consumed',
+    'Expired',
   ];
-  String sortBy = 'Category';
+  String sortBy = 'Expiry';
   String filterBy = 'All Items';
 
   List<PantryItemModel> _items = [];
@@ -61,10 +61,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   ItemStatus _getItemStatus(PantryItemModel item) {
     // If the item is already consumed or deleted, return its status directly
     if (item.status == 'Consumed') return ItemStatus.consumed;
-    if (item.status == 'Deleted') return ItemStatus.deleted; // Add deleted status
 
     if (item.expirationDate == null) {
-      // If no expiration date, and status is not explicitly set to something else, default to available
       return ItemStatus.available;
     }
 
@@ -74,17 +72,12 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     final difference = expirationDay.difference(today).inDays;
 
     if (difference < 0) {
-      // If expired, mark as 'At Risk' (or 'Consumed' if that's the desired behavior for expired items not yet consumed)
-      // For now, let's keep it as 'At Risk' if not explicitly consumed.
-      return ItemStatus.atRisk;
+      return ItemStatus.expired; // Mark as 'Expired'
     } else if (difference <= 7) {
-      // If expiring within 7 days, mark as 'At Risk'
       return ItemStatus.atRisk;
     } else if (item.status == 'Active') {
-      // If manually set to 'Active'
       return ItemStatus.active;
     } else {
-      // Otherwise, default to 'Available'
       return ItemStatus.available;
     }
   }
@@ -149,6 +142,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   // ---------- Filtering & Sorting ----------
   List<PantryItemModel> _filteredAndSorted() {
     List<PantryItemModel> list = _items.where((it) {
+      // Do not show deleted items in the pantry inventory
+      if (it.status == 'Deleted') return false;
+
       final status = _getItemStatus(it);
       // Apply filter based on selected filterBy option
       switch (filterBy) {
@@ -163,6 +159,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           break;
         case 'Consumed':
           if (status != ItemStatus.consumed) return false;
+          break;
+        case 'Expired':
+          if (status != ItemStatus.expired) return false;
           break;
         default: // 'All Items'
           break;
@@ -181,18 +180,29 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
     // Custom sorting: At risk first, then by user's preference
     list.sort((a, b) {
-      final statusA = _getItemStatus(a);
-      final statusB = _getItemStatus(b);
+      // Apply special sorting for 'Expiry' only when sortBy is 'Expiry'
+      if (sortBy == 'Expiry') {
+        final statusA = _getItemStatus(a);
+        final statusB = _getItemStatus(b);
 
-      // Prioritize 'At risk' items
-      if (statusA == ItemStatus.atRisk && statusB != ItemStatus.atRisk) {
-        return -1;
-      }
-      if (statusA != ItemStatus.atRisk && statusB == ItemStatus.atRisk) {
-        return 1;
+        // Prioritize 'Expired' items
+        if (statusA == ItemStatus.expired && statusB != ItemStatus.expired) {
+          return -1;
+        }
+        if (statusA != ItemStatus.expired && statusB == ItemStatus.expired) {
+          return 1;
+        }
+
+        // Then prioritize 'At risk' items
+        if (statusA == ItemStatus.atRisk && statusB != ItemStatus.atRisk && statusB != ItemStatus.expired) {
+          return -1;
+        }
+        if (statusA != ItemStatus.atRisk && statusB == ItemStatus.atRisk && statusA != ItemStatus.expired) {
+          return 1;
+        }
       }
 
-      // If both are 'At risk' or neither are 'At risk', apply secondary sort
+      // Apply secondary sort based on selected sortBy option
       switch (sortBy) {
         case 'Name':
           return a.name.toLowerCase().compareTo(b.name.toLowerCase());
@@ -235,11 +245,11 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         break;
       case ItemStatus.consumed:
         text = 'Consumed';
-        bg = Colors.grey.shade500; // Grey for consumed/expired
+        bg = Colors.grey.shade500; // Grey for consumed
         break;
-      case ItemStatus.deleted:
-        text = 'Deleted';
-        bg = Colors.black54; // Darker grey for deleted
+      case ItemStatus.expired:
+        text = 'Expired';
+        bg = Colors.red.shade700; // Red for expired
         break;
     }
     // Make the chip tappable to change status
@@ -729,16 +739,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Qty: ${item.qty}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF6F6F6F),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Expires in: ${_getExpiresText(item)}',
+                          _getExpiresText(item), // Removed "Expires in:"
                           style: const TextStyle(
                             fontSize: 11,
                             color: Color(0xFF6F6F6F),
@@ -751,13 +752,52 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                 ),
               ),
               const SizedBox(width: 12),
-              // Status chip
-              _statusChip(item),
+              // Quantity control and status chip
+              Column(
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline, size: 20),
+                        onPressed: () {
+                          if (item.qty > 1) {
+                            _updateItemQuantity(item, item.qty - 1);
+                          } else {
+                            _showQuantityPickerDialog(item); // Prompt to consume if quantity is 1
+                          }
+                        },
+                      ),
+                      Text(
+                        '${item.qty}',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline, size: 20),
+                        onPressed: () => _updateItemQuantity(item, item.qty + 1),
+                      ),
+                    ],
+                  ),
+                  _statusChip(item),
+                ],
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  // Update item quantity in Firestore
+  Future<void> _updateItemQuantity(PantryItemModel item, int newQuantity) async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    if (newQuantity <= 0) {
+      // If quantity becomes 0 or less, prompt to consume
+      await _showQuantityPickerDialog(item);
+    } else {
+      PantryItemModel updatedItem = item.copyWith(qty: newQuantity);
+      await firestoreService.updatePantryItem(updatedItem);
+    }
   }
 
   // Widget for dismissible rows (delete/edit)
