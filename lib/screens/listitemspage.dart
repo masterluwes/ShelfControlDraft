@@ -41,6 +41,7 @@ class Item {
     this.bookmarked = false,
     this.incPulse = false,
     this.decPulse = false,
+    this.price,
   });
 
   final String id;
@@ -53,6 +54,7 @@ class Item {
   bool bookmarked; // “pin” to top
   bool incPulse;
   bool decPulse;
+  double? price;
 
   Item copy() => Item(
     id: id,
@@ -82,6 +84,42 @@ class _ListItemsPageState extends State<ListItemsPage> {
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
+
+  Item _itemFromMap(Map<String, dynamic> m) {
+    return Item(
+      id: (m['id'] ?? DateTime.now().millisecondsSinceEpoch.toString())
+          .toString(),
+      name: (m['name'] ?? '').toString(),
+      category: (m['category'] ?? 'Other').toString(),
+      brand: m['brand'] as String?,
+      sizeText: m['sizeText'] as String?,
+      qty: (m['qty'] is int)
+          ? m['qty'] as int
+          : int.tryParse('${m['qty']}') ?? 1,
+      price: (m['price'] is num)
+          ? (m['price'] as num).toDouble()
+          : double.tryParse('${m['price']}'),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map) {
+      final seed = args['seedItems'];
+      if (seed is List) {
+        _items
+          ..clear()
+          ..addAll(
+            seed.whereType<Map>().map(
+              (m) => _itemFromMap(m.cast<String, dynamic>()),
+            ),
+          );
+        setState(() {});
+      }
+    }
+  }
 
   // Categories (same set as Shoppinglist)
   final List<String> _categories = const [
@@ -176,7 +214,9 @@ class _ListItemsPageState extends State<ListItemsPage> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.black.withAlpha((255 * 0.15).round())),
+        borderSide: BorderSide(
+          color: Colors.black.withAlpha((255 * 0.15).round()),
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -287,7 +327,9 @@ class _ListItemsPageState extends State<ListItemsPage> {
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(
-                                color: Colors.black.withAlpha((255 * 0.15).round()),
+                                color: Colors.black.withAlpha(
+                                  (255 * 0.15).round(),
+                                ),
                               ),
                             ),
                             focusedBorder: OutlineInputBorder(
@@ -334,7 +376,9 @@ class _ListItemsPageState extends State<ListItemsPage> {
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withAlpha((255 * 0.06).round()),
+                                  color: Colors.black.withAlpha(
+                                    (255 * 0.06).round(),
+                                  ),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
@@ -803,7 +847,9 @@ class _ListItemsPageState extends State<ListItemsPage> {
                             child: IgnorePointer(
                               ignoring: true,
                               child: Container(
-                                color: Colors.white.withAlpha((255 * 0.45).round()),
+                                color: Colors.white.withAlpha(
+                                  (255 * 0.45).round(),
+                                ),
                               ),
                             ),
                           ),
@@ -906,7 +952,9 @@ class _ShoppingRowSL extends StatelessWidget {
       required IconData filledIcon,
       required VoidCallback onPressed,
     }) {
-      final bg = active ? headerGreen.withAlpha((255 * 0.12).round()) : Colors.transparent;
+      final bg = active
+          ? headerGreen.withAlpha((255 * 0.12).round())
+          : Colors.transparent;
       final iconData = active ? filledIcon : outlineIcon;
       final iconColor = active ? headerGreen : grey;
 
@@ -1004,6 +1052,18 @@ class _ShoppingRowSL extends StatelessWidget {
                   color: selected ? Colors.black45 : Colors.black54,
                 ),
               ),
+              if (item.price != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    '₱${item.price!.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: headerGreen,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

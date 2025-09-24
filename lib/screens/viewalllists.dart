@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 import 'listitemspage.dart';
+import 'package:shelf_control/services/ai_budget_service.dart';
+import 'package:shelf_control/services/budget_generator.dart'; // reuse CSV parsing
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 // ===== Top-level enum =====
 enum GenMode { recommended, budget, healthy }
@@ -15,6 +20,16 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
+  final Map<String, List<Map<String, dynamic>>> _listSeeds = {};
+
+  static const _kListsKey = 'view_all_lists_meta_v1';
+  static const _kSeedsKey = 'view_all_lists_seeds_v1';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadState(); // ✅ restores saved lists & seeds
+  }
 
   final _lists = <ListMeta>[
     ListMeta(
@@ -49,19 +64,93 @@ class _ViewAllListsPageState extends State<Viewalllist> {
     return '${months[d.month - 1]} ${d.day}, ${d.year}';
   }
 
+  int _parseGramsFromSize(String? sizeText) {
+    if (sizeText == null) return 0;
+    final m = RegExp(
+      r'(\d+(?:\.\d+)?)(g|kg|ml|l|oz)',
+      caseSensitive: false,
+    ).firstMatch(sizeText);
+    if (m == null) return 0;
+    final value = double.tryParse(m.group(1)!) ?? 0.0;
+    final unit = (m.group(2) ?? '').toLowerCase();
+    if (unit == 'kg') return (value * 1000).round();
+    if (unit == 'l') return (value * 1000).round(); // treat ml-like for display
+    if (unit == 'oz') return (value * 28.3495).round();
+    // g or ml
+    return value.round();
+  }
+
+  Future<void> _saveState() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // encode _lists
+    final listsJson = _lists.map((m) => m.toJson()).toList();
+    await prefs.setString(_kListsKey, jsonEncode(listsJson));
+
+    // encode _listSeeds
+    await prefs.setString(_kSeedsKey, jsonEncode(_listSeeds));
+  }
+
+  Future<void> _loadState() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final listsStr = prefs.getString(_kListsKey);
+    if (listsStr != null && listsStr.isNotEmpty) {
+      final decoded = jsonDecode(listsStr);
+      if (decoded is List) {
+        _lists
+          ..clear()
+          ..addAll(
+            decoded.whereType<Map>().map(
+              (m) => ListMetaCodec.fromJson(m.cast<String, dynamic>()),
+            ),
+          );
+      }
+    }
+
+    final seedsStr = prefs.getString(_kSeedsKey);
+    if (seedsStr != null && seedsStr.isNotEmpty) {
+      final decoded = jsonDecode(seedsStr);
+      if (decoded is Map) {
+        _listSeeds
+          ..clear()
+          ..addAll(
+            decoded.map(
+              (k, v) => MapEntry(
+                k.toString(),
+                (v as List)
+                    .whereType<Map>()
+                    .map((e) => Map<String, dynamic>.from(e))
+                    .toList(),
+              ),
+            ),
+          );
+      }
+    }
+
+    if (mounted) setState(() {});
+  }
+
   // ===== Common result handler from ListItemsPage =====
-  void _handleListPageResult(dynamic result) {
+  Future<void> _handleListPageResult(dynamic result) async {
     if (!mounted) return;
+
     if (result is Map && result['deleted'] == true) {
       final String? title = result['listTitle'] as String?;
       if (title != null) {
         setState(() {
+          // Remove from the list of metas
           _lists.removeWhere((m) => m.title == title);
+          // Also remove the saved seed items for this list
+          _listSeeds.remove(title);
         });
+
+        // 🔴 Persist the new state so it stays deleted when you come back
+        await _saveState();
       }
     } else if (result is bool && result == true) {
-      // Backward-compat: if any older page returns just `true`,
-      // we don't know which one—so we won't remove anything here.
+      // Backward-compat: older pages may return just `true`.
+      // If you ever need to infer which one, do it here.
     }
   }
 
@@ -271,6 +360,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                             icon: chosenIcon,
                           );
                           setState(() => _lists.insert(0, newMeta));
+                          await _saveState();
 
                           Navigator.of(dialogCtx, rootNavigator: true).pop();
 
@@ -305,6 +395,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
     final budgetCtrl = TextEditingController(
       text: sliderValue.toStringAsFixed(0),
     );
+    final budgetFormKey = GlobalKey<FormState>();
 
     String formatPhp(double v) => '₱${v.toStringAsFixed(0)}';
 
@@ -326,6 +417,21 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                   TextPosition(offset: budgetCtrl.text.length),
                 );
               }
+            }
+
+            void _applyBudgetFromInt(int v) {
+              final clamped = v.clamp(200, 10000);
+              if (clamped != sliderValue.toInt()) {
+                sliderValue = clamped.toDouble();
+              }
+              final txt = clamped.toString();
+              if (budgetCtrl.text != txt) {
+                budgetCtrl.text = txt;
+                budgetCtrl.selection = TextSelection.collapsed(
+                  offset: txt.length,
+                );
+              }
+              setLocal(() {});
             }
 
             return AlertDialog(
@@ -396,11 +502,20 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                           const SizedBox(width: 8),
                           SizedBox(
                             width: 110,
-                            child: TextField(
+                            child: TextFormField(
+                              // ✅ must be TextFormField
                               controller: budgetCtrl,
                               keyboardType: TextInputType.number,
                               textAlign: TextAlign.center,
-                              onSubmitted: (_) => syncFromText(),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              onChanged: (txt) {
+                                final parsed = int.tryParse(txt);
+                                if (parsed != null) {
+                                  _applyBudgetFromInt(parsed);
+                                }
+                              },
                               decoration: InputDecoration(
                                 prefixText: '₱',
                                 filled: true,
@@ -425,6 +540,20 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                                   ),
                                 ),
                               ),
+                              autovalidateMode: AutovalidateMode
+                                  .onUserInteraction, // ✅ works now
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Enter budget';
+                                }
+                                final parsed = int.tryParse(value.trim());
+                                if (parsed == null) return 'Numbers only';
+                                if (parsed <= 0) return 'Must be > 0';
+                                if (parsed < 200 || parsed > 10000) {
+                                  return '200 – 10000 only';
+                                }
+                                return null;
+                              },
                             ),
                           ),
                         ],
@@ -486,7 +615,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                     }
 
                     // === Generate TEMP items grouped by their categories ===
-                    final tempItems = _generateItemsForMode(
+                    final tempItems = await _generateItemsForMode(
                       mode,
                       budget: sliderValue,
                     );
@@ -501,15 +630,36 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                     );
 
                     setState(() => _lists.insert(0, newMeta));
+
+                    // Save the seed items for this list
+                    _listSeeds[title] = tempItems
+                        .map(
+                          (g) => {
+                            'id': g.name.toLowerCase().replaceAll(
+                              RegExp(r'[^a-z0-9]+'),
+                              '-',
+                            ),
+                            'name': g.name,
+                            'brand': g.brand.isEmpty ? null : g.brand,
+                            'category': g.category,
+                            'sizeText': g.grams > 0 ? '${g.grams}g' : null,
+                            'qty': g.qty,
+                            'price': g.price,
+                          },
+                        )
+                        .toList();
+
+                    // 🔴 ADD THIS LINE (persist meta + seeds)
+                    await _saveState();
+
                     Navigator.of(dialogCtx, rootNavigator: true).pop();
 
-                    // Pass seed items to ListItemsPage using RouteSettings.arguments
                     final result = await Navigator.of(parentContext).push(
                       MaterialPageRoute(
                         builder: (_) => ListItemsPage(listTitle: title),
                         settings: RouteSettings(
                           arguments: {
-                            'seedItems': tempItems,
+                            'seedItems': _listSeeds[title],
                             'isGeneratedTemp': true,
                             'genMode': mode.name,
                             'budget': sliderValue,
@@ -531,7 +681,10 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   }
 
   // ===== TEMP item generator (keeps items under proper categories) =====
-  List<GenItem> _generateItemsForMode(GenMode mode, {double budget = 0}) {
+  Future<List<GenItem>> _generateItemsForMode(
+    GenMode mode, {
+    double budget = 0,
+  }) async {
     final base = <GenItem>[
       GenItem(
         name: 'Orange Juice',
@@ -588,81 +741,19 @@ class _ViewAllListsPageState extends State<Viewalllist> {
       case GenMode.recommended:
         return base;
       case GenMode.budget:
-        if (budget <= 800) {
-          return [
-            GenItem(
-              name: 'Instant Coffee',
-              brand: 'Great Taste',
-              grams: 50,
-              qty: 1,
-              category: 'Beverages',
-            ),
-            GenItem(
-              name: 'Pandesal Pack',
-              brand: 'Local Bakery',
-              grams: 300,
-              qty: 1,
-              category: 'Baked Goods',
-            ),
-            GenItem(
-              name: 'Sardines',
-              brand: '555',
-              grams: 155,
-              qty: 2,
-              category: 'Canned Goods',
-            ),
-            GenItem(
-              name: 'Bananas',
-              brand: 'Local',
-              grams: 800,
-              qty: 1,
-              category: 'Produce',
-            ),
-            GenItem(
-              name: 'Soy Sauce',
-              brand: 'Datu Puti',
-              grams: 350,
-              qty: 1,
-              category: 'Condiments',
-            ),
-          ];
-        } else if (budget <= 2000) {
-          return [
-            ...base.where((x) => x.category != 'Snacks'),
-            GenItem(
-              name: 'Rice',
-              brand: 'Sinandomeng',
-              grams: 2000,
-              qty: 1,
-              category: 'Other',
-            ),
-          ];
-        } else {
-          return [
-            ...base,
-            GenItem(
-              name: 'Greek Yogurt',
-              brand: 'Almarai',
-              grams: 500,
-              qty: 1,
-              category: 'Dairy',
-            ),
-            GenItem(
-              name: 'Mixed Veggies',
-              brand: 'Del Monte',
-              grams: 400,
-              qty: 1,
-              category: 'Canned Goods',
-            ),
-            GenItem(
-              name: 'Granola',
-              brand: 'Quaker',
-              grams: 380,
-              qty: 1,
-              category: 'Snacks',
-            ),
-          ];
-        }
+        // 🔥 Use CSV-driven budget selection
+        final picks = await BudgetGenerator.pickWithinBudget(budget: budget);
+        // Map BudgetGenItem -> GenItem your UI expects
+        return picks.map((p) {
+          return GenItem(
+            name: p.name,
+            brand: p.brand ?? '',
+            grams: _parseGramsFromSize(p.sizeText), // helper below
+            qty: p.qty,
+            category: p.category,
+            price: p.price,
+          );
+        }).toList();
       case GenMode.healthy:
         return [
           GenItem(
@@ -758,12 +849,24 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                       _openEditListDialog(m);
                     },
                     onChevronTap: () async {
+                      final seeds = _listSeeds[m.title];
                       final result = await Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => ListItemsPage(listTitle: m.title),
+                          settings: seeds != null
+                              ? RouteSettings(arguments: {'seedItems': seeds})
+                              : null,
                         ),
                       );
                       _handleListPageResult(result);
+                      if (result is Map &&
+                          result['listTitle'] == m.title &&
+                          result['seedItems'] is List) {
+                        _listSeeds[m.title] = List<Map<String, dynamic>>.from(
+                          (result['seedItems'] as List).cast<Map>(),
+                        );
+                        await _saveState(); // ✅ persist latest edits
+                      }
                     },
                   );
                 }),
@@ -934,14 +1037,26 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                     backgroundColor: headerGreen,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: () {
+                  onPressed: () async {
+                    final oldTitle = meta.title;
                     final newName = nameCtrl.text.trim();
+
                     setState(() {
                       if (newName.isNotEmpty) meta.title = newName;
                       meta.icon = tempIcon;
                     });
+
+                    final newTitle = meta.title;
+                    if (oldTitle != newTitle &&
+                        _listSeeds.containsKey(oldTitle)) {
+                      _listSeeds[newTitle] = _listSeeds.remove(oldTitle)!;
+                    }
+
+                    await _saveState(); // persist rename + seeds
+
                     Navigator.of(dialogCtx, rootNavigator: true).pop();
                   },
+
                   child: const Text('Save'),
                 ),
               ],
@@ -967,6 +1082,28 @@ class ListMeta {
   });
 }
 
+extension ListMetaCodec on ListMeta {
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'created': created.toIso8601String(),
+    'itemsCount': itemsCount,
+    'icon': icon.codePoint, // store icon as int
+  };
+
+  static ListMeta fromJson(Map<String, dynamic> m) => ListMeta(
+    title: (m['title'] ?? '').toString(),
+    created:
+        DateTime.tryParse((m['created'] ?? '').toString()) ?? DateTime.now(),
+    itemsCount: (m['itemsCount'] is int)
+        ? m['itemsCount'] as int
+        : int.tryParse('${m['itemsCount']}') ?? 0,
+    icon: IconData(
+      (m['icon'] as int?) ?? Icons.list_alt_outlined.codePoint,
+      fontFamily: 'MaterialIcons',
+    ),
+  );
+}
+
 // ===== TEMP item model for generator =====
 class GenItem {
   final String name;
@@ -974,6 +1111,7 @@ class GenItem {
   final int grams; // use grams or mL depending on item
   final int qty;
   final String category; // MUST match your app categories
+  final double? price; // ✅ NEW
 
   const GenItem({
     required this.name,
@@ -981,6 +1119,7 @@ class GenItem {
     required this.grams,
     required this.qty,
     required this.category,
+    this.price, // ✅ NEW
   });
 }
 
