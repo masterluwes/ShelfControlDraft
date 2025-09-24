@@ -66,18 +66,63 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
   WeekPeriod? selectedWeek;
 
   // Placeholder values for now (waste week comparison )
-  double thisWeekWaste = 1.95;
-  double lastWeekWaste = 13.62;
+  int lastWeekWaste = 0;
 
   String mostWastedCategory = "Grain";
-  List<Map<String, String>> wastedItems = [
-    {"name": "Oats", "status": "Expired"},
-    {"name": "Sliced Bread", "status": "Expired"},
-    {"name": "Milk", "status": "Spoiled"},
-    {"name": "Canned Good", "status": "Expired"},
+  List<Map<String, dynamic>> wastedItems = [
+    {"name": "Oats", "status": "Expired", "quantity": 1},
+    {"name": "Sliced Bread", "status": "Expired", "quantity": 1},
+    {"name": "Milk", "status": "Spoiled", "quantity": 2},
+    {"name": "Yogurt", "status": "Spoiled", "quantity": 1},
   ];
   bool showWastedItems = false;
-  double avgDailyWaste = 2.17;
+
+  List<Map<String, dynamic>> consumedItems = [
+    {"name": "Rice", "quantity": 2},
+    {"name": "Eggs", "quantity": 6},
+    {"name": "Chicken", "quantity": 1},
+  ];
+  bool showConsumedItems = false;
+
+  // mock pantry total
+  int thisWeekPantryTotal = 100;
+  int lastWeekPantryTotal = 90;
+
+  String getWasteInsight(int thisWeekWaste, int lastWeekWaste) {
+    if (lastWeekWaste == 0) {
+      return "No waste recorded last week. Let's keep improving!";
+    }
+
+    int diff = lastWeekWaste - thisWeekWaste;
+    double percentChange = (diff / lastWeekWaste) * 100;
+
+    if (percentChange > 0) {
+      return "Amazing! You’ve reduced your wasted items by ${percentChange.toStringAsFixed(1)}%. "
+          "Keep it up for next week!";
+    } else if (percentChange < 0) {
+      return "Oops! Your wasted items increased by ${percentChange.abs().toStringAsFixed(1)}%. "
+          "Check your storage and planning to reduce waste.";
+    } else {
+      return "You generated the same amount of waste as last week. "
+          "Try new strategies to cut it down!";
+    }
+  }
+
+  // for Consumption insight
+  String getConsumptionInsight(double thisWeekRate, double lastWeekRate) {
+    if (lastWeekRate == 0) {
+      return "No consumption recorded last week. Tracking starts now!";
+    }
+
+    double diff = thisWeekRate - lastWeekRate;
+    if (diff > 0) {
+      return "Great job! Your food consumption rate improved by ${diff.toStringAsFixed(1)}% compared to last week.";
+    } else if (diff < 0) {
+      return "Hmm, your consumption rate dropped by ${diff.abs().toStringAsFixed(1)}%. Try planning meals to use more of your pantry items.";
+    } else {
+      return "Your consumption rate is the same as last week. Keep monitoring!";
+    }
+  }
 
   @override
   void initState() {
@@ -89,16 +134,6 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
         weekNumber: 1,
         startDate: DateTime(2025, 8, 27),
         endDate: DateTime(2025, 9, 3),
-      ),
-      WeekPeriod(
-        weekNumber: 2,
-        startDate: DateTime(2025, 9, 4),
-        endDate: DateTime(2025, 9, 10),
-      ),
-      WeekPeriod(
-        weekNumber: 3,
-        startDate: DateTime(2025, 9, 11),
-        endDate: DateTime(2025, 9, 17),
       ),
     ];
     selectedWeek = weeks.first;
@@ -176,17 +211,6 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                       onTap: () {
                         Navigator.pop(context);
                         // Backend call
-                      },
-                    ),
-
-                    // This month
-                    ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text("This month"),
-                      onTap: () {
-                        Navigator.pop(context);
-                        //  Backend call
                       },
                     ),
 
@@ -283,6 +307,23 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
 
   @override
   Widget build(BuildContext context) {
+    int thisWeekWaste = wastedItems.fold(
+      0,
+      (sum, item) => sum + (item['quantity'] as int),
+    );
+    // for  Consumption totals and rates
+    int thisWeekConsumed = consumedItems.fold(
+      0,
+      (sum, item) => sum + (item['quantity'] as int),
+    );
+    int lastWeekConsumed = 0; // mock for now
+    double thisWeekConsumptionRate = thisWeekPantryTotal == 0
+        ? 0
+        : (thisWeekConsumed / thisWeekPantryTotal) * 100;
+    double lastWeekConsumptionRate = lastWeekPantryTotal == 0
+        ? 0
+        : (lastWeekConsumed / lastWeekPantryTotal) * 100;
+
     return Scaffold(
       backgroundColor: const Color(0xFFFFFBE6),
       body: SafeArea(
@@ -425,7 +466,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      "This Week's Daily Waste",
+                      "This Week's Waste",
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -451,7 +492,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                             children: [
                               const Text("This week's total waste:"),
                               Text(
-                                "${thisWeekWaste.toStringAsFixed(2)} lbs",
+                                "$thisWeekWaste",
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -465,7 +506,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                             children: [
                               const Text("Last week's total waste:"),
                               Text(
-                                "${lastWeekWaste.toStringAsFixed(2)} lbs",
+                                "$lastWeekWaste",
                                 style: const TextStyle(color: Colors.black54),
                               ),
                             ],
@@ -483,9 +524,8 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                 width: 1,
                               ),
                             ),
-                            child: const Text(
-                              "Amazing! You’ve reduced your waste by 85.68%. "
-                              "Let’s aim for even better next week.",
+                            child: Text(
+                              getWasteInsight(thisWeekWaste, lastWeekWaste),
                               style: TextStyle(fontSize: 14),
                             ),
                           ),
@@ -550,7 +590,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  "Wasted Items: ${wastedItems.length} Items",
+                                  "Wasted items this week: $thisWeekWaste Items",
                                   style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
                                 Icon(
@@ -570,7 +610,9 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(item["name"] ?? ""),
+                                    Text(
+                                      "${item['name']} (x${item['quantity'] as int})",
+                                    ),
                                     Text(
                                       item["status"] ?? "",
                                       style: const TextStyle(
@@ -582,24 +624,59 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                               }).toList(),
                             ),
                           ],
-
-                          const SizedBox(height: 12),
-                          // Average Daily Waste
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      "This Week's Food Usage",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.black26),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // This week's consumption
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text("Average Daily Waste:"),
+                              const Text("This week's total consumption:"),
                               Text(
-                                "${avgDailyWaste.toStringAsFixed(2)} lbs",
+                                "${thisWeekConsumptionRate.toStringAsFixed(1)}%",
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ],
                           ),
+                          const SizedBox(height: 8),
+                          // Last week's consumption
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text("Last week's total consumption:"),
+                              Text(
+                                "${lastWeekConsumptionRate.toStringAsFixed(1)}%",
+                                style: const TextStyle(color: Colors.black54),
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 12),
-                          // Insight ai generated text thingy for average daily waste
+                          // Insight for usage
                           Container(
+                            width: double.infinity,
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: const Color(0xFFE8F5E9),
@@ -610,11 +687,56 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                               ),
                             ),
                             child: Text(
-                              "Your average daily waste this week is ${avgDailyWaste.toStringAsFixed(2)} lbs. "
-                              "Check out the graph below to see your daily breakdowns and track your progress!",
+                              getConsumptionInsight(
+                                thisWeekConsumptionRate,
+                                lastWeekConsumptionRate,
+                              ),
                               style: const TextStyle(fontSize: 14),
                             ),
                           ),
+                          const SizedBox(height: 12),
+                          // Total consumed items
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                showConsumedItems = !showConsumedItems;
+                              });
+                            },
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "Total Consumed Items: ${consumedItems.fold(0, (sum, item) => sum + (item['quantity'] as int))}",
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Icon(
+                                  showConsumedItems
+                                      ? Icons.expand_less
+                                      : Icons.expand_more,
+                                  color: Colors.black54,
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (showConsumedItems) ...[
+                            const SizedBox(height: 8),
+                            Column(
+                              children: consumedItems.map((item) {
+                                return Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      "${item['name']} (x${item['quantity'] as int})",
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
                         ],
                       ),
                     ),
