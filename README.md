@@ -16,6 +16,9 @@ Updated tips and suggestions UI.
 
 Added:
 mealsuggest - for meal suggestions
+
 mealhistory - for meal history that the user cooks.
+
 recipedetails - details for recipe and instructions (displays after clicking "start cooking")
+
 cookingview - confirmation of the ingredients used by the user for cooking the suggested meal. 
