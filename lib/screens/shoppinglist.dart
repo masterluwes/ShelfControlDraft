@@ -147,6 +147,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
           sizeText: item.netWeight,
           note: 'Suggested', // You might want to refine this note based on the actual reason for suggestion (e.g., 'Low Stock', 'Out of Stock')
           category: item.category ?? 'Other',
+          nutrition: item.nutrition
         )).toList();
       });
     }
@@ -217,15 +218,15 @@ class _ShoppinglistState extends State<Shoppinglist> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  Text.rich(
+                  const Text.rich(
                     TextSpan(
                       text: 'Register',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14.5,
                         color: Colors.black87,
                         fontWeight: FontWeight.w700,
                       ),
-                      children: const [
+                      children: [
                         TextSpan(
                           text: ' or ',
                           style: TextStyle(fontWeight: FontWeight.normal),
@@ -1103,10 +1104,10 @@ class _ShoppinglistState extends State<Shoppinglist> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
+                  const Text(
                     'Shopping List',
                     style: TextStyle(
-                      color: const Color(0xFF347928),
+                      color: Color(0xFF347928),
                       fontFamily: 'Inter',
                       fontSize: 34,
                       fontWeight: FontWeight.w900,
@@ -1398,18 +1399,19 @@ IconData iconForCategory(String category) {
 // ======================= Suggestion types/UI =======================
 class _Suggestion {
   final String name;
-  final String? brand; // NEW
-  final String? sizeText; // NEW
-  final String note; // e.g., "Low Stock", "Out of Stock"
+  final String? brand;
+  final String? sizeText;
+  final String note;
   final String category;
-  final String? nutrition; // New: Optional nutrition information
+  final String? nutrition; // keep this
+
   _Suggestion({
     required this.name,
     required this.note,
     required this.category,
     this.brand,
     this.sizeText,
-    this.nutrition,
+    this.nutrition, 
   });
 }
 

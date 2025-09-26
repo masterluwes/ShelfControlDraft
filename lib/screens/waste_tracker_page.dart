@@ -526,7 +526,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                             ),
                             child: Text(
                               getWasteInsight(thisWeekWaste, lastWeekWaste),
-                              style: TextStyle(fontSize: 14),
+                              style: const TextStyle(fontSize: 14),
                             ),
                           ),
                         ],
@@ -591,7 +591,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                               children: [
                                 Text(
                                   "Wasted items this week: $thisWeekWaste Items",
-                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
                                 ),
                                 Icon(
                                   showWastedItems

@@ -502,7 +502,7 @@ class _TipsPageState extends State<TipsPage> {
       shadowColor: Colors.black.withOpacity(0.2),
       color: const Color(0xFFD4E4D5),
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: const Color(0xFFADC2AD), width: 1.5),
+        side: const BorderSide(color: Color(0xFFADC2AD), width: 1.5),
         borderRadius: BorderRadius.circular(20),
       ),
       child: InkWell(

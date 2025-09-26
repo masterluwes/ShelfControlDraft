@@ -57,7 +57,7 @@ class _ShelfControlAppState extends State<ShelfControlApp> {
               },
             );
           }
-          return WelcomePage(); // User is not logged in
+          return const WelcomePage(); // User is not logged in
         },
       ),
       routes: {

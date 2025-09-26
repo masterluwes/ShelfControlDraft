@@ -493,9 +493,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               });
             },
           ),
-          Text(
+          const Text(
             '\${_selectedItemIds.length} Items',
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -862,7 +862,7 @@ Text(
             }
             // Show error message if fetching fails
             if (snapshot.hasError) {
-              return Center(child: Text('Error: \${snapshot.error}'));
+              return const Center(child: Text('Error: \${snapshot.error}'));
             }
             // Show message if no items are found
             if (!snapshot.hasData || snapshot.data!.isEmpty) {

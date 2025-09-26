@@ -6,7 +6,7 @@ import 'package:shelf_control/models/household_model.dart'; // Import Household 
 import 'package:shelf_control/models/product_model.dart'; // Import Product model
 import 'package:shelf_control/models/user_model.dart'; // Import UserModel
 import 'package:shelf_control/models/shopping_list_model.dart'; // Import ShoppingListModel
-import 'package:shelf_control/models/shopping_list_item_model.dart'; // Import ShoppingListItemModel
+// Import ShoppingListItemModel
 import 'package:shelf_control/models/shopping_history_item_model.dart'; // Import ShoppingHistoryItemModel
 import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences

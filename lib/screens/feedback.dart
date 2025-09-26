@@ -91,7 +91,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 1),
                       alignment: Alignment.center,
-                      child: Container(
+                      child: SizedBox(
                         width: 150,
                         height: 150,
                         child: ClipRRect(
@@ -287,7 +287,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
 /// ---------- Feedback widgets ----------
 
 class RatingChip extends StatelessWidget {
-  const RatingChip({
+  const RatingChip({super.key, 
     required this.label,
     required this.icon,
     required this.selected,
@@ -334,7 +334,7 @@ class RatingChip extends StatelessWidget {
 }
 
 class CategoryPill extends StatelessWidget {
-  const CategoryPill({
+  const CategoryPill({super.key, 
     required this.value,
     required this.items,
     required this.onChanged,
@@ -419,7 +419,7 @@ class CategoryPill extends StatelessWidget {
 }
 
 class CommentsBox extends StatelessWidget {
-  const CommentsBox({required this.controller});
+  const CommentsBox({super.key, required this.controller});
   final TextEditingController controller;
 
   @override
@@ -452,7 +452,7 @@ class CommentsBox extends StatelessWidget {
 }
 
 class UploadTile extends StatelessWidget {
-  const UploadTile({required this.onTap});
+  const UploadTile({super.key, required this.onTap});
   final VoidCallback onTap;
 
   @override

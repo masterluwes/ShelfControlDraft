@@ -72,8 +72,8 @@ class GuestPage extends StatelessWidget {
               ),
 
               const SizedBox(height: 20),
-              Row(
-                children: const [
+              const Row(
+                children: [
                   Expanded(child: Divider(color: Color(0xFF2E7D32))),
                   SizedBox(width: 10),
                   Text("OR", style: TextStyle(color: Color(0xFF2E7D32))),

@@ -115,7 +115,7 @@ class _WelcomePageState extends State<WelcomePage> {
       height: 8,
       width: _currentPage == index ? 20 : 8,
       decoration: BoxDecoration(
-        color: _currentPage == index ? Color(0xFF2E7D32) : Colors.grey,
+        color: _currentPage == index ? const Color(0xFF2E7D32) : Colors.grey,
         borderRadius: BorderRadius.circular(4),
       ),
     );

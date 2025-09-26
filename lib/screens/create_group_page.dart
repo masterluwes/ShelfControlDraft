@@ -144,11 +144,11 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
         ),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 280, maxWidth: 320),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24, horizontal: 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: const [
+              children: [
                 Text(
                   'Cancelled!',
                   style: TextStyle(

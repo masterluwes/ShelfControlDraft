@@ -3,7 +3,7 @@ import 'package:shelf_control/models/household_model.dart';
 import 'package:shelf_control/models/user_model.dart'; // Import UserModel
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:shelf_control/screens/household_detail_page.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
+// Import FirebaseAuth
 import 'package:provider/provider.dart'; // Import provider
 
 class HouseholdPage extends StatefulWidget {
