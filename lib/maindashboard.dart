@@ -5,6 +5,7 @@ import 'package:guests_main/pages/pantryinventory.dart';
 import 'package:guests_main/pages/shoppinglist.dart';
 import 'package:guests_main/pages/tipsandsuggest.dart';
 import 'package:guests_main/pages/householdgroupguest.dart';
+import 'package:guests_main/pages/mealsuggest.dart';
 
 void main() => runApp(const ShelfControlApp());
 
@@ -45,6 +46,7 @@ class _MainDashboardState extends State<MainDashboard> {
   // Momentary fill flags for icons
   bool _isNotifActive = false;
   bool _isGroupActive = false;
+  bool _isMealSuggestActive = false;
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +74,7 @@ class _MainDashboardState extends State<MainDashboard> {
       _homeBody(context, tiles),
       const Pantryinventory(),
       const Shoppinglist(),
-      const Tipsandsuggest(),
+      const TipsPage(),
     ];
 
     return Scaffold(
@@ -98,7 +100,40 @@ class _MainDashboardState extends State<MainDashboard> {
               padding: const EdgeInsets.only(right: 8.0),
               child: Row(
                 children: [
-                  // Notifications: navigate + momentary filled icon
+                  // <-- MODIFIED: Meal Icon is now first
+                  if (_currentIndex == 1) ...[
+                    IconButton(
+                      splashRadius: 22,
+                      tooltip: 'Suggest a Meal',
+                      onPressed: () async {
+                        setState(() => _isMealSuggestActive = true);
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const MealSuggest(),
+                          ),
+                        );
+                        if (mounted) {
+                          setState(() => _isMealSuggestActive = false);
+                        }
+                      },
+                      icon: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 120),
+                        transitionBuilder: (child, anim) =>
+                            ScaleTransition(scale: anim, child: child),
+                        child: Icon(
+                          _isMealSuggestActive
+                              ? Icons.local_dining
+                              : Icons.local_dining_outlined,
+                          key: ValueKey<bool>(_isMealSuggestActive),
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+
+                  // Notifications icon is now second
                   IconButton(
                     splashRadius: 22,
                     onPressed: () async {
@@ -126,7 +161,7 @@ class _MainDashboardState extends State<MainDashboard> {
                   ),
                   const SizedBox(width: 4),
 
-                  // Groups: momentary filled when tapped, reset after returning
+                  // Groups icon is now third
                   IconButton(
                     splashRadius: 22,
                     onPressed: () async {

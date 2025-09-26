@@ -837,7 +837,64 @@ class _ListItemsPageState extends State<ListItemsPage> {
   }
 }
 
-/// ===== Row UI (icons removed) =====
+/// ===== Icon helpers (name-aware → category fallback) =====
+IconData _iconForCategory(String category) {
+  switch (category) {
+    case 'Beverages':
+      return Icons.local_drink;
+    case 'Baked Goods':
+      return Icons.bakery_dining;
+    case 'Condiments':
+      return Icons.kitchen;
+    case 'Canned Goods':
+      return Icons.inventory_2;
+    case 'Dairy':
+      return Icons.icecream;
+    case 'Produce':
+      return Icons.eco;
+    case 'Snacks':
+      return Icons.fastfood;
+    default:
+      return Icons.category;
+  }
+}
+
+IconData _iconForName(String name, String category) {
+  final n = name.toLowerCase();
+  if (n.contains('orange') && n.contains('juice')) return Icons.local_drink;
+  if (n.contains('water')) return Icons.water_drop;
+  if (n.contains('milk')) return Icons.local_drink;
+  if (n.contains('bread') || n.contains('loaf')) return Icons.bakery_dining;
+  if (n.contains('mayo') || n.contains('mayonnaise')) return Icons.kitchen;
+  if (n.contains('ketchup') || n.contains('sauce')) return Icons.kitchen;
+  if (n.contains('canned')) return Icons.inventory_2;
+  if (n.contains('chips') || n.contains('snack')) return Icons.fastfood;
+  if (n.contains('egg')) return Icons.egg;
+  return _iconForCategory(category);
+}
+
+Color _chipBgForCategory(String category) {
+  switch (category) {
+    case 'Beverages':
+      return Colors.lightBlue.shade50;
+    case 'Baked Goods':
+      return Colors.orange.shade50;
+    case 'Condiments':
+      return Colors.yellow.shade50;
+    case 'Canned Goods':
+      return Colors.blueGrey.shade50;
+    case 'Dairy':
+      return Colors.indigo.shade50;
+    case 'Produce':
+      return Colors.green.shade50;
+    case 'Snacks':
+      return Colors.red.shade50;
+    default:
+      return Colors.grey.shade200;
+  }
+}
+
+/// ===== Row UI (now with Shoppinglist-style circular icon chip) =====
 class _ShoppingRowSL extends StatelessWidget {
   const _ShoppingRowSL({
     required this.item,
@@ -904,7 +961,23 @@ class _ShoppingRowSL extends StatelessWidget {
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
 
-        const SizedBox(width: 10), // keeps spacing where the chip used to be
+        // === Shoppinglist-style circular green icon chip ===
+        Container(
+          width: 32,
+          height: 32,
+          margin: const EdgeInsets.only(right: 10),
+          decoration: BoxDecoration(
+            color: headerGreen.withOpacity(0.10),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Icon(
+            _iconForName(item.name, item.category),
+            size: 18,
+            color: headerGreen,
+          ),
+        ),
+
         // Texts
         Expanded(
           child: Column(
