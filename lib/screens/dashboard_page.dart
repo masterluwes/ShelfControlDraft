@@ -391,9 +391,7 @@ class _DashboardPageState extends State<DashboardPage> {
             _drawerItem(Icons.delete, "Waste Tracker", () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const WasteTrackerPage(),
-                ),
+                MaterialPageRoute(builder: (context) => WasteTrackerPage()),
               );
             }),
 
