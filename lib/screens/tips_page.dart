@@ -54,12 +54,16 @@ class _TipsPageState extends State<TipsPage> {
   };
 
   final List<Map<String, dynamic>> categories = [
-    {'name': 'General', 'icon': Icons.restaurant_menu_outlined},
-    {'name': 'Meat', 'icon': Icons.kebab_dining},
-    {'name': 'Fish', 'icon': Icons.set_meal},
-    {'name': 'Dairy', 'icon': Icons.icecream_outlined},
-    {'name': 'Produce', 'icon': Icons.grass},
-    {'name': 'Grains', 'icon': Icons.breakfast_dining_outlined},
+    {'name': 'General', 'icon': Icons.lightbulb},
+    {'name': 'Beverages', 'icon': Icons.local_cafe},
+    {'name': 'Canned goods', 'icon': Icons.inventory},
+    {'name': 'Dairy', 'icon': Icons.local_drink},
+    {'name': 'Dry goods', 'icon': Icons.shopping_bag},
+    {'name': 'Snacks', 'icon': Icons.fastfood},
+    {'name': 'Condiments', 'icon': Icons.soup_kitchen},
+    {'name': 'Produce', 'icon': Icons.local_florist},
+    {'name': 'Uncategorized', 'icon': Icons.help_outline},
+    {'name': 'Others', 'icon': Icons.category},
   ];
 
   String selectedCategory = 'General';
@@ -449,9 +453,8 @@ class _TipsPageState extends State<TipsPage> {
     required bool isSelected,
     required VoidCallback onTap,
   }) {
-    final Color backgroundColor = isSelected
-        ? const Color(0xFFE8E5E1)
-        : const Color(0xFFF8F5F1);
+    final Color backgroundColor =
+        isSelected ? const Color(0xFFE8E5E1) : const Color(0xFFF8F5F1);
     final Color contentColor = isSelected ? Colors.black87 : Colors.black54;
 
     return Padding(
@@ -472,14 +475,20 @@ class _TipsPageState extends State<TipsPage> {
               children: [
                 Icon(icon, color: contentColor, size: 28),
                 const SizedBox(height: 4),
-                Text(
-                  text,
-                  style: TextStyle(
-                    fontWeight: isSelected
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                    color: contentColor,
-                    fontSize: 14,
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      text,
+                      maxLines: 2,
+                      softWrap: false,
+                      overflow: TextOverflow.visible,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ],
