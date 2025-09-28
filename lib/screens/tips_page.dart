@@ -1,5 +1,262 @@
 import 'package:flutter/material.dart';
 
+enum WeatherLevel { red, green, blue }
+
+class WeatherAlert {
+  final WeatherLevel level;
+  final String headline; // short title e.g., "Severe Weather Advisory"
+  final String
+      windowText; // e.g., "Thu, Sep 25, 5:35 PM – Fri, Sep 26, 5:35 AM"
+  final String body; // the main guidance text
+  final String source; // e.g., "PAG-ASA"
+  final List<String> stockUpList; // used in BLUE mode; may be empty
+
+  const WeatherAlert({
+    required this.level,
+    required this.headline,
+    required this.windowText,
+    required this.body,
+    required this.source,
+    this.stockUpList = const [],
+  });
+}
+
+Color _levelColor(WeatherLevel lvl) {
+  switch (lvl) {
+    case WeatherLevel.red:
+      return const Color(0xFFD32F2F); // red 700
+    case WeatherLevel.green:
+      return const Color(0xFF2E7D32); // green 800
+    case WeatherLevel.blue:
+      return const Color(0xFF1565C0); // blue 800
+  }
+}
+
+Color _levelTint(WeatherLevel lvl) {
+  switch (lvl) {
+    case WeatherLevel.red:
+      return const Color(0xFFFFEBEE); // red 50
+    case WeatherLevel.green:
+      return const Color(0xFFE8F5E9); // green 50
+    case WeatherLevel.blue:
+      return const Color(0xFFE3F2FD); // blue 50
+  }
+}
+
+String _levelLabel(WeatherLevel lvl) {
+  switch (lvl) {
+    case WeatherLevel.red:
+      return "RED";
+    case WeatherLevel.green:
+      return "GREEN";
+    case WeatherLevel.blue:
+      return "BLUE";
+  }
+}
+
+class WeatherAlertBanner extends StatefulWidget {
+  final WeatherAlert alert;
+  final bool initiallyExpanded;
+  const WeatherAlertBanner({
+    super.key,
+    required this.alert,
+    this.initiallyExpanded = false,
+  });
+
+  @override
+  State<WeatherAlertBanner> createState() => _WeatherAlertBannerState();
+}
+
+class _WeatherAlertBannerState extends State<WeatherAlertBanner> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.initiallyExpanded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lvl = widget.alert.level;
+    final strip = _levelColor(lvl);
+    final bg = _levelTint(lvl);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: strip.withOpacity(0.35), width: 1),
+      ),
+      child: Row(
+        // ❌ don't stretch vertically; parent Column doesn't give a fixed height
+        // crossAxisAlignment: CrossAxisAlignment.stretch,  // <-- remove this
+        crossAxisAlignment: CrossAxisAlignment.start, // <-- use start/center
+        mainAxisSize: MainAxisSize.min, // <-- let content size height
+        children: [
+          // left colored strip; let it size naturally with content
+          Container(
+            width: 6,
+            decoration: BoxDecoration(
+              color: strip,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                bottomLeft: Radius.circular(16),
+              ),
+            ),
+          ),
+
+          // content
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize:
+                    MainAxisSize.min, // <-- don't claim infinite height
+                children: [
+                  // top row
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: strip.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: strip.withOpacity(0.35)),
+                        ),
+                        child: Text(
+                          _levelLabel(lvl),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: strip,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          widget.alert.windowText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12.5, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => setState(() => _expanded = !_expanded),
+                        child: Padding(
+                          padding: const EdgeInsets.all(6),
+                          child: AnimatedRotation(
+                            duration: const Duration(milliseconds: 180),
+                            turns: _expanded ? 0.5 : 0.0,
+                            child:
+                                const Icon(Icons.keyboard_arrow_down, size: 22),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+
+                  // headline
+                  Text(
+                    widget.alert.headline,
+                    style: TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                      color: _levelColor(lvl),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+
+                  // collapsed summary
+                  if (!_expanded)
+                    Text(
+                      widget.alert.body,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13.5, height: 1.25),
+                    ),
+
+                  // expanded details
+                  AnimatedCrossFade(
+                    firstChild: const SizedBox.shrink(),
+                    secondChild: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min, // <-- important
+                      children: [
+                        Text(
+                          widget.alert.body,
+                          style: const TextStyle(fontSize: 13.5, height: 1.35),
+                        ),
+                        if (widget.alert.stockUpList.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          const Text(
+                            "Suggested stock-up:",
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 13.5),
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: widget.alert.stockUpList
+                                .map((e) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius:
+                                            BorderRadius.circular(999),
+                                        border: Border.all(
+                                            color: strip.withOpacity(0.35)),
+                                      ),
+                                      child: Text(e,
+                                          style:
+                                              const TextStyle(fontSize: 12.5)),
+                                    ))
+                                .toList(),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                    crossFadeState: _expanded
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
+                    duration: const Duration(milliseconds: 180),
+                  ),
+
+                  // source line
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.info_outline, size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        "Source: ${widget.alert.source}",
+                        style: const TextStyle(
+                            fontSize: 12, color: Colors.black87),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // Your original TipDetailPage, unchanged.
 class TipDetailPage extends StatelessWidget {
   final String title;
@@ -230,11 +487,21 @@ class _TipsPageState extends State<TipsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Temporary demo alert so you can see the layout now:
+    final demo = WeatherAlert(
+      level: WeatherLevel.green, // try red/blue too
+      headline: "Good weather today",
+      windowText: "Today • No active advisories",
+      body:
+          "No urgent actions needed. Keep items sealed, store in a cool, dry place, and rotate stock (FIFO).",
+      source: "PAG-ASA",
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(20, 16, 20, 15),
+          padding: EdgeInsets.fromLTRB(20, 16, 20, 12),
           child: Text(
             'Tips & Suggestions',
             style: TextStyle(
@@ -244,6 +511,10 @@ class _TipsPageState extends State<TipsPage> {
             ),
           ),
         ),
+
+        // ⬇️ INSERT BANNER HERE
+        WeatherAlertBanner(alert: demo, initiallyExpanded: false),
+
         SizedBox(
           height: 90,
           child: ListView.builder(
@@ -268,6 +539,7 @@ class _TipsPageState extends State<TipsPage> {
             },
           ),
         ),
+
         Expanded(child: _buildBodyContent()),
       ],
     );
