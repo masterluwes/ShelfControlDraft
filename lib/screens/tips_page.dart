@@ -1,25 +1,6 @@
 import 'package:flutter/material.dart';
-
-enum WeatherLevel { red, green, blue }
-
-class WeatherAlert {
-  final WeatherLevel level;
-  final String headline; // short title e.g., "Severe Weather Advisory"
-  final String
-      windowText; // e.g., "Thu, Sep 25, 5:35 PM – Fri, Sep 26, 5:35 AM"
-  final String body; // the main guidance text
-  final String source; // e.g., "PAG-ASA"
-  final List<String> stockUpList; // used in BLUE mode; may be empty
-
-  const WeatherAlert({
-    required this.level,
-    required this.headline,
-    required this.windowText,
-    required this.body,
-    required this.source,
-    this.stockUpList = const [],
-  });
-}
+import 'package:shelf_control/services/weather_service.dart';
+import 'package:shelf_control/services/tips_rules.dart';
 
 Color _levelColor(WeatherLevel lvl) {
   switch (lvl) {
@@ -300,6 +281,69 @@ class TipsPage extends StatefulWidget {
 
 class _TipsPageState extends State<TipsPage> {
   // --- DATA ---
+  WeatherAlert? _alert;
+  bool _loadingWeather = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWeather();
+  }
+
+// TEMP: local loader that sets a GREEN alert so page compiles even
+// if you haven’t created WeatherService yet.
+// When you’re ready to go live, replace this with the version that
+// calls WeatherService (I’ll show that below).
+  Future<void> _loadWeather() async {
+    try {
+      // 1) Get position (may prompt)
+      final pos = await WeatherService.instance.getPosition();
+
+      // 2) Resolve a friendly area name
+      final area = await WeatherService.instance.getAreaName(pos);
+
+      // 3) Ask service for the best alert (PAG-ASA stub -> forecast fallback)
+      final alert =
+          await WeatherService.instance.fetchAlert(pos: pos, areaName: area);
+          
+      setState(() {
+        _alert = alert;
+        _loadingWeather = false;
+        _error = null;
+      });
+
+      if (!mounted) return;
+      setState(() {
+        _alert = alert; // ✅ dynamic alert from service
+        _error = null; // clear any previous error
+        _loadingWeather = false;
+      });
+    } catch (e) {
+      // If anything fails (permission denied, offline, API error) —
+      // build a sensible GREEN fallback so the UI stays useful.
+      if (!mounted) return;
+      setState(() {
+        _alert = const WeatherAlert(
+          level: WeatherLevel.green,
+          headline: 'Sunny Weather: Your Area',
+          windowText: 'Today • No active advisories',
+          body: 'Fair Weather Advisory in effect: No urgent actions needed.\n\n'
+              'Clear skies with low rain risk. Keep normal pantry routines and watch near-expiry items for meal planning. '
+              'Store heat-sensitive goods away from sunlight and the stove.\n\n'
+              'Quick pantry reminders:\n'
+              '• Reseal opened packs (flour, sugar, snacks) in airtight containers.\n'
+              '• Keep oils, coffee, and spices in a cool, dark cabinet; tighten lids.\n'
+              '• Rotate stock (FIFO) and label open dates.',
+          source: 'PAG-ASA',
+          stockUpList: const [],
+          areaName: 'Your Area',
+        );
+        _error = e.toString(); // keep for debugging (optional UI note below)
+        _loadingWeather = false;
+      });
+    }
+  }
 
   // UPDATED: Added 'Salmon' and 'Tuna' to the 'Fish' category in the pantry.
   final Map<String, List<String>> pantryItems = {
@@ -488,14 +532,32 @@ class _TipsPageState extends State<TipsPage> {
   @override
   Widget build(BuildContext context) {
     // Temporary demo alert so you can see the layout now:
-    final demo = WeatherAlert(
-      level: WeatherLevel.green, // try red/blue too
-      headline: "Good weather today",
-      windowText: "Today • No active advisories",
-      body:
-          "No urgent actions needed. Keep items sealed, store in a cool, dry place, and rotate stock (FIFO).",
-      source: "PAG-ASA",
-    );
+    if (_loadingWeather)
+      Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: LinearProgressIndicator(minHeight: 3),
+      );
+    else if (_alert != null)
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          WeatherAlertBanner(alert: _alert!, initiallyExpanded: false),
+          if (_error != null)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 6),
+              child: Text(
+                'Showing advisory with fallback info.',
+                style: TextStyle(fontSize: 11.5, color: Colors.black54),
+              ),
+            ),
+        ],
+      );
+    else
+      const SizedBox.shrink();
+
+    // (Optional) tiny note if we fell back due to an error, but DO NOT block the banner
+
+    // Final safety — shouldn’t happen because we set a fallback above
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -512,8 +574,22 @@ class _TipsPageState extends State<TipsPage> {
           ),
         ),
 
-        // ⬇️ INSERT BANNER HERE
-        WeatherAlertBanner(alert: demo, initiallyExpanded: false),
+        // Weather banner area
+        if (_loadingWeather)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: LinearProgressIndicator(minHeight: 3),
+          )
+        else if (_error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Text(
+              'Unable to load weather: $_error',
+              style: const TextStyle(color: Colors.red),
+            ),
+          )
+        else if (_alert != null)
+          WeatherAlertBanner(alert: _alert!, initiallyExpanded: false),
 
         SizedBox(
           height: 90,
@@ -580,10 +656,56 @@ class _TipsPageState extends State<TipsPage> {
       separatorBuilder: (_, __) => const SizedBox(height: 16),
       itemBuilder: (context, index) {
         final itemName = availableItems[index];
-        final itemTips = allTips[selectedCategory]?[itemName] ?? [];
+        final weatherLevel = _alert?.level ?? WeatherLevel.green;
 
-        // Use the new _buildItemCard widget for each pantry item.
-        return _buildItemCard(itemName, itemTips);
+        // Dynamic, weather-aware tips
+        final dynamicTips =
+            TipsRules.adviceFor(selectedCategory, itemName, weatherLevel);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Card(
+            elevation: 0,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(_getIconForItem(itemName), size: 22),
+                      const SizedBox(width: 8),
+                      Text(
+                        itemName,
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: dynamicTips.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (_, i) {
+                      final tip = dynamicTips[i];
+                      return _buildTipCard(
+                        context,
+                        title: tip.title,
+                        subtitle: tip.subtitle,
+                        details: tip.details,
+                        icon: tip.icon,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
       },
     );
   }
