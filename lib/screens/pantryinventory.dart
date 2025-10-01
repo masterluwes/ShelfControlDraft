@@ -132,6 +132,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               // For now, we'll just show the message.
             },
           ),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
         ),
       );
     }
@@ -494,7 +496,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             },
           ),
           Text(
-            '\${_selectedItemIds.length} Items',
+            '${_selectedItemIds.length} Items',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 18,

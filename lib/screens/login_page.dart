@@ -60,7 +60,11 @@ class _LoginPageState extends State<LoginPage> {
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login successful!')),
+          const SnackBar(
+            content: Text('Login successful!'),
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.only(top: 20, left: 20, right: 20),
+          ),
         );
         // Navigate to the dashboard screen upon successful login
         if (!mounted) return;
@@ -71,12 +75,20 @@ class _LoginPageState extends State<LoginPage> {
         // print('Firebase Auth Error: ${e.code} - ${e.message}');
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
+          SnackBar(
+            content: Text(errorMessage),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
+          ),
         );
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('An unexpected error occurred: $e')),
+          SnackBar(
+            content: Text('An unexpected error occurred: $e'),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
+          ),
         );
       }
     }
@@ -100,7 +112,7 @@ class _LoginPageState extends State<LoginPage> {
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize: MainAxisSize.min, // Ensure column takes minimum space
                   children: [
                     const Text(
                       'Enter the email you used to sign up. We’ll send you a link to reset your password.',

@@ -5,10 +5,10 @@ import 'package:shelf_control/screens/login_page.dart';
 import 'package:shelf_control/screens/guest_page.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/feature_preview_screen.dart';
-import 'package:shelf_control/screens/dashboard_page.dart'; // Import DashboardPage
+import 'package:shelf_control/screens/dashboard_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
-import 'package:provider/provider.dart'; // Import provider
+import 'package:shelf_control/services/firestore_service.dart';
+import 'package:provider/provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,51 +21,97 @@ void main() async {
   );
 }
 
-class ShelfControlApp extends StatefulWidget {
+class ShelfControlApp extends StatelessWidget {
   const ShelfControlApp({super.key});
 
   @override
-  State<ShelfControlApp> createState() => _ShelfControlAppState();
-}
-
-class _ShelfControlAppState extends State<ShelfControlApp> {
-  @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      // Removed useInheritedMediaQuery as it might conflict with DevicePreview's own MediaQuery handling
       debugShowCheckedModeBanner: false,
       title: 'ShelfControl',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        // Removed incorrect SnackBarThemeData margin property.
+        // SnackBar positioning will be handled directly in each SnackBar instance.
       ),
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const CircularProgressIndicator(); // Or a splash screen
-          }
-          if (snapshot.hasData) {
-            // User is logged in, set the selected household
-            final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-            return FutureBuilder<void>(
-              future: firestoreService.setInitialHousehold(snapshot.data!.uid),
-              builder: (context, householdSnapshot) {
-                if (householdSnapshot.connectionState == ConnectionState.waiting) {
-                  return const CircularProgressIndicator();
-                }
-                return const DashboardPage(); // Navigate to DashboardPage
-              },
-            );
-          }
-          return WelcomePage(); // User is not logged in
-        },
-      ),
+      home: const AuthWrapper(),
       routes: {
         '/create-account': (context) => const CreateAccountPage(),
         '/login': (context) => const LoginPage(),
         '/guest': (context) => const GuestPage(),
         '/feature-preview': (context) => const FeaturePreviewScreen(),
-        '/dashboard': (context) => const DashboardPage(), // Add dashboard route
+        '/dashboard': (context) => const DashboardPage(),
+      },
+    );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.active) {
+          final User? user = snapshot.data;
+          if (user == null) {
+            return WelcomePage();
+          }
+          return const HouseholdSetupPage();
+        }
+        return const Scaffold(
+          body: Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class HouseholdSetupPage extends StatefulWidget {
+  const HouseholdSetupPage({super.key});
+
+  @override
+  State<HouseholdSetupPage> createState() => _HouseholdSetupPageState();
+}
+
+class _HouseholdSetupPageState extends State<HouseholdSetupPage> {
+  late Future<void> _setupFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupFuture = _setupHousehold();
+  }
+
+  Future<void> _setupHousehold() async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await firestoreService.setInitialHousehold(user.uid);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _setupFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done) {
+          if (snapshot.hasError) {
+            // Handle error, maybe log it and show an error page or go to login
+            return WelcomePage();
+          }
+          return const DashboardPage();
+        }
+        return const Scaffold(
+          body: Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
       },
     );
   }

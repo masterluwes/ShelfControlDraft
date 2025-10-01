@@ -32,6 +32,10 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
+            // Enable code shrinking, obfuscation, and optimization.
+            isMinifyEnabled = true
+            // Enable resource shrinking.
+            isShrinkResources = true
         }
     }
 }

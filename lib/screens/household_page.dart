@@ -37,7 +37,7 @@ class _HouseholdPageState extends State<HouseholdPage> {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize: MainAxisSize.min, // Ensure column takes minimum space
                   children: [
                     const Text(
                       "Join Household",
@@ -105,7 +105,11 @@ class _HouseholdPageState extends State<HouseholdPage> {
                               Navigator.of(context).pop();
                               if (!mounted) return; 
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Successfully joined household!')),
+                                const SnackBar(
+                                  content: Text('Successfully joined household!'),
+                                  behavior: SnackBarBehavior.floating,
+                                  margin: EdgeInsets.only(top: 20, left: 20, right: 20),
+                                ),
                               );
                               // No need for setState here, Provider will handle rebuilds
                             } catch (e) {
@@ -159,7 +163,7 @@ class _HouseholdPageState extends State<HouseholdPage> {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize: MainAxisSize.min, // Ensure column takes minimum space
                   children: [
                     const Text(
                       "Create New Household",
@@ -227,7 +231,11 @@ class _HouseholdPageState extends State<HouseholdPage> {
                               Navigator.of(context).pop();
                               if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Household created successfully!')),
+                                const SnackBar(
+                                  content: Text('Household created successfully!'),
+                                  behavior: SnackBarBehavior.floating,
+                                  margin: EdgeInsets.only(top: 20, left: 20, right: 20),
+                                ),
                               );
                               // No need for setState here, Provider will handle rebuilds
                             } catch (e) {
@@ -401,6 +409,8 @@ class _HouseholdPageState extends State<HouseholdPage> {
                               content: Text(
                                 "${household.name} selected as current household",
                               ),
+                              behavior: SnackBarBehavior.floating,
+                              margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
                             ),
                           );
                         },

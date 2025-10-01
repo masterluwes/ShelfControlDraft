@@ -125,7 +125,11 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
         if (!mounted) return;
         Navigator.pop(context); // Pop the "Bye!" dialog
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to leave household: ${e.toString().replaceFirst('Exception: ', '')}')),
+          SnackBar(
+            content: Text('Failed to leave household: ${e.toString().replaceFirst('Exception: ', '')}'),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
+          ),
         );
       }
     });
@@ -206,13 +210,23 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
 
     Future.delayed(const Duration(seconds: 1), () async {
       if (!mounted) return;
-      Navigator.pop(context);
-      Navigator.pop(context);
-      widget.onDeleteGroup?.call();
-      // Remove the household from the user's selected household if it was the selected one
       final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      if (firestoreService.selectedHouseholdId == widget.household.id) {
-        await firestoreService.setInitialHousehold(_currentUserId);
+      try {
+        await firestoreService.deleteHousehold(widget.household.id);
+        if (!mounted) return;
+        Navigator.pop(context); // Pop the "Success!" dialog
+        Navigator.pop(context); // Pop the HouseholdDetailPage
+        widget.onDeleteGroup?.call(); // Trigger rebuild on HouseholdPage
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.pop(context); // Pop the "Success!" dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete household: ${e.toString().replaceFirst('Exception: ', '')}'),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
+          ),
+        );
       }
     });
   }
@@ -301,19 +315,24 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                 style: TextStyle(fontWeight: FontWeight.bold, color: _green),
                 textAlign: TextAlign.center,
               ),
-              content: TextField(
-                controller: controller,
-                maxLength: 20,
-                onChanged: (value) {
-                  dialogSetState(() {
-                    errorText = null;
-                  });
-                },
-                decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  labelText: "Nickname",
-                  errorText: errorText,
-                ),
+              content: Column( // Wrap TextField in Column
+                mainAxisSize: MainAxisSize.min, // Ensure column takes minimum space
+                children: [
+                  TextField(
+                    controller: controller,
+                    maxLength: 20,
+                    onChanged: (value) {
+                      dialogSetState(() {
+                        errorText = null;
+                      });
+                    },
+                    decoration: InputDecoration(
+                      border: const OutlineInputBorder(),
+                      labelText: "Nickname",
+                      errorText: errorText,
+                    ),
+                  ),
+                ],
               ),
               actionsAlignment: MainAxisAlignment.center,
               actions: [
@@ -345,7 +364,11 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                       if (!mounted) return;
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Nickname updated successfully!')),
+                        const SnackBar(
+                          content: Text('Nickname updated successfully!'),
+                          behavior: SnackBarBehavior.floating,
+                          margin: EdgeInsets.only(top: 20, left: 20, right: 20),
+                        ),
                       );
                     } catch (e) {
                       dialogSetState(() {
@@ -401,19 +424,22 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text("Pantry code copied to clipboard!"),
+                      behavior: SnackBarBehavior.floating,
+                      margin: EdgeInsets.only(top: 20, left: 20, right: 20),
                     ),
                   );
                 }
               },
               itemBuilder: (context) {
                 return [
-                  const PopupMenuItem(
-                    value: "leave",
-                    child: Text(
-                      "Leave Group",
-                      style: TextStyle(color: Colors.black),
+                  if (widget.household.ownerId != _currentUserId) // Only show "Leave Group" if not the owner
+                    const PopupMenuItem(
+                      value: "leave",
+                      child: Text(
+                        "Leave Group",
+                        style: TextStyle(color: Colors.black),
+                      ),
                     ),
-                  ),
                   if (widget.household.ownerId == _currentUserId) // Only owner can delete
                     const PopupMenuItem(
                       value: "delete",

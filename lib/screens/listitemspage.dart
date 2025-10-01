@@ -412,6 +412,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
                                       const SnackBar(
                                         content: Text('Item added'),
                                         behavior: SnackBarBehavior.floating,
+                                        margin: EdgeInsets.only(top: 20, left: 20, right: 20),
                                       ),
                                     );
                                 },
@@ -873,6 +874,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
       const SnackBar(
         content: Text('Now using this as the current shopping list'),
         behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.only(top: 20, left: 20, right: 20),
       ),
     );
   }

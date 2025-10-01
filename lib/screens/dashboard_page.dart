@@ -514,7 +514,9 @@ class _DashboardHomeState extends State<DashboardHome> {
                       return Text('Error: ${snapshot.error}');
                     }
                     final items = snapshot.data ?? [];
-                    return _buildPantryOverview(items);
+                    // Filter out 'Deleted' and 'Consumed' items for the overview count
+                    final activeItems = items.where((item) => item.status != 'Deleted' && item.status != 'Consumed').toList();
+                    return _buildPantryOverview(activeItems);
                   },
                 ),
               ],

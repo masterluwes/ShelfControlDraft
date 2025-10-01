@@ -168,6 +168,54 @@ class FirestoreService extends ChangeNotifier {
     await _db.collection('shoppingLists').doc(listId).delete();
   }
 
+  // Delete a household and all associated data
+  Future<void> deleteHousehold(String householdId) async {
+    // 1. Delete all pantry items for the household
+    final pantryItemsQuery = await _db.collection('pantryItems').where('householdId', isEqualTo: householdId).get();
+    for (final doc in pantryItemsQuery.docs) {
+      await doc.reference.delete();
+    }
+
+    // 2. Delete all shopping lists for the household
+    final shoppingListsQuery = await _db.collection('shoppingLists').where('householdId', isEqualTo: householdId).get();
+    for (final doc in shoppingListsQuery.docs) {
+      await doc.reference.delete();
+    }
+
+    // 3. Delete all shopping history items for the household
+    final shoppingHistoryQuery = await _db.collection('shoppingHistory').where('householdId', isEqualTo: householdId).get();
+    for (final doc in shoppingHistoryQuery.docs) {
+      await doc.reference.delete();
+    }
+
+    // 4. Remove the householdId from all member users' householdIds array
+    final usersQuery = await _db.collection('users').where('householdIds', arrayContains: householdId).get();
+    for (final userDoc in usersQuery.docs) {
+      await userDoc.reference.update({
+        'householdIds': FieldValue.arrayRemove([householdId]),
+      });
+      // If the deleted household was the user's personal household, clear personalHouseholdId
+      if (userDoc.data().containsKey('personalHouseholdId') && userDoc.data()['personalHouseholdId'] == householdId) {
+        await userDoc.reference.update({
+          'personalHouseholdId': FieldValue.delete(),
+        });
+      }
+    }
+
+    // 5. Finally, delete the household document itself
+    await _db.collection('households').doc(householdId).delete();
+
+    // If the deleted household was the currently selected one, reset selectedHouseholdId
+    if (_selectedHouseholdId == householdId) {
+      _selectedHouseholdId = null; // Clear the selected household
+      // Attempt to set an initial household (e.g., personal household)
+      if (userId != null) {
+        await setInitialHousehold(userId!);
+      }
+    }
+    notifyListeners(); // Notify listeners after deletion
+  }
+
   // Set a specific shopping list as active and deactivate all others for the household
   Future<void> setActiveShoppingList(String listId, String householdId) async {
     // Deactivate all other lists for this household
