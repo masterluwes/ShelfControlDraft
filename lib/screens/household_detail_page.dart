@@ -363,13 +363,6 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                       await firestoreService.updateUserNickname(userId, newNickname);
                       if (!mounted) return;
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Nickname updated successfully!'),
-                          behavior: SnackBarBehavior.floating,
-                          margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-                        ),
-                      );
                     } catch (e) {
                       dialogSetState(() {
                         errorText = e.toString().replaceFirst('Exception: ', '');

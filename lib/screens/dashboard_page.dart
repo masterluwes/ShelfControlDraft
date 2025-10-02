@@ -22,17 +22,20 @@ import 'package:shelf_control/models/household_model.dart'; // Import Household 
 import 'package:collection/collection.dart'; // Import for firstWhereOrNull
 import 'package:provider/provider.dart'; // Import provider
 import 'package:shelf_control/screens/waste_tracker_page.dart';
+import 'package:shelf_control/screens/create_account_page.dart'; // Import CreateAccountPage
+import 'package:shelf_control/screens/welcome_page.dart'; // Import WelcomePage for guest exit
 
 class DashboardPage extends StatefulWidget {
-  final int initialIndex; // Add initialIndex parameter
-  const DashboardPage({super.key, this.initialIndex = 0}); // Default to Home (index 0)
+  final int initialIndex;
+  final bool isGuest; // New parameter to indicate guest mode
+  const DashboardPage({super.key, this.initialIndex = 0, this.isGuest = false});
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  int _selectedIndex = 0; // Track selected index for bottom navigation
+  int _selectedIndex = 0;
   Widget? _currentBodyWidget;
   bool _isOnNotificationPage = false;
   Widget? _lastPageBeforeNotifications;
@@ -42,9 +45,11 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.initialIndex; // Set initial index from widget parameter
-    _updateBodyWidget(_selectedIndex); // Set initial body widget
-    _listenForNotifications();
+    _selectedIndex = widget.initialIndex;
+    _updateBodyWidget(_selectedIndex);
+    if (!widget.isGuest) {
+      _listenForNotifications();
+    }
   }
 
   void _updateBodyWidget(int index) {
@@ -52,19 +57,19 @@ class _DashboardPageState extends State<DashboardPage> {
       _selectedIndex = index;
       switch (index) {
         case 0:
-          _currentBodyWidget = const DashboardHome();
+          _currentBodyWidget = DashboardHome(isGuest: widget.isGuest);
           break;
         case 1:
-          _currentBodyWidget = const Pantryinventory();
+          _currentBodyWidget = Pantryinventory(isGuest: widget.isGuest);
           break;
         case 2:
-          _currentBodyWidget = const Shoppinglist();
+          _currentBodyWidget = Shoppinglist(isGuest: widget.isGuest);
           break;
         case 3:
           _currentBodyWidget = const TipsPage();
           break;
         default:
-          _currentBodyWidget = const DashboardHome();
+          _currentBodyWidget = DashboardHome(isGuest: widget.isGuest);
       }
     });
   }
@@ -75,7 +80,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       backgroundColor: const Color(0xFFFFFBE6),
       appBar: AppBar(
@@ -87,56 +91,72 @@ class _DashboardPageState extends State<DashboardPage> {
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
+        title: Text(
+          widget.isGuest ? "Guest Mode" : "ShelfControl",
+          style: const TextStyle(color: Colors.white),
+        ),
         actions: [
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.notifications, color: Colors.white),
-                onPressed: () {
-                  setState(() {
-                    if (_isOnNotificationPage) {
-                      _currentBodyWidget = _lastPageBeforeNotifications;
-                      _isOnNotificationPage = false;
-                    } else {
-                      _lastPageBeforeNotifications = _currentBodyWidget;
-                      _currentBodyWidget = NotificationPage(
-                        onStatusChanged: (hasUnread, isSnoozed) {
-                          setState(() {
-                            _hasUnreadNotifications = hasUnread;
-                            _isSnoozed = isSnoozed;
-                          });
-                        },
-                      );
-                      _isOnNotificationPage = true;
-                      _hasUnreadNotifications = false;
-                    }
-                  });
-                },
-              ),
-              if (_hasUnreadNotifications && !_isSnoozed)
-                Positioned(
-                  right: 10,
-                  top: 10,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
+          if (widget.isGuest)
+            IconButton(
+              icon: const Icon(Icons.person_add, color: Colors.white),
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const CreateAccountPage()),
+                );
+              },
+            )
+          else ...[
+            Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.notifications, color: Colors.white),
+                  onPressed: () {
+                    setState(() {
+                      if (_isOnNotificationPage) {
+                        _currentBodyWidget = _lastPageBeforeNotifications;
+                        _isOnNotificationPage = false;
+                      } else {
+                        _lastPageBeforeNotifications = _currentBodyWidget;
+                        _currentBodyWidget = NotificationPage(
+                          onStatusChanged: (hasUnread, isSnoozed) {
+                            setState(() {
+                              _hasUnreadNotifications = hasUnread;
+                              _isSnoozed = isSnoozed;
+                            });
+                          },
+                        );
+                        _isOnNotificationPage = true;
+                        _hasUnreadNotifications = false;
+                      }
+                    });
+                  },
+                ),
+                if (_hasUnreadNotifications && !_isSnoozed)
+                  Positioned(
+                    right: 10,
+                    top: 10,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.group, color: Colors.white),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const HouseholdPage()),
-              );
-            },
-          ),
+              ],
+            ),
+            IconButton(
+              icon: const Icon(Icons.group, color: Colors.white),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const HouseholdPage()),
+                );
+              },
+            ),
+          ],
         ],
       ),
       drawer: _buildSidePanel(context),
@@ -154,26 +174,26 @@ class _DashboardPageState extends State<DashboardPage> {
                 Icons.home,
                 Icons.home_outlined,
                 "Home",
-                0, // Index for Home
+                0,
               ),
               _navBarItem(
                 Icons.kitchen,
                 Icons.kitchen_outlined,
                 "Pantry",
-                1, // Index for Pantry
+                1,
               ),
               const SizedBox(width: 49),
               _navBarItem(
                 Icons.shopping_cart,
                 Icons.shopping_cart_outlined,
                 "Shopping",
-                2, // Index for Shopping
+                2,
               ),
               _navBarItem(
                 Icons.lightbulb,
                 Icons.lightbulb_outline,
                 "Tips",
-                3, // Index for Tips
+                3,
               ),
             ],
           ),
@@ -212,9 +232,19 @@ class _DashboardPageState extends State<DashboardPage> {
               );
               if (scannedItems != null && scannedItems.isNotEmpty) {
                 if (!mounted) return;
-                // Navigate to DashboardPage with Pantry tab selected
+                final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+                if (widget.isGuest) {
+                  List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
+                  currentGuestPantry.addAll(scannedItems);
+                  await firestoreService.saveGuestPantryItems(currentGuestPantry);
+                } else {
+                  // For registered user, add to current household
+                  for (var item in scannedItems) {
+                    await firestoreService.addPantryItem(item);
+                  }
+                }
                 Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)), // 1 for Pantry
+                  MaterialPageRoute(builder: (context) => DashboardPage(initialIndex: 1, isGuest: widget.isGuest)),
                   (Route<dynamic> route) => false,
                 );
               }
@@ -228,7 +258,7 @@ class _DashboardPageState extends State<DashboardPage> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const AddPantryItem()),
+                MaterialPageRoute(builder: (context) => AddPantryItem(isGuest: widget.isGuest)),
               );
             },
           ),
@@ -242,11 +272,11 @@ class _DashboardPageState extends State<DashboardPage> {
     IconData activeIcon,
     IconData inactiveIcon,
     String label,
-    int index, // Accept index instead of onTap
+    int index,
   ) {
-    final isActive = _selectedIndex == index; // Check if this item is selected
+    final isActive = _selectedIndex == index;
     return InkWell(
-      onTap: () => _updateBodyWidget(index), // Call _updateBodyWidget
+      onTap: () => _updateBodyWidget(index),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -272,43 +302,52 @@ class _DashboardPageState extends State<DashboardPage> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
           children: [
-            const Text(
-              "ShelfControl",
-              style: TextStyle(
+            Text(
+              widget.isGuest ? "Guest Mode" : "ShelfControl",
+              style: const TextStyle(
                 fontSize: 34,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
               ),
             ),
             const SizedBox(height: 10),
-            _drawerItem(Icons.person, "Profile", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ProfilePage()),
-              );
-            }),
-            _drawerItem(Icons.notifications, "Notification Settings", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const NotificationSettingsPage(),
-                ),
-              );
-            }),
-            _drawerItem(Icons.history, "History", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const HistoryScreen()),
-              );
-            }),
-            _drawerItem(Icons.delete, "Waste Tracker", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const WasteTrackerPage(),
-                ),
-              );
-            }),
+            if (!widget.isGuest) ...[
+              _drawerItem(Icons.person, "Profile", () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ProfilePage()),
+                );
+              }),
+              _drawerItem(Icons.notifications, "Notification Settings", () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NotificationSettingsPage(),
+                  ),
+                );
+              }),
+              _drawerItem(Icons.history, "History", () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const HistoryScreen()),
+                );
+              }),
+              _drawerItem(Icons.delete, "Waste Tracker", () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const WasteTrackerPage(),
+                  ),
+                );
+              }),
+            ] else ...[
+              _drawerItem(Icons.person_add, "Create Account", () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const CreateAccountPage()),
+                );
+              }),
+            ],
             _drawerItem(Icons.info, "User Guide", () {
               Navigator.push(
                 context,
@@ -341,20 +380,30 @@ class _DashboardPageState extends State<DashboardPage> {
             ElevatedButton(
               onPressed: () async {
                 final navigator = Navigator.of(context);
-                await AuthService().signOut();
-                if (!mounted) return;
-                navigator.pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const WelcomePage()),
-                  (Route<dynamic> route) => false,
-                );
+                if (widget.isGuest) {
+                  final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+                  await firestoreService.clearGuestData(); // Clear guest data on exit
+                  if (!mounted) return;
+                  navigator.pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => const WelcomePage()),
+                    (Route<dynamic> route) => false,
+                  );
+                } else {
+                  await AuthService().signOut();
+                  if (!mounted) return;
+                  navigator.pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => const WelcomePage()),
+                    (Route<dynamic> route) => false,
+                  );
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.black,
                 shape: const StadiumBorder(),
               ),
-              child: const Text(
-                "Log Out",
-                style: TextStyle(color: Colors.white),
+              child: Text(
+                widget.isGuest ? "Exit Guest Mode" : "Log Out",
+                style: const TextStyle(color: Colors.white),
               ),
             ),
           ],
@@ -373,7 +422,8 @@ class _DashboardPageState extends State<DashboardPage> {
 }
 
 class DashboardHome extends StatefulWidget {
-  const DashboardHome({super.key});
+  final bool isGuest;
+  const DashboardHome({super.key, this.isGuest = false});
 
   @override
   State<DashboardHome> createState() => _DashboardHomeState();
@@ -382,7 +432,7 @@ class DashboardHome extends StatefulWidget {
 class _DashboardHomeState extends State<DashboardHome> {
   @override
   Widget build(BuildContext context) {
-    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+    final firestoreService = Provider.of<FirestoreService>(context);
 
     return Column(
       children: [
@@ -391,89 +441,101 @@ class _DashboardHomeState extends State<DashboardHome> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  "Overview",
-                  style: TextStyle(
-                    fontSize: 24, // Reduced font size
+                  widget.isGuest ? "Guest Overview" : "Overview",
+                  style: const TextStyle(
+                    fontSize: 24,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF2E7D32),
                   ),
-                  overflow: TextOverflow.ellipsis, // Add ellipsis for long text
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 10), // Add some spacing between the text and dropdown
-              Flexible(
-                fit: FlexFit.tight,
-                child: StreamBuilder<List<Household>>(
-                  stream: firestoreService.getHouseholds(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const CircularProgressIndicator();
-                    }
-                    if (snapshot.hasError) {
-                      return Text('Error: ${snapshot.error}');
-                    }
-                    final households = snapshot.data ?? [];
+              const SizedBox(width: 10),
+              if (widget.isGuest)
+                Container(
+                  height: 36,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2E7D32),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      "Local Pantry",
+                      style: TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                  ),
+                )
+              else
+                Flexible(
+                  fit: FlexFit.tight,
+                  child: StreamBuilder<List<Household>>(
+                    stream: firestoreService.getHouseholds(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const CircularProgressIndicator();
+                      }
+                      if (snapshot.hasError) {
+                        return Text('Error: ${snapshot.error}');
+                      }
+                      final households = snapshot.data ?? [];
 
-                    if (households.isEmpty) {
-                      return const Text('No Households');
-                    }
+                      if (households.isEmpty) {
+                        return const Text('No Households');
+                      }
 
-                    // Sort households to put personal household first
-                    households.sort((a, b) {
-                      if (a.isPersonal) return -1;
-                      if (b.isPersonal) return 1;
-                      return a.name.compareTo(b.name);
-                    });
+                      households.sort((a, b) {
+                        if (a.isPersonal) return -1;
+                        if (b.isPersonal) return 1;
+                        return a.name.compareTo(b.name);
+                      });
 
-                    // Find the currently selected household
-                    Household? selectedHousehold = households.firstWhereOrNull(
-                        (h) => h.id == firestoreService.selectedHouseholdId);
+                      Household? selectedHousehold = households.firstWhereOrNull(
+                          (h) => h.id == firestoreService.selectedHouseholdId);
 
-                    // If no household is selected, or the selected one is no longer valid,
-                    // default to the personal household or the first available.
-                    if (selectedHousehold == null && households.isNotEmpty) {
-                      selectedHousehold = households.firstWhere(
-                          (h) => h.isPersonal,
-                          orElse: () => households.first);
-                      firestoreService.selectedHouseholdId = selectedHousehold.id;
-                    }
+                      if (selectedHousehold == null && households.isNotEmpty) {
+                        selectedHousehold = households.firstWhere(
+                            (h) => h.isPersonal,
+                            orElse: () => households.first);
+                        firestoreService.selectedHouseholdId = selectedHousehold.id;
+                      }
 
-                    return Container(
-                      height: 36,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2E7D32),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: DropdownButton<String>(
-                        value: selectedHousehold?.id,
-                        items: households
-                            .map(
-                              (h) => DropdownMenuItem(
-                                value: h.id,
-                                child: Text(
-                                  h.isPersonal ? "${h.name} (Personal)" : h.name,
-                                  overflow: TextOverflow.ellipsis, // Add ellipsis for long names
+                      return Container(
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2E7D32),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: DropdownButton<String>(
+                          value: selectedHousehold?.id,
+                          items: households
+                              .map(
+                                (h) => DropdownMenuItem(
+                                  value: h.id,
+                                  child: Text(
+                                    h.name, // Removed "(Personal)" suffix
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            firestoreService.selectedHouseholdId = value;
-                          }
-                        },
-                        dropdownColor: const Color(0xFF2E7D32),
-                        underline: Container(),
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                        iconEnabledColor: Colors.white,
-                      ),
-                    );
-                  },
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              firestoreService.selectedHouseholdId = value;
+                            }
+                          },
+                          dropdownColor: const Color(0xFF2E7D32),
+                          underline: Container(),
+                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          iconEnabledColor: Colors.white,
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -502,10 +564,12 @@ class _DashboardHomeState extends State<DashboardHome> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                StreamBuilder<List<PantryItemModel>>(
-                  stream: firestoreService.selectedHouseholdId == null
-                      ? Stream.value([])
-                      : firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
+                FutureBuilder<List<PantryItemModel>>(
+                  future: widget.isGuest
+                      ? firestoreService.loadGuestPantryItems()
+                      : (firestoreService.selectedHouseholdId == null
+                          ? Future.value([])
+                          : firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!).first),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const CircularProgressIndicator();
@@ -514,7 +578,6 @@ class _DashboardHomeState extends State<DashboardHome> {
                       return Text('Error: ${snapshot.error}');
                     }
                     final items = snapshot.data ?? [];
-                    // Filter out 'Deleted' and 'Consumed' items for the overview count
                     final activeItems = items.where((item) => item.status != 'Deleted' && item.status != 'Consumed').toList();
                     return _buildPantryOverview(activeItems);
                   },
@@ -548,7 +611,7 @@ class _DashboardHomeState extends State<DashboardHome> {
           ],
         ),
       ),
-    );
+      );
   }
 
   static Widget _buildTipCard({

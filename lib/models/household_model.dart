@@ -7,6 +7,7 @@ class Household {
   List<String> members;
   String joinCode;
   bool isPersonal;
+  DateTime? timestamp; // Add timestamp field
 
   Household({
     required this.id,
@@ -15,6 +16,7 @@ class Household {
     required this.members,
     required this.joinCode,
     this.isPersonal = false,
+    this.timestamp, // Add timestamp to constructor
   });
 
   factory Household.fromFirestore(DocumentSnapshot doc) {
@@ -26,6 +28,7 @@ class Household {
       members: List<String>.from(data['members'] ?? []),
       joinCode: data['joinCode'] ?? '',
       isPersonal: data['isPersonal'] ?? false,
+      timestamp: (data['timestamp'] as Timestamp?)?.toDate(), // Parse timestamp
     );
   }
 

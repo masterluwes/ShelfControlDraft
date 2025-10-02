@@ -48,9 +48,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (confirm == true && firestoreService.selectedHouseholdId != null) {
       await firestoreService.deleteAllShoppingHistoryItems(firestoreService.selectedHouseholdId!);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('History cleared successfully!')),
-      );
+      // No snackbar, just let the stream rebuild the UI
     }
   }
 

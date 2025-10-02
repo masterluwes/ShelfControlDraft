@@ -8,7 +8,8 @@ import 'package:provider/provider.dart'; // Import provider
 import 'package:shelf_control/widgets/consume_quantity_bottom_sheet.dart'; // Import the new bottom sheet
 
 class Pantryinventory extends StatefulWidget {
-  const Pantryinventory({super.key});
+  final bool isGuest; // New parameter to indicate guest mode
+  const Pantryinventory({super.key, this.isGuest = false});
 
   @override
   State<Pantryinventory> createState() => _PantryInventoryBodyState();
@@ -119,23 +120,15 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   // Delete pantry item
   Future<void> _deletePantryItem(PantryItemModel item, FirestoreService firestoreService) async {
     if (item.id != null) {
-      await firestoreService.deletePantryItem(item.id!);
+      if (widget.isGuest) {
+        List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
+        currentGuestPantry.removeWhere((element) => element.id == item.id);
+        await firestoreService.saveGuestPantryItems(currentGuestPantry);
+      } else {
+        await firestoreService.deletePantryItem(item.id!);
+      }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Deleted "${item.name}"'),
-          action: SnackBarAction(
-            label: 'Undo',
-            onPressed: () {
-              // Re-add item if undo is pressed (requires more complex logic)
-              // For now, we'll just show the message.
-            },
-          ),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
-        ),
-      );
+      // No snackbar, just delete and let the stream rebuild the UI
     }
   }
 
@@ -324,15 +317,35 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   Future<void> _updateItemStatus(PantryItemModel item, String newStatus, {int? consumedQuantity}) async {
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
 
-    if (newStatus == 'Consumed' && consumedQuantity != null) {
-      await firestoreService.recordConsumedItem(item, consumedQuantity);
-    } else if (newStatus == 'Consumed') {
-      // If status is set to consumed without a specific quantity, assume all
-      await firestoreService.recordConsumedItem(item, item.qty);
+    if (widget.isGuest) {
+      List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
+      int itemIndex = currentGuestPantry.indexWhere((element) => element.id == item.id);
+      if (itemIndex != -1) {
+        PantryItemModel updatedItem = item.copyWith(status: newStatus);
+        if (newStatus == 'Consumed' && consumedQuantity != null) {
+          updatedItem = updatedItem.copyWith(qty: updatedItem.qty - consumedQuantity);
+        } else if (newStatus == 'Consumed') {
+          updatedItem = updatedItem.copyWith(qty: 0); // Consume all
+        }
+
+        if (updatedItem.qty <= 0) {
+          currentGuestPantry.removeAt(itemIndex);
+        } else {
+          currentGuestPantry[itemIndex] = updatedItem;
+        }
+        await firestoreService.saveGuestPantryItems(currentGuestPantry);
+      }
     } else {
-      // For other status changes, just update the item
-      PantryItemModel updatedItem = item.copyWith(status: newStatus);
-      await firestoreService.updatePantryItem(updatedItem);
+      if (newStatus == 'Consumed' && consumedQuantity != null) {
+        await firestoreService.recordConsumedItem(item, consumedQuantity);
+      } else if (newStatus == 'Consumed') {
+        // If status is set to consumed without a specific quantity, assume all
+        await firestoreService.recordConsumedItem(item, item.qty);
+      } else {
+        // For other status changes, just update the item
+        PantryItemModel updatedItem = item.copyWith(status: newStatus);
+        await firestoreService.updatePantryItem(updatedItem);
+      }
     }
   }
 
@@ -790,7 +803,7 @@ Text(
     );
   }
 
-  // Update item quantity in Firestore
+  // Update item quantity
   Future<void> _updateItemQuantity(PantryItemModel item, int newQuantity) async {
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     if (newQuantity <= 0) {
@@ -798,7 +811,16 @@ Text(
       await _showQuantityPickerDialog(item);
     } else {
       PantryItemModel updatedItem = item.copyWith(qty: newQuantity);
-      await firestoreService.updatePantryItem(updatedItem);
+      if (widget.isGuest) {
+        List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
+        int itemIndex = currentGuestPantry.indexWhere((element) => element.id == item.id);
+        if (itemIndex != -1) {
+          currentGuestPantry[itemIndex] = updatedItem;
+          await firestoreService.saveGuestPantryItems(currentGuestPantry);
+        }
+      } else {
+        await firestoreService.updatePantryItem(updatedItem);
+      }
     }
   }
 
@@ -846,47 +868,40 @@ Text(
   Widget build(BuildContext context) {
     final firestoreService = Provider.of<FirestoreService>(context);
 
-    // Show message if no household is selected
-    if (firestoreService.selectedHouseholdId == null) {
-      return const Center(child: Text('No household selected.'));
-    }
-
     return Scaffold(
       backgroundColor: softCream,
       body: SafeArea(
-        child: StreamBuilder<List<PantryItemModel>>(
-          // Stream to get pantry items for the selected household
-          stream: firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
+        child: FutureBuilder<List<PantryItemModel>>(
+          future: widget.isGuest
+              ? firestoreService.loadGuestPantryItems()
+              : (firestoreService.selectedHouseholdId == null
+                  ? Future.value([])
+                  : firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!).first),
           builder: (context, snapshot) {
-            // Show loading indicator while fetching data
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-            // Show error message if fetching fails
             if (snapshot.hasError) {
-              return Center(child: Text('Error: \${snapshot.error}'));
+              return Center(child: Text('Error: ${snapshot.error}'));
             }
-            // Show message if no items are found
-            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+
+            _items = snapshot.data ?? [];
+            final view = _filteredAndSorted();
+
+            if (view.isEmpty) {
               return const Center(child: Text('No pantry items yet. Add some!'));
             }
 
-            // Update the local items list and filtered/sorted view
-            _items = snapshot.data!;
-            final view = _filteredAndSorted();
-
-            // Build the main UI layout
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (_inSelectMode)
                   _selectionModeTopBar(firestoreService)
                 else ...[
-                  _bigTitle(), // Pantry Inventory title
-                  _controlsRow(), // Search, Sort, and Filter controls
+                  _bigTitle(),
+                  _controlsRow(),
                 ],
                 const Divider(height: 1, thickness: 1, color: Color(0xFFE9E1C7)),
-                // List of pantry items
                 Expanded(
                   child: ListView.separated(
                     itemCount: view.length,

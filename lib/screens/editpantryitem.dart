@@ -86,9 +86,6 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
       return await storageRef.getDownloadURL();
     } catch (e) {
       if (!mounted) return null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to upload image: ${e.toString()}')),
-      );
       return null;
     }
   }

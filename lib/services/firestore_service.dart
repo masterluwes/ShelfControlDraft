@@ -10,6 +10,7 @@ import 'package:shelf_control/models/shopping_list_item_model.dart'; // Import S
 import 'package:shelf_control/models/shopping_history_item_model.dart'; // Import ShoppingHistoryItemModel
 import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
+import 'dart:convert'; // For JSON encoding/decoding
 
 class FirestoreService extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -78,7 +79,7 @@ class FirestoreService extends ChangeNotifier {
 
     final Household personalHousehold = Household(
       id: householdId,
-      name: "$userEmail's Personal Pantry",
+      name: "My Pantry", // Changed to "My Pantry"
       ownerId: userId,
       members: [userId],
       joinCode: joinCode,
@@ -100,6 +101,54 @@ class FirestoreService extends ChangeNotifier {
     await _db.collection('users').doc(userId).update({
       'nickname': userEmail.split('@').first, // Default nickname from email
     });
+  }
+
+  // --- Local Storage Methods for Guest Users ---
+
+  static const String _guestPantryKey = 'guestPantryItems';
+  static const String _guestShoppingListKey = 'guestShoppingLists';
+
+  // Save guest pantry items to local storage
+  Future<void> saveGuestPantryItems(List<PantryItemModel> items) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedData = json.encode(items.map((item) => item.toFirestore()).toList());
+    await prefs.setString(_guestPantryKey, encodedData);
+  }
+
+  // Load guest pantry items from local storage
+  Future<List<PantryItemModel>> loadGuestPantryItems() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? encodedData = prefs.getString(_guestPantryKey);
+    if (encodedData == null) {
+      return [];
+    }
+    final List<dynamic> decodedData = json.decode(encodedData);
+    return decodedData.map((data) => PantryItemModel.fromFirestore(data)).toList();
+  }
+
+  // Save guest shopping lists to local storage
+  Future<void> saveGuestShoppingLists(List<ShoppingListModel> lists) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedData = json.encode(lists.map((list) => list.toFirestore()).toList());
+    await prefs.setString(_guestShoppingListKey, encodedData);
+  }
+
+  // Load guest shopping lists from local storage
+  Future<List<ShoppingListModel>> loadGuestShoppingLists() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? encodedData = prefs.getString(_guestShoppingListKey);
+    if (encodedData == null) {
+      return [];
+    }
+    final List<dynamic> decodedData = json.decode(encodedData);
+    return decodedData.map((data) => ShoppingListModel.fromFirestore(data)).toList();
+  }
+
+  // Clear all guest data from local storage
+  Future<void> clearGuestData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_guestPantryKey);
+    await prefs.remove(_guestShoppingListKey);
   }
 
   // Get a stream of pantry items for a specific household

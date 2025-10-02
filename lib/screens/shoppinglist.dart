@@ -18,9 +18,11 @@ import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:provider/provider.dart'; // Import provider
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:shelf_control/services/open_food_facts_service.dart'; // Import OpenFoodFactsService
+import 'package:uuid/uuid.dart'; // Import Uuid for generating unique IDs
 
 class Shoppinglist extends StatefulWidget {
-  const Shoppinglist({super.key});
+  final bool isGuest; // New parameter to indicate guest mode
+  const Shoppinglist({super.key, this.isGuest = false});
   @override
   State<Shoppinglist> createState() => _ShoppinglistState();
 }
@@ -30,6 +32,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
   final Color headerGreen = const Color(0xFF2E7D32); // Minor change to trigger linter refresh
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
+  final Uuid _uuid = const Uuid(); // Instantiate Uuid for generating unique IDs
   // Deeper green for "View All List"
   final Color darkGreen = const Color(0xFF2F4F3A);
 
@@ -46,10 +49,10 @@ class _ShoppinglistState extends State<Shoppinglist> {
   final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService();
 
   // Guest limit
-  static const int maxGuestItems = 15;
+  static const int _maxGuestItems = 15;
 
   // Listener for FirestoreService changes
-  late VoidCallback _firestoreServiceListener;
+  late VoidCallback? _firestoreServiceListener;
 
   final List<String> _categories = const [
     'Beverages',
@@ -73,82 +76,115 @@ class _ShoppinglistState extends State<Shoppinglist> {
   @override
   void initState() {
     super.initState();
-    // Initialize the listener
     _firestoreServiceListener = () {
       final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      if (_householdId != firestoreService.selectedHouseholdId) {
+      if (!widget.isGuest && _householdId != firestoreService.selectedHouseholdId) {
         setState(() {
           _householdId = firestoreService.selectedHouseholdId;
         });
-        _fetchHouseholdAndListsAndSuggestions();
+        _fetchShoppingData();
       }
     };
 
     // Add the listener
-    Provider.of<FirestoreService>(context, listen: false).addListener(_firestoreServiceListener);
+    Provider.of<FirestoreService>(context, listen: false).addListener(_firestoreServiceListener!);
 
     // Initial fetch
-    _fetchHouseholdAndListsAndSuggestions();
+    _fetchShoppingData();
   }
 
   @override
   void dispose() {
-    // Remove the listener
-    Provider.of<FirestoreService>(context, listen: false).removeListener(_firestoreServiceListener);
+    if (_firestoreServiceListener != null) {
+      Provider.of<FirestoreService>(context, listen: false).removeListener(_firestoreServiceListener!);
+    }
     super.dispose();
   }
 
-  Future<void> _fetchHouseholdAndListsAndSuggestions() async {
+  Future<void> _fetchShoppingData() async {
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    _householdId = firestoreService.selectedHouseholdId; // Get householdId from service
 
-    if (_householdId != null) {
-      // Fetch active list
-      var snapshot = await FirebaseFirestore.instance
-          .collection('shoppingLists')
-          .where('householdId', isEqualTo: _householdId)
-          .where('isActive', isEqualTo: true)
-          .limit(1)
-          .get();
+    if (widget.isGuest) {
+      // Load guest shopping lists from local storage
+      List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
       if (!mounted) return;
       setState(() {
-        if (snapshot.docs.isNotEmpty) {
-          _activeList = ShoppingListModel.fromFirestore(snapshot.docs.first);
+        if (guestLists.isNotEmpty) {
+          // For guests, we'll just use the first list as the "active" one for simplicity
+          _activeList = guestLists.first;
           _currentTitle = _activeList!.name;
-          items = _activeList!.items.map((e) => e.copyWith()).toList(); // Deep copy items
+          items = _activeList!.items.map((e) => e.copyWith()).toList();
           _reorderByBookmark();
         } else {
           _activeList = null;
           _currentTitle = 'Shopping List';
           items = [];
         }
+        _suggestions = []; // Guests don't get suggestions
       });
-
-      // Fetch suggestions
-      await _fetchSuggestions();
     } else {
-      if (!mounted) return;
-      setState(() {
-        _activeList = null;
-        _currentTitle = 'Shopping List';
-        items = [];
-        _suggestions = [];
-      });
+      // Registered user logic
+      _householdId = firestoreService.selectedHouseholdId;
+
+      if (_householdId != null) {
+        // Fetch active list
+        var snapshot = await FirebaseFirestore.instance
+            .collection('shoppingLists')
+            .where('householdId', isEqualTo: _householdId)
+            .where('isActive', isEqualTo: true)
+            .limit(1)
+            .get();
+        if (!mounted) return;
+        setState(() {
+          if (snapshot.docs.isNotEmpty) {
+            _activeList = ShoppingListModel.fromFirestore(snapshot.docs.first);
+            _currentTitle = _activeList!.name;
+            items = _activeList!.items.map((e) => e.copyWith()).toList();
+            _reorderByBookmark();
+          } else {
+            _activeList = null;
+            _currentTitle = 'Shopping List';
+            items = [];
+          }
+        });
+
+        // Fetch suggestions
+        await _fetchSuggestions();
+      } else {
+        if (!mounted) return;
+        setState(() {
+          _activeList = null;
+          _currentTitle = 'Shopping List';
+          items = [];
+          _suggestions = [];
+        });
+      }
     }
   }
 
   Future<void> _fetchSuggestions() async {
-    if (_householdId != null) {
+    if (!widget.isGuest && _householdId != null) {
       List<ShoppingListItemModel> generatedSuggestions = await _shoppingListService.generateHassleFreeSuggestions(_householdId!);
       setState(() {
         _suggestions = generatedSuggestions.map((item) => _Suggestion(
           name: item.name,
           brand: item.brand,
           sizeText: item.netWeight,
-          note: 'Suggested', // You might want to refine this note based on the actual reason for suggestion (e.g., 'Low Stock', 'Out of Stock')
+          note: 'Suggested',
           category: item.category ?? 'Other',
         )).toList();
       });
+    } else {
+      setState(() {
+        _suggestions = [];
+      });
+    }
+  }
+
+  Future<void> _fetchHouseholdAndListsAndSuggestions() async {
+    await _fetchShoppingData();
+    if (!widget.isGuest) {
+      await _fetchSuggestions();
     }
   }
 
@@ -404,50 +440,87 @@ class _ShoppinglistState extends State<Shoppinglist> {
 
   // ---------- Add Item Dialog ----------
   Future<void> _showAddItemDialog() async {
-    if (_householdId == null) {
-      _showTopSnack("Household not found. Please log in again.");
-      return;
-    }
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
 
-    // If no active list, try to find or create a default "My Shopping List"
-    if (_activeList == null) {
-      // Check for an existing manual list
-      var existingManualListSnapshot = await FirebaseFirestore.instance
-          .collection('shoppingLists')
-          .where('householdId', isEqualTo: _householdId)
-          .where('type', isEqualTo: 'Manual')
-          .limit(1)
-          .get();
-
-      if (existingManualListSnapshot.docs.isNotEmpty) {
-        // Use the existing manual list
-        setState(() {
-          _activeList = ShoppingListModel.fromFirestore(existingManualListSnapshot.docs.first);
-          _currentTitle = _activeList!.name;
-          items = _activeList!.items;
-          _reorderByBookmark();
-        });
-        _showTopSnack("Using existing manual list: ${_activeList!.name}");
-      } else {
-        // Create a new default manual list
-        final newDefaultList = ShoppingListModel(
-          householdId: _householdId!,
-          name: 'My Shopping List',
+    if (widget.isGuest) {
+      // For guest users, ensure an active list exists in local storage
+      List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+      if (guestLists.isEmpty) {
+        // Create a default guest shopping list if none exists
+        final newGuestList = ShoppingListModel(
+          id: 'guest_shopping_list', // A fixed ID for the guest list
+          householdId: 'guest_household', // Dummy household ID for guests
+          name: 'My Guest Shopping List',
           createdAt: DateTime.now(),
           items: [],
           type: 'Manual',
-          isActive: false, // Manual lists are not "active" in the generated sense
+          isActive: true,
         );
-        DocumentReference docRef = await FirebaseFirestore.instance.collection('shoppingLists').add(newDefaultList.toFirestore());
-        newDefaultList.id = docRef.id;
-
+        guestLists.add(newGuestList);
+        await firestoreService.saveGuestShoppingLists(guestLists);
         setState(() {
-          _activeList = newDefaultList;
+          _activeList = newGuestList;
           _currentTitle = _activeList!.name;
-          items = _activeList!.items.map((e) => e.copyWith()).toList(); // Deep copy items
+          items = _activeList!.items.map((e) => e.copyWith()).toList();
           _reorderByBookmark();
         });
-        _showTopSnack("Created a new default shopping list.");
+        _showTopSnack("Created a new guest shopping list.");
+      } else {
+        // Use the first existing guest list as the active one
+        setState(() {
+          _activeList = guestLists.first;
+          _currentTitle = _activeList!.name;
+          items = _activeList!.items.map((e) => e.copyWith()).toList();
+          _reorderByBookmark();
+        });
+      }
+    } else {
+      // Registered user logic
+      if (_householdId == null) {
+        _showTopSnack("Household not found. Please log in again.");
+        return;
+      }
+
+      // If no active list, try to find or create a default "My Shopping List"
+      if (_activeList == null) {
+        // Check for an existing manual list
+        var existingManualListSnapshot = await FirebaseFirestore.instance
+            .collection('shoppingLists')
+            .where('householdId', isEqualTo: _householdId)
+            .where('type', isEqualTo: 'Manual')
+            .limit(1)
+            .get();
+
+        if (existingManualListSnapshot.docs.isNotEmpty) {
+          // Use the existing manual list
+          setState(() {
+            _activeList = ShoppingListModel.fromFirestore(existingManualListSnapshot.docs.first);
+            _currentTitle = _activeList!.name;
+            items = _activeList!.items;
+            _reorderByBookmark();
+          });
+          _showTopSnack("Using existing manual list: ${_activeList!.name}");
+        } else {
+          // Create a new default manual list
+          final newDefaultList = ShoppingListModel(
+            householdId: _householdId!,
+            name: 'My Shopping List',
+            createdAt: DateTime.now(),
+            items: [],
+            type: 'Manual',
+            isActive: false, // Manual lists are not "active" in the generated sense
+          );
+          DocumentReference docRef = await FirebaseFirestore.instance.collection('shoppingLists').add(newDefaultList.toFirestore());
+          newDefaultList.id = docRef.id;
+
+          setState(() {
+            _activeList = newDefaultList;
+            _currentTitle = _activeList!.name;
+            items = _activeList!.items.map((e) => e.copyWith()).toList(); // Deep copy items
+            _reorderByBookmark();
+          });
+          _showTopSnack("Created a new default shopping list.");
+        }
       }
     }
 
@@ -457,7 +530,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
       return;
     }
 
-    if (items.length >= maxGuestItems) {
+    if (widget.isGuest && items.length >= _maxGuestItems) {
       _showLimitDialog();
       return;
     }
@@ -695,12 +768,12 @@ class _ShoppinglistState extends State<Shoppinglist> {
                             InkWell(
                               onTap: () async {
                                 if (!formKey.currentState!.validate()) return;
-                                if (items.length >= maxGuestItems) {
-                                  _showLimitDialog();
-                                  return;
-                                }
+                          if (items.length >= _maxGuestItems) {
+                            _showLimitDialog();
+                            return;
+                          }
                                 final newItem = ShoppingListItemModel(
-                                  id: null, // Let the service generate the ID
+                                  id: widget.isGuest ? _uuid.v4() : null, // Generate ID for guest items
                                   name: nameCtrl.text.trim(),
                                   brand: brandCtrl.text.trim().isEmpty ? null : brandCtrl.text.trim(),
                                   netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
@@ -711,12 +784,20 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                 );
 
                                 if (_activeList != null) {
-                                  await _shoppingListService.addShoppingListItem(_activeList!.id!, newItem);
+                                  if (widget.isGuest) {
+                                    List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+                                    int activeListIndex = guestLists.indexWhere((list) => list.id == _activeList!.id);
+                                    if (activeListIndex != -1) {
+                                      guestLists[activeListIndex].items.add(newItem);
+                                      await firestoreService.saveGuestShoppingLists(guestLists);
+                                    }
+                                  } else {
+                                    await _shoppingListService.addShoppingListItem(_activeList!.id!, newItem);
+                                  }
                                   await _fetchHouseholdAndListsAndSuggestions(); // Refresh the list
                                 }
                                 if (!mounted) return;
                                 Navigator.of(ctx).pop();
-                                _showTopSnack('Item added');
                               },
                               borderRadius: BorderRadius.circular(24),
                               child: Container(
@@ -779,6 +860,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
 
   // ---------- Edit Item Dialog ----------
   Future<void> _showEditItemDialog(ShoppingListItemModel item) async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false); // Get instance here
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController(text: item.name);
     final brandCtrl = TextEditingController(text: item.brand ?? '');
@@ -1016,12 +1098,20 @@ class _ShoppinglistState extends State<Shoppinglist> {
 
                                 if (_activeList != null) {
                                   _activeList!.items = items; // Assign the updated local list
-                                  await FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                                  if (widget.isGuest) {
+                                    List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+                                    int activeListIndex = guestLists.indexWhere((list) => list.id == _activeList!.id);
+                                    if (activeListIndex != -1) {
+                                      guestLists[activeListIndex] = _activeList!;
+                                      await firestoreService.saveGuestShoppingLists(guestLists);
+                                    }
+                                  } else {
+                                    await FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                                  }
                                   await _fetchHouseholdAndListsAndSuggestions(); // Refresh the list
                                 }
                                 if (!mounted) return;
                                 Navigator.of(ctx).pop();
-                                _showTopSnack('Item updated');
                               },
                               borderRadius: BorderRadius.circular(24),
                               child: Container(
@@ -1209,7 +1299,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                         sep: sep,
                         headerGreen: headerGreen,
                         onAdd: () async {
-                          if (items.length >= maxGuestItems) {
+                          if (items.length >= _maxGuestItems) {
                             _showLimitDialog();
                             return;
                           }
@@ -1228,7 +1318,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
                             await _shoppingListService.addShoppingListItem(_activeList!.id!, newItem);
                             await _fetchHouseholdAndListsAndSuggestions(); // Refresh the list
                           }
-                          _showTopSnack('Added "${s.name}"');
                         },
                       ),
                     ),
@@ -1256,6 +1345,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                   Divider(height: 1, thickness: 1, color: sep),
               itemBuilder: (context, index) {
                 final item = items[index];
+                final firestoreService = Provider.of<FirestoreService>(context, listen: false); // Get instance here
 
                 return Slidable(
                   key: ValueKey(item.id),
@@ -1278,9 +1368,17 @@ class _ShoppinglistState extends State<Shoppinglist> {
                           setState(() => items.removeWhere((e) => e.id == removed.id)); // Remove by ID
                           if (_activeList != null) {
                             _activeList!.items = items;
-                            await FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                            if (widget.isGuest) {
+                              List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+                              int activeListIndex = guestLists.indexWhere((list) => list.id == _activeList!.id);
+                              if (activeListIndex != -1) {
+                                guestLists[activeListIndex] = _activeList!;
+                                await firestoreService.saveGuestShoppingLists(guestLists);
+                              }
+                            } else {
+                              await FirebaseFirestore.instance.collection('shoppingLists').doc(_activeList!.id).update(_activeList!.toFirestore());
+                            }
                           }
-                          _showTopSnack('Deleted "${removed.name}"');
                         },
                         icon: Icons.delete_outline,
                         label: 'Delete',
@@ -1310,7 +1408,19 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                 if (index != -1) items[index] = updatedItem;
                               });
                               if (_activeList != null) {
-                                await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
+                                if (widget.isGuest) {
+                                  List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+                                  int activeListIndex = guestLists.indexWhere((list) => list.id == _activeList!.id);
+                                  if (activeListIndex != -1) {
+                                    int itemIndex = guestLists[activeListIndex].items.indexWhere((e) => e.id == item.id);
+                                    if (itemIndex != -1) {
+                                      guestLists[activeListIndex].items[itemIndex] = updatedItem;
+                                      await firestoreService.saveGuestShoppingLists(guestLists);
+                                    }
+                                  }
+                                } else {
+                                  await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
+                                }
                               }
                             },
                             onToggleBookmark: () async {
@@ -1321,7 +1431,19 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                 _reorderByBookmark();
                               });
                               if (_activeList != null) {
-                                await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
+                                if (widget.isGuest) {
+                                  List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+                                  int activeListIndex = guestLists.indexWhere((list) => list.id == _activeList!.id);
+                                  if (activeListIndex != -1) {
+                                    int itemIndex = guestLists[activeListIndex].items.indexWhere((e) => e.id == item.id);
+                                    if (itemIndex != -1) {
+                                      guestLists[activeListIndex].items[itemIndex] = updatedItem;
+                                      await firestoreService.saveGuestShoppingLists(guestLists);
+                                    }
+                                  }
+                                } else {
+                                  await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
+                                }
                               }
                             },
                             onDecrement: () async {
@@ -1332,7 +1454,19 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                   if (index != -1) items[index] = updatedItem;
                                 });
                                 if (_activeList != null) {
-                                  await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
+                                  if (widget.isGuest) {
+                                    List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+                                    int activeListIndex = guestLists.indexWhere((list) => list.id == _activeList!.id);
+                                    if (activeListIndex != -1) {
+                                      int itemIndex = guestLists[activeListIndex].items.indexWhere((e) => e.id == item.id);
+                                      if (itemIndex != -1) {
+                                        guestLists[activeListIndex].items[itemIndex] = updatedItem;
+                                        await firestoreService.saveGuestShoppingLists(guestLists);
+                                      }
+                                    }
+                                  } else {
+                                    await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
+                                  }
                                 }
                               }
                             },
@@ -1342,13 +1476,26 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                 final index = items.indexWhere((e) => e.id == item.id);
                                 if (index != -1) items[index] = updatedItem;
                               });
-                              if (_activeList != null) {
-                                await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
-                              }
+                                if (_activeList != null) {
+                                  if (widget.isGuest) {
+                                    List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+                                    int activeListIndex = guestLists.indexWhere((list) => list.id == _activeList!.id);
+                                    if (activeListIndex != -1) {
+                                      int itemIndex = guestLists[activeListIndex].items.indexWhere((e) => e.id == item.id);
+                                      if (itemIndex != -1) {
+                                        guestLists[activeListIndex].items[itemIndex] = updatedItem;
+                                        await firestoreService.saveGuestShoppingLists(guestLists);
+                                      }
+                                    }
+                                  } else {
+                                    await _shoppingListService.updateShoppingListItem(_activeList!.id!, updatedItem);
+                                  }
+                                }
                             },
                             onDelete: () {}, // kept for compatibility
                             onEdit: () {}, // disabled (no tap-to-edit on name)
                             openFoodFactsService: _openFoodFactsService, // Pass the service
+                            firestoreService: firestoreService, // Pass the service
                           ),
                         ),
                         if (item.isPurchased)
@@ -1531,6 +1678,7 @@ class _ShoppingRow extends StatelessWidget {
     required this.onDelete,
     required this.onEdit,
     required this.openFoodFactsService, // Add this parameter
+    required this.firestoreService, // Add this parameter
   });
 
   final ShoppingListItemModel item;
@@ -1542,6 +1690,7 @@ class _ShoppingRow extends StatelessWidget {
   final VoidCallback onDelete; // (unused now; kept for compatibility)
   final VoidCallback onEdit;
   final OpenFoodFactsService openFoodFactsService; // Declare the parameter
+  final FirestoreService firestoreService; // Declare the parameter
 
   @override
   Widget build(BuildContext context) {

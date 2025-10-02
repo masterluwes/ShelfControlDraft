@@ -275,12 +275,6 @@ class _FeedbackPageState extends State<FeedbackPage> {
         ? 'No comments'
         : '“${_comments.text.trim()}”';
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Submitted: $chosenRating • $cat • $msg'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 }
 

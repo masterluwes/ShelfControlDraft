@@ -8,7 +8,8 @@ import 'package:shelf_control/services/firestore_service.dart'; // Import Firest
 import 'package:provider/provider.dart'; // Import provider
 
 class ScanItemScreen extends StatefulWidget {
-  const ScanItemScreen({super.key});
+  final bool isGuest;
+  const ScanItemScreen({super.key, this.isGuest = false});
 
   @override
   State<ScanItemScreen> createState() => _ScanItemScreenState();
@@ -121,13 +122,6 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
 
     if (product != null) {
       if (firestoreService.selectedHouseholdId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No household selected. Please select or create a household.'),
-            behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-          ),
-        );
         setState(() {
           _isLoading = false;
         });
@@ -135,7 +129,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       }
 
       final newItem = PantryItemModel(
-        householdId: firestoreService.selectedHouseholdId!, // Use the provided selected household ID
+        householdId: widget.isGuest ? 'guest_household' : firestoreService.selectedHouseholdId!, // Use a dummy ID for guests
         name: product['product_name'] ?? 'Unknown Product',
         category: _selectedCategory,
         imageUrl: product['image_front_url'],
@@ -174,13 +168,6 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       });
 
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Product not found or error fetching data.'),
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-        ),
-      );
       // If product not found, restart scanner
       _scannerController.start();
       _logger.d('Scanner restarted after product not found.');
@@ -216,28 +203,20 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
 
   Future<void> _saveAllItems(FirestoreService firestoreService) async {
     if (_scannedItems.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No items to save.'),
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-        ),
-      );
       return;
     }
 
-    for (final item in _scannedItems) {
-      await firestoreService.addPantryItem(item);
+    if (widget.isGuest) {
+      List<PantryItemModel> guestPantry = await firestoreService.loadGuestPantryItems();
+      guestPantry.addAll(_scannedItems);
+      await firestoreService.saveGuestPantryItems(guestPantry);
+    } else {
+      for (final item in _scannedItems) {
+        await firestoreService.addPantryItem(item);
+      }
     }
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('\${_scannedItems.length} items saved to pantry!'),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
-        ),
-      );
       Navigator.pop(context); // Pop after saving all items
     }
   }
@@ -326,7 +305,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
             left: 0,
             right: 0,
             child: Text(
-              'Barcodes scanned: \${_scannedItems.length}',
+              'Barcodes scanned: ${_scannedItems.length}',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             ),
@@ -383,7 +362,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                               },
                             ),
                             Text(
-                              _scannedItems.isNotEmpty ? 'Item \${_currentItemIndex + 1} of \${_scannedItems.length}' : 'Scan an item',
+                              _scannedItems.isNotEmpty ? 'Item ${_currentItemIndex + 1} of ${_scannedItems.length}' : 'Scan an item',
                               style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                             ),
                             Row(
@@ -632,7 +611,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                                   child: Text(
                                                     _manufacturedDate == null
                                                         ? 'Select Date'
-                                                        : '\${_manufacturedDate!.toLocal()}'.split(' ')[0],
+                                                        : '${_manufacturedDate!.toLocal()}'.split(' ')[0],
                                                   ),
                                                 ),
                                               ),
@@ -724,7 +703,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                             child: Text(
                                               _expirationDate == null
                                                   ? 'Select Date'
-                                                  : '\${_expirationDate!.toLocal()}'.split(' ')[0],
+                                                  : '${_expirationDate!.toLocal()}'.split(' ')[0],
                                             ),
                                           ),
                                         ),
@@ -761,6 +740,6 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
 
 extension StringExtension on String {
   String capitalize() {
-    return "\${this[0].toUpperCase()}\${substring(1)}";
+    return "${this[0].toUpperCase()}${substring(1)}";
   }
 }

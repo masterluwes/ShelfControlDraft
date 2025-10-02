@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shelf_control/services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
+import 'package:shelf_control/models/shopping_list_model.dart'; // Import ShoppingListModel
 import 'package:shelf_control/screens/privacy_policy_screen.dart';
 import 'package:shelf_control/screens/terms_and_conditions_screen.dart';
 import 'package:shelf_control/screens/login_page.dart';
@@ -87,13 +89,31 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
 
         // Save user details to Firestore and create personal household
         if (userCredential.user != null) {
-          await _firestoreService.createPersonalHousehold(userCredential.user!.uid, userCredential.user!.email!);
+          final String userId = userCredential.user!.uid;
+          final String userEmail = userCredential.user!.email!;
+
+          // Create personal household
+          await _firestoreService.createPersonalHousehold(userId, userEmail);
+
+          // Migrate guest data if any
+          final List<PantryItemModel> guestPantryItems = await _firestoreService.loadGuestPantryItems();
+          for (var item in guestPantryItems) {
+            // Assign the new personal household ID to the item
+            item = item.copyWith(householdId: _firestoreService.selectedHouseholdId);
+            await _firestoreService.addPantryItem(item);
+          }
+
+          final List<ShoppingListModel> guestShoppingLists = await _firestoreService.loadGuestShoppingLists();
+          for (var list in guestShoppingLists) {
+            // Assign the new personal household ID to the list
+            list = list.copyWith(householdId: _firestoreService.selectedHouseholdId);
+            await _firestoreService.addShoppingList(list);
+          }
+
+          // Clear guest data from local storage after migration
+          await _firestoreService.clearGuestData();
         }
 
-        if (!mounted) return; // Check if the widget is still mounted before using context
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account created successfully!')),
-        );
         if (!mounted) return; // Check if the widget is still mounted before using context
         Navigator.pushReplacement(
           context,

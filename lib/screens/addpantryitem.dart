@@ -11,7 +11,8 @@ import 'package:firebase_storage/firebase_storage.dart'; // Import firebase_stor
 import 'package:shelf_control/screens/dashboard_page.dart'; // Import DashboardPage
 
 class AddPantryItem extends StatefulWidget {
-  const AddPantryItem({super.key});
+  final bool isGuest; // New parameter to indicate if it's a guest user
+  const AddPantryItem({super.key, this.isGuest = false});
 
   @override
   State<AddPantryItem> createState() => _AddPantryItemBodyState();
@@ -113,14 +114,6 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
       return;
     }
 
-    if (firestoreService.selectedHouseholdId == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No household selected. Please select or create a household.')),
-      );
-      return;
-    }
-
     String? imageUrl;
     if (_imageFile != null) {
       imageUrl = await _uploadImage();
@@ -129,32 +122,47 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
       }
     }
 
-      final newItem = PantryItemModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        householdId: firestoreService.selectedHouseholdId!, // Use the provided selected household ID
-        name: _nameCtrl.text,
-        category: _selectedCategory!,
-        imageUrl: imageUrl ?? 'https://via.placeholder.com/150', // Use uploaded image or placeholder
-        qty: int.tryParse(_qtyCtrl.text) ?? 1,
-        expiresText: _expCtrl.text,
-        barcode: _barcodeCtrl.text.isEmpty ? null : _barcodeCtrl.text,
-        brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
-        netWeight: _netWeightCtrl.text.isEmpty ? null : _netWeightCtrl.text,
-        expirationDate: _selectedExpDate, // Use the stored DateTime object
-        manufacturedDate: _selectedDopDate, // Use the stored DateTime object
-        status: 'Available', // Set default status to 'Available'
-      );
-      try {
-        await firestoreService.addPantryItem(newItem); // Add item to Firestore
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Item added successfully!')),
-      );
-      // Navigate to the DashboardPage with the Pantry tab selected (index 1)
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)),
-        (Route<dynamic> route) => false, // Remove all routes from the stack
-      );
+    final newItem = PantryItemModel(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      householdId: widget.isGuest ? 'guest_household' : firestoreService.selectedHouseholdId!, // Use a dummy ID for guests
+      name: _nameCtrl.text,
+      category: _selectedCategory!,
+      imageUrl: imageUrl ?? 'https://via.placeholder.com/150',
+      qty: int.tryParse(_qtyCtrl.text) ?? 1,
+      expiresText: _expCtrl.text,
+      barcode: _barcodeCtrl.text.isEmpty ? null : _barcodeCtrl.text,
+      brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
+      netWeight: _netWeightCtrl.text.isEmpty ? null : _netWeightCtrl.text,
+      expirationDate: _selectedExpDate,
+      manufacturedDate: _selectedDopDate,
+      status: 'Available',
+    );
+
+    try {
+      if (widget.isGuest) {
+        List<PantryItemModel> guestPantry = await firestoreService.loadGuestPantryItems();
+        guestPantry.add(newItem);
+        await firestoreService.saveGuestPantryItems(guestPantry);
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1, isGuest: true)),
+          (Route<dynamic> route) => false,
+        );
+      } else {
+        if (firestoreService.selectedHouseholdId == null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No household selected. Please select or create a household.')),
+          );
+          return;
+        }
+        await firestoreService.addPantryItem(newItem);
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)),
+          (Route<dynamic> route) => false,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -263,8 +271,8 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                       icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF2E7D32)),
                       onPressed: () {
                         Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)), // Navigate back to Dashboard with Pantry tab
-                          (Route<dynamic> route) => false, // Remove all routes from the stack
+                          MaterialPageRoute(builder: (context) => DashboardPage(initialIndex: 1, isGuest: widget.isGuest)),
+                          (Route<dynamic> route) => false,
                         );
                       },
                     ),

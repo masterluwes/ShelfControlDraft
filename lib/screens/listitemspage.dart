@@ -406,15 +406,6 @@ class _ListItemsPageState extends State<ListItemsPage> {
 
                                   if (!mounted) return;
                                   Navigator.of(ctx).pop();
-                                  ScaffoldMessenger.of(context)
-                                    ..hideCurrentSnackBar()
-                                    ..showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Item added'),
-                                        behavior: SnackBarBehavior.floating,
-                                        margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-                                      ),
-                                    );
                                 },
                                 borderRadius: BorderRadius.circular(24),
                                 child: Container(
@@ -868,14 +859,6 @@ class _ListItemsPageState extends State<ListItemsPage> {
     MainShoppingListStore.instance.setMainList(
       title: _currentShoppingList.name,
       items: _items.map((e) => e.copyWith()).toList(), // Ensure deep copy when setting to store
-    );
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Now using this as the current shopping list'),
-        behavior: SnackBarBehavior.floating,
-        margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-      ),
     );
   }
 

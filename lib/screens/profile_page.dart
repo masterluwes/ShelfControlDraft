@@ -165,13 +165,6 @@ class _ProfilePageState extends State<ProfilePage> {
       }
 
       if (!mounted) return; // Guard against BuildContext across async gaps
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Profile updated successfully."),
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-        ),
-      );
       _initialProfileImage = _profileImage;
       _hasChanges = false;
       changePasswordController.clear();
@@ -226,13 +219,6 @@ class _ProfilePageState extends State<ProfilePage> {
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    behavior: SnackBarBehavior.floating,
-                    margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-                    content: Text("Account deleted successfully."),
-                  ),
-                );
               },
               child: const Text(
                 "Yes, Delete",

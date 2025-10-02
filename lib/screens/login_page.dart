@@ -59,13 +59,6 @@ class _LoginPageState extends State<LoginPage> {
         }
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Login successful!'),
-            behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-          ),
-        );
         // Navigate to the dashboard screen upon successful login
         if (!mounted) return;
         Navigator.pushReplacementNamed(context, '/dashboard');

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shelf_control/screens/create_account_page.dart';
 import 'package:shelf_control/screens/login_page.dart';
-import 'package:shelf_control/screens/guest_page.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/feature_preview_screen.dart';
 import 'package:shelf_control/screens/dashboard_page.dart';
@@ -38,7 +37,7 @@ class ShelfControlApp extends StatelessWidget {
       routes: {
         '/create-account': (context) => const CreateAccountPage(),
         '/login': (context) => const LoginPage(),
-        '/guest': (context) => const GuestPage(),
+        '/guest': (context) => const DashboardPage(isGuest: true),
         '/feature-preview': (context) => const FeaturePreviewScreen(),
         '/dashboard': (context) => const DashboardPage(),
       },

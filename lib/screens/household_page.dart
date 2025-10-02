@@ -104,13 +104,6 @@ class _HouseholdPageState extends State<HouseholdPage> {
                               if (!mounted) return;
                               Navigator.of(context).pop();
                               if (!mounted) return; 
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Successfully joined household!'),
-                                  behavior: SnackBarBehavior.floating,
-                                  margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-                                ),
-                              );
                               // No need for setState here, Provider will handle rebuilds
                             } catch (e) {
                               dialogSetState(() {
@@ -230,13 +223,6 @@ class _HouseholdPageState extends State<HouseholdPage> {
                               if (!mounted) return;
                               Navigator.of(context).pop();
                               if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Household created successfully!'),
-                                  behavior: SnackBarBehavior.floating,
-                                  margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-                                ),
-                              );
                               // No need for setState here, Provider will handle rebuilds
                             } catch (e) {
                               dialogSetState(() {
@@ -277,7 +263,7 @@ class _HouseholdPageState extends State<HouseholdPage> {
         backgroundColor: const Color(0xFF2E7D32),
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
-          "Household Groups",
+          "Groups", // Changed from "Household Groups" to "Groups"
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         actions: [
@@ -325,9 +311,22 @@ class _HouseholdPageState extends State<HouseholdPage> {
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
-          final households = snapshot.data ?? [];
+          final allHouseholds = snapshot.data ?? [];
+          final personalHousehold = allHouseholds.firstWhere(
+            (h) => h.isPersonal,
+            orElse: () => Household(
+              id: '',
+              name: 'My Pantry', // Changed from 'My Personal Pantry'
+              ownerId: '',
+              members: [],
+              joinCode: '',
+              isPersonal: true,
+              timestamp: DateTime.now(),
+            ),
+          );
+          final sharedHouseholds = allHouseholds.where((h) => !h.isPersonal).toList();
 
-          if (households.isEmpty) {
+          if (allHouseholds.isEmpty) {
             return const Center(
               child: Text(
                 "You are not in any household groups right now.\nCreate or Join now!",
@@ -341,103 +340,159 @@ class _HouseholdPageState extends State<HouseholdPage> {
             );
           }
 
-          // Sort households to put personal household first
-          households.sort((a, b) {
-            if (a.isPersonal) return -1;
-            if (b.isPersonal) return 1;
-            return a.name.compareTo(b.name);
-          });
-
-          return ListView.separated(
-            itemCount: households.length,
-            separatorBuilder: (_, i) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final household = households[index];
-              final isSelected = firestoreService.selectedHouseholdId == household.id;
-
-              return ListTile(
-                leading: Icon(
-                  household.isPersonal ? Icons.person : Icons.group,
-                  size: 40,
-                  color: Colors.black,
-                ),
-                title: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: household.name,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2E7D32),
-                        ),
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Personal Pantry Section
+                if (personalHousehold.id.isNotEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text(
+                      "Personal Pantry", // Changed from "My Personal Pantry" to "Personal Pantry"
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2E7D32),
                       ),
-                      if (household.isPersonal)
-                        const TextSpan(
-                          text: " (Personal)",
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.black54,
-                            fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.person,
+                      size: 40,
+                      color: Colors.black,
+                    ),
+                    title: const Text(
+                      "My Pantry", // Changed from "My Personal Pantry" to "My Pantry"
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+                    subtitle: FutureBuilder<List<UserModel>>(
+                      future: Future.wait(personalHousehold.members.map((uid) => firestoreService.getUser(uid).then((user) => user!))),
+                      builder: (context, userSnapshot) {
+                        if (userSnapshot.connectionState == ConnectionState.waiting) {
+                          return const Text("Loading members...");
+                        }
+                        if (userSnapshot.hasError) {
+                          return Text('Error loading members: ${userSnapshot.error}');
+                        }
+                        final memberUsers = userSnapshot.data ?? [];
+                        final memberNames = memberUsers.map((user) => user.nickname ?? user.email.split('@').first).toList();
+                        return Text(memberNames.join(", "));
+                      },
+                    ),
+                    trailing: firestoreService.selectedHouseholdId == personalHousehold.id
+                        ? const Icon(Icons.check_circle, color: Colors.green)
+                        : IconButton(
+                            icon: const Icon(Icons.radio_button_unchecked, color: Colors.grey),
+                            onPressed: () {
+                              firestoreService.selectedHouseholdId = personalHousehold.id;
+                            },
+                          ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => HouseholdDetailPage(
+                            household: personalHousehold,
+                            onLeaveGroup: () {
+                              setState(() {});
+                            },
+                            onDeleteGroup: () {
+                              setState(() {});
+                            },
                           ),
                         ),
-                    ],
+                      );
+                    },
                   ),
-                ),
-                subtitle: FutureBuilder<List<UserModel>>(
-                  future: Future.wait(household.members.map((uid) => firestoreService.getUser(uid).then((user) => user!))),
-                  builder: (context, userSnapshot) {
-                    if (userSnapshot.connectionState == ConnectionState.waiting) {
-                      return const Text("Loading members...");
-                    }
-                    if (userSnapshot.hasError) {
-                      return Text('Error loading members: ${userSnapshot.error}');
-                    }
-                    final memberUsers = userSnapshot.data ?? [];
-                    final memberNames = memberUsers.map((user) => user.nickname ?? user.email.split('@').first).toList();
-                    return Text(memberNames.join(", "));
-                  },
-                ),
-                trailing: isSelected
-                    ? const Icon(Icons.check_circle, color: Colors.green)
-                    : IconButton(
-                        icon: const Icon(Icons.radio_button_unchecked, color: Colors.grey),
-                        onPressed: () {
-                          firestoreService.selectedHouseholdId = household.id;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                "${household.name} selected as current household",
+                  const Divider(height: 1),
+                ],
+
+                // Household Groups Section
+                if (sharedHouseholds.isNotEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text(
+                      "Household Groups", // Retained "Household Groups" for shared section
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+                  ),
+                  ListView.separated(
+                    shrinkWrap: true, // Important for nested ListViews
+                    physics: const NeverScrollableScrollPhysics(), // Important for nested ListViews
+                    itemCount: sharedHouseholds.length,
+                    separatorBuilder: (_, i) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final household = sharedHouseholds[index];
+                      final isSelected = firestoreService.selectedHouseholdId == household.id;
+
+                      return ListTile(
+                        leading: const Icon(
+                          Icons.group,
+                          size: 40,
+                          color: Colors.black,
+                        ),
+                        title: Text(
+                          household.name,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2E7D32),
+                          ),
+                        ),
+                        subtitle: FutureBuilder<List<UserModel>>(
+                          future: Future.wait(household.members.map((uid) => firestoreService.getUser(uid).then((user) => user!))),
+                          builder: (context, userSnapshot) {
+                            if (userSnapshot.connectionState == ConnectionState.waiting) {
+                              return const Text("Loading members...");
+                            }
+                            if (userSnapshot.hasError) {
+                              return Text('Error loading members: ${userSnapshot.error}');
+                            }
+                            final memberUsers = userSnapshot.data ?? [];
+                            final memberNames = memberUsers.map((user) => user.nickname ?? user.email.split('@').first).toList();
+                            return Text(memberNames.join(", "));
+                          },
+                        ),
+                        trailing: isSelected
+                            ? const Icon(Icons.check_circle, color: Colors.green)
+                            : IconButton(
+                                icon: const Icon(Icons.radio_button_unchecked, color: Colors.grey),
+                                onPressed: () {
+                                  firestoreService.selectedHouseholdId = household.id;
+                                },
                               ),
-                              behavior: SnackBarBehavior.floating,
-                              margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => HouseholdDetailPage(
+                                household: household,
+                                onLeaveGroup: () {
+                                  setState(() {});
+                                },
+                                onDeleteGroup: () {
+                                  setState(() {});
+                                },
+                              ),
                             ),
                           );
                         },
-                      ),
-                onTap: () {
-                  // Navigate to HouseholdDetailPage
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => HouseholdDetailPage(
-                        household: household,
-                        onLeaveGroup: () {
-                          // When a user leaves a group, we need to ensure the HouseholdPage rebuilds
-                          // to reflect the updated list of households.
-                          setState(() {}); // Force a rebuild of HouseholdPage
-                        },
-                        onDeleteGroup: () {
-                          // When a group is deleted, we need to ensure the HouseholdPage rebuilds
-                          // to reflect the updated list of households.
-                          setState(() {}); // Force a rebuild of HouseholdPage
-                        },
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
           );
         },
       ),

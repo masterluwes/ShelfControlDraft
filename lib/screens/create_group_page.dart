@@ -298,11 +298,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                     icon: const Icon(Icons.copy, color: _green),
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: _generatedCode));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Code copied to clipboard"),
-                        ),
-                      );
                     },
                   ),
                   filled: true,

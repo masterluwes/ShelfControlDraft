@@ -113,6 +113,7 @@ class PantryItemModel {
   // Method to create a copy of the current object with updated fields
   PantryItemModel copyWith({
     String? id,
+    String? householdId, // Add householdId to copyWith
     String? status,
     int? qty,
     DateTime? consumedAt,
@@ -122,7 +123,7 @@ class PantryItemModel {
   }) {
     return PantryItemModel(
       id: id ?? this.id, // Use provided id or current id
-      householdId: householdId,
+      householdId: householdId ?? this.householdId, // Use provided householdId or current householdId
       name: name,
       category: category,
       imageUrl: imageUrl,

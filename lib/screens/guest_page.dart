@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shelf_control/screens/create_account_page.dart';
 import 'package:shelf_control/screens/privacy_overview_screen.dart';
+import 'package:shelf_control/screens/dashboard_page.dart';
 
 class GuestPage extends StatelessWidget {
   const GuestPage({super.key});
@@ -48,9 +49,11 @@ class GuestPage extends StatelessWidget {
               Center(
                 child: ElevatedButton(
                   onPressed: () {
+                    // Navigate to a guest-specific dashboard or a modified dashboard
+                    // that uses local storage. For now, let's assume a new GuestDashboardPage.
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (context) => const PrivacyOverviewScreen(fromGuestFlow: true)),
+                      MaterialPageRoute(builder: (context) => const DashboardPage(isGuest: true)),
                     );
                   },
                   style: ElevatedButton.styleFrom(
