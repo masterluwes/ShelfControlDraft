@@ -8,10 +8,16 @@ import 'package:shelf_control/screens/dashboard_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:provider/provider.dart';
+import 'package:shelf_control/services/notification_service.dart'; // Import the new service
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // Initialize NotificationService
+  final NotificationService notificationService = NotificationService();
+  await notificationService.initialize();
+
   runApp(
     ChangeNotifierProvider(
       create: (context) => FirestoreService(),
