@@ -296,54 +296,48 @@ class _TipsPageState extends State<TipsPage> {
 // When you’re ready to go live, replace this with the version that
 // calls WeatherService (I’ll show that below).
   Future<void> _loadWeather() async {
-    try {
-      // 1) Get position (may prompt)
-      final pos = await WeatherService.instance.getPosition();
+  try {
+    final pos = await WeatherService.instance.getPosition(); // may return emulator defaults
 
-      // 2) Resolve a friendly area name
-      final area = await WeatherService.instance.getAreaName(pos);
-
-      // 3) Ask service for the best alert (PAG-ASA stub -> forecast fallback)
-      final alert =
-          await WeatherService.instance.fetchAlert(pos: pos, areaName: area);
-          
+    // 🧭 If GPS is outside PH (e.g., Mountain View), force Metro Manila fallback
+    if (!WeatherService.isInPhilippines(pos.latitude, pos.longitude)) {
+      final alert = await WeatherService.instance.fetchAlertForDefaultPH();
+      if (!mounted) return;
       setState(() {
         _alert = alert;
+        _error = null;
         _loadingWeather = false;
+      });
+      return;
+    }
+
+    // Otherwise, use the precise local coordinates
+    final alert = await WeatherService.instance.fetchAlert(pos: pos, areaName: '');
+    if (!mounted) return;
+    setState(() {
+      _alert = alert;
+      _error = null;
+      _loadingWeather = false;
+    });
+  } catch (e) {
+    // Location denied/off or other failure -> Metro Manila fallback
+    try {
+      final alert = await WeatherService.instance.fetchAlertForDefaultPH();
+      if (!mounted) return;
+      setState(() {
+        _alert = alert;
         _error = null;
       });
-
+    } catch (e2) {
       if (!mounted) return;
       setState(() {
-        _alert = alert; // ✅ dynamic alert from service
-        _error = null; // clear any previous error
-        _loadingWeather = false;
-      });
-    } catch (e) {
-      // If anything fails (permission denied, offline, API error) —
-      // build a sensible GREEN fallback so the UI stays useful.
-      if (!mounted) return;
-      setState(() {
-        _alert = const WeatherAlert(
-          level: WeatherLevel.green,
-          headline: 'Sunny Weather: Your Area',
-          windowText: 'Today • No active advisories',
-          body: 'Fair Weather Advisory in effect: No urgent actions needed.\n\n'
-              'Clear skies with low rain risk. Keep normal pantry routines and watch near-expiry items for meal planning. '
-              'Store heat-sensitive goods away from sunlight and the stove.\n\n'
-              'Quick pantry reminders:\n'
-              '• Reseal opened packs (flour, sugar, snacks) in airtight containers.\n'
-              '• Keep oils, coffee, and spices in a cool, dark cabinet; tighten lids.\n'
-              '• Rotate stock (FIFO) and label open dates.',
-          source: 'PAG-ASA',
-          stockUpList: const [],
-          areaName: 'Your Area',
-        );
-        _error = e.toString(); // keep for debugging (optional UI note below)
-        _loadingWeather = false;
+        _error = 'Unable to load weather: $e2';
       });
     }
+  } finally {
+    if (mounted) _loadingWeather = false;
   }
+}
 
   // UPDATED: Added 'Salmon' and 'Tuna' to the 'Fish' category in the pantry.
   final Map<String, List<String>> pantryItems = {
