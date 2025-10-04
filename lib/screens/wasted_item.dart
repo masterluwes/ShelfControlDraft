@@ -3,12 +3,14 @@ class WastedItem {
   final String status;
   final int quantity;
   final String category;
+  final double price;
 
   WastedItem({
     required this.name,
     required this.status,
     required this.quantity,
     required this.category,
+    required this.price,
   });
 
   factory WastedItem.fromJson(Map<String, dynamic> json) {
@@ -17,6 +19,7 @@ class WastedItem {
       status: json['status'],
       quantity: json['quantity'],
       category: json['category'],
+      price: json['price'],
     );
   }
 
@@ -25,5 +28,8 @@ class WastedItem {
     "status": status,
     "quantity": quantity,
     "category": category,
+    "price": price,
   };
+
+  double get totalCost => price * quantity;
 }

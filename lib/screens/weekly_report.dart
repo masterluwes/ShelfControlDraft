@@ -50,21 +50,28 @@ class WeeklyReport {
       endDate: DateTime.now(),
       wastedItems: [
         WastedItem(
-          name: "Rice",
-          quantity: 2,
+          name: "Sardines",
+          quantity: 3,
           status: "Expired",
-          category: "Grain",
+          category: "Canned Goods",
+          price: 27,
         ),
         WastedItem(
           name: "Tomato",
-          quantity: 3,
+          quantity: 2,
           status: "Spoiled",
           category: "Vegetable",
+          price: 10,
         ),
       ],
       consumedItems: [
-        ConsumedItem(name: "Bread", quantity: 3, category: "Grain"),
-        ConsumedItem(name: "Chicken", quantity: 2, category: "Meat"),
+        ConsumedItem(name: "Bread", quantity: 3, category: "Grain", price: 54),
+        ConsumedItem(
+          name: "Chicken",
+          quantity: 2,
+          category: "Meat",
+          price: 100,
+        ),
       ],
       pantryTotal: 10,
     );
@@ -81,10 +88,11 @@ class WeeklyReport {
           quantity: 1,
           status: "Spoiled",
           category: "Fruit",
+          price: 43,
         ),
       ],
       consumedItems: [
-        ConsumedItem(name: "Milk", quantity: 2, category: "Dairy"),
+        ConsumedItem(name: "Milk", quantity: 2, category: "Dairy", price: 60),
       ],
       pantryTotal: 8,
     );
