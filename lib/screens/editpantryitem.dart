@@ -8,6 +8,7 @@ import 'package:shelf_control/services/firestore_service.dart'; // Import Firest
 import 'package:provider/provider.dart'; // Import provider
 import 'package:image_picker/image_picker.dart'; // Import image_picker
 import 'package:firebase_storage/firebase_storage.dart'; // Import firebase_storage
+import 'package:shelf_control/screens/recipe_suggestions_page.dart'; // Import RecipeSuggestionsPage
 
 class EditPantryItem extends StatefulWidget {
   final PantryItemModel item;
@@ -304,6 +305,29 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
           title: 'Nutrition Information',
           content: 'Get detailed nutritional facts for ${widget.item.name}.',
           icon: Icons.food_bank, // Changed to a valid icon
+        ),
+        const SizedBox(height: 12),
+        ElevatedButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => RecipeSuggestionsPage(itemName: widget.item.name),
+              ),
+            );
+          },
+          icon: const Icon(Icons.restaurant_menu, color: Colors.white),
+          label: const Text(
+            'Find Recipes',
+            style: TextStyle(color: Colors.white),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: headerGreen,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
         ),
         const SizedBox(height: 22),
       ],

@@ -8,6 +8,7 @@ import 'package:shelf_control/models/user_model.dart'; // Import UserModel
 import 'package:shelf_control/models/shopping_list_model.dart'; // Import ShoppingListModel
 import 'package:shelf_control/models/shopping_list_item_model.dart'; // Import ShoppingListItemModel
 import 'package:shelf_control/models/shopping_history_item_model.dart'; // Import ShoppingHistoryItemModel
+import 'package:shelf_control/models/app_notification_model.dart'; // Import AppNotificationModel
 import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 import 'dart:convert'; // For JSON encoding/decoding
@@ -298,6 +299,34 @@ class FirestoreService extends ChangeNotifier {
         });
   }
 
+  // --- Notification Settings Methods ---
+
+  // Save notification settings for a user
+  Future<void> saveNotificationSettings(String userId, Map<String, dynamic> settings) async {
+    await _db.collection('users').doc(userId).update({
+      'notificationSettings': settings,
+    });
+  }
+
+  // Get notification settings for a user
+  Future<Map<String, dynamic>?> getNotificationSettings(String userId) async {
+    final doc = await _db.collection('users').doc(userId).get();
+    if (doc.exists && doc.data() != null && doc.data()!.containsKey('notificationSettings')) {
+      return Map<String, dynamic>.from(doc.data()!['notificationSettings']);
+    }
+    return null; // Or return default settings if preferred
+  }
+
+  // Get a stream of notification settings for a user
+  Stream<Map<String, dynamic>?> getNotificationSettingsStream(String userId) {
+    return _db.collection('users').doc(userId).snapshots().map((userDoc) {
+      if (userDoc.exists && userDoc.data() != null && userDoc.data()!.containsKey('notificationSettings')) {
+        return Map<String, dynamic>.from(userDoc.data()!['notificationSettings']);
+      }
+      return null;
+    });
+  }
+
   // --- Shopping History Methods (new model) ---
 
   // Add an item to shopping history
@@ -567,4 +596,124 @@ class FirestoreService extends ChangeNotifier {
             .map((doc) => Product.fromFirestore(doc))
             .toList());
   }
+
+  // --- Batch Consumption Method ---
+  Future<void> batchConsumePantryItems(String householdId, Map<String, int> itemsToConsume) async {
+    final batch = _db.batch();
+
+    for (final entry in itemsToConsume.entries) {
+      final itemId = entry.key;
+      final consumedQty = entry.value;
+
+      final itemRef = _db.collection('pantryItems').doc(itemId);
+      final itemDoc = await itemRef.get();
+
+      if (itemDoc.exists) {
+        final item = PantryItemModel.fromFirestore(itemDoc);
+        if (item.qty > consumedQty) {
+          batch.update(itemRef, {'qty': item.qty - consumedQty});
+        } else {
+          batch.delete(itemRef);
+        }
+
+        // Determine productId from local_products_ph if barcode is available
+        String? productId;
+        if (item.barcode != null && item.barcode!.isNotEmpty) {
+          final productQuery = await _db.collection('local_products_ph').where('barcode', isEqualTo: item.barcode).limit(1).get();
+          if (productQuery.docs.isNotEmpty) {
+            productId = productQuery.docs.first.id;
+          }
+        }
+
+        // Add a record to the shopping history
+        final historyItem = ShoppingHistoryItemModel(
+          householdId: householdId,
+          productId: productId,
+          productName: item.name,
+          category: item.category,
+          quantity: consumedQty,
+          purchaseDate: DateTime.now(),
+          actionType: 'Consumed',
+        );
+        batch.set(_db.collection('shoppingHistory').doc(), historyItem.toFirestore());
+      }
+    }
+    await batch.commit();
+  }
+
+  // --- App Notification Methods ---
+
+  // Add or update an app notification to prevent duplicates
+  Future<void> addAppNotification(AppNotificationModel notification) async {
+    QuerySnapshot querySnapshot;
+
+    if (notification.type == 'pantry_summary') {
+      // For pantry_summary, ensure only one exists per household
+      querySnapshot = await _db
+          .collection('users')
+          .doc(notification.userId)
+          .collection('notifications')
+          .where('type', isEqualTo: 'pantry_summary')
+          .where('householdId', isEqualTo: notification.householdId) // Use householdId for summary notifications
+          .limit(1)
+          .get();
+    } else {
+      // For other types, use existing de-duplication logic
+      querySnapshot = await _db
+          .collection('users')
+          .doc(notification.userId)
+          .collection('notifications')
+          .where('type', isEqualTo: notification.type)
+          .where('payload', isEqualTo: notification.payload)
+          .limit(1)
+          .get();
+    }
+
+
+    if (querySnapshot.docs.isNotEmpty) {
+      // Update existing notification
+      final existingNotificationDoc = querySnapshot.docs.first;
+      await existingNotificationDoc.reference.update({
+        'createdAt': Timestamp.now(), // Refresh timestamp
+        'isRead': false, // Mark as unread
+        'title': notification.title, // Update title
+        'body': notification.body, // Update body
+      });
+    } else {
+      // Add new notification
+      await _db.collection('users').doc(notification.userId).collection('notifications').add(notification.toFirestore());
+    }
+  }
+
+  // Get a stream of app notifications for a user
+  Stream<List<AppNotificationModel>> getAppNotificationsStream(String userId) {
+    return _db
+        .collection('users')
+        .doc(userId)
+        .collection('notifications')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => AppNotificationModel.fromFirestore(doc))
+            .toList());
+  }
+
+  // Mark a specific notification as read
+  Future<void> markNotificationAsRead(String userId, String notificationId) async {
+    await _db.collection('users').doc(userId).collection('notifications').doc(notificationId).update({
+      'isRead': true,
+    });
+  }
+
+  // Get a stream of the count of unread notifications for a user
+  Stream<int> getUnreadNotificationsCountStream(String userId) {
+    return _db
+        .collection('users')
+        .doc(userId)
+        .collection('notifications')
+        .where('isRead', isEqualTo: false)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.length);
+  }
+
 }

@@ -9,6 +9,7 @@ import 'package:shelf_control/screens/notification_page.dart';
 import 'package:shelf_control/services/auth_service.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/feedback.dart'; // Import FeedbackPage
+import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:shelf_control/screens/pantryinventory.dart'; // Import for Pantryinventory
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import for PantryItemModel
 import 'package:shelf_control/screens/addpantryitem.dart';
@@ -37,10 +38,11 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   int _selectedIndex = 0;
   Widget? _currentBodyWidget;
-  bool _isOnNotificationPage = false;
-  Widget? _lastPageBeforeNotifications;
-  bool _hasUnreadNotifications = false;
+  int _unreadNotificationsCount = 0; // Changed to int
   bool _isSnoozed = false;
+
+  late FirestoreService _firestoreService;
+  late User? _currentUser;
 
   @override
   void initState() {
@@ -48,6 +50,8 @@ class _DashboardPageState extends State<DashboardPage> {
     _selectedIndex = widget.initialIndex;
     _updateBodyWidget(_selectedIndex);
     if (!widget.isGuest) {
+      _firestoreService = Provider.of<FirestoreService>(context, listen: false);
+      _currentUser = FirebaseAuth.instance.currentUser;
       _listenForNotifications();
     }
   }
@@ -68,6 +72,16 @@ class _DashboardPageState extends State<DashboardPage> {
         case 3:
           _currentBodyWidget = const TipsPage();
           break;
+        case 4: // New index for NotificationPage
+          _currentBodyWidget = NotificationPage(
+            onStatusChanged: (unreadCount, isSnoozed) {
+              setState(() {
+                _unreadNotificationsCount = unreadCount;
+                _isSnoozed = isSnoozed;
+              });
+            },
+          );
+          break;
         default:
           _currentBodyWidget = DashboardHome(isGuest: widget.isGuest);
       }
@@ -75,7 +89,14 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _listenForNotifications() {
-    // This is a placeholder for future notification backend integration.
+    if (_currentUser == null) return;
+    _firestoreService.getUnreadNotificationsCountStream(_currentUser!.uid).listen((count) {
+      if (mounted) {
+        setState(() {
+          _unreadNotificationsCount = count;
+        });
+      }
+    });
   }
 
   @override
@@ -112,27 +133,10 @@ class _DashboardPageState extends State<DashboardPage> {
                 IconButton(
                   icon: const Icon(Icons.notifications, color: Colors.white),
                   onPressed: () {
-                    setState(() {
-                      if (_isOnNotificationPage) {
-                        _currentBodyWidget = _lastPageBeforeNotifications;
-                        _isOnNotificationPage = false;
-                      } else {
-                        _lastPageBeforeNotifications = _currentBodyWidget;
-                        _currentBodyWidget = NotificationPage(
-                          onStatusChanged: (hasUnread, isSnoozed) {
-                            setState(() {
-                              _hasUnreadNotifications = hasUnread;
-                              _isSnoozed = isSnoozed;
-                            });
-                          },
-                        );
-                        _isOnNotificationPage = true;
-                        _hasUnreadNotifications = false;
-                      }
-                    });
+                    _updateBodyWidget(4); // Switch to NotificationPage
                   },
                 ),
-                if (_hasUnreadNotifications && !_isSnoozed)
+                if (_unreadNotificationsCount > 0 && !_isSnoozed) // Use count > 0
                   Positioned(
                     right: 10,
                     top: 10,

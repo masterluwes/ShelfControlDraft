@@ -6,6 +6,9 @@ import 'package:shelf_control/services/firestore_service.dart'; // Import Firest
 import 'package:shelf_control/screens/editpantryitem.dart'; // Import EditPantryItem
 import 'package:provider/provider.dart'; // Import provider
 import 'package:shelf_control/widgets/consume_quantity_bottom_sheet.dart'; // Import the new bottom sheet
+import 'package:shelf_control/models/app_notification_model.dart'; // Import AppNotificationModel
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Timestamp
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 
 class Pantryinventory extends StatefulWidget {
   final bool isGuest; // New parameter to indicate guest mode
@@ -49,14 +52,31 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
   List<PantryItemModel> _items = [];
   final Set<String> _selectedItemIds = {}; // To store IDs of selected items
+  bool _inMultiSelectMode = false; // New state variable for multi-select mode
+  Map<String, dynamic>? _notificationSettings; // To store user's notification settings
+  static const String _lastNotificationCheckKey = 'lastNotificationCheck';
+  static const Duration _notificationCheckInterval = Duration(hours: 24); // Check once every 24 hours
 
   @override
   void initState() {
     super.initState();
+    if (!widget.isGuest) {
+      _loadNotificationSettings();
+    }
+  }
+
+  Future<void> _loadNotificationSettings() async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final userId = firestoreService.userId;
+    if (userId != null) {
+      _notificationSettings = await firestoreService.getNotificationSettings(userId);
+      setState(() {}); // Update UI if settings affect anything visible
+      _checkAndGenerateNotifications(); // Call after loading settings
+    }
   }
 
   // Determine if selection mode is active
-  bool get _inSelectMode => _selectedItemIds.isNotEmpty;
+  bool get _inSelectMode => _inMultiSelectMode; // Use the new state variable
 
   // Helper to determine item status based on expiration date and stored status
   ItemStatus _getItemStatus(PantryItemModel item) {
@@ -72,15 +92,91 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     final expirationDay = DateTime(item.expirationDate!.year, item.expirationDate!.month, item.expirationDate!.day);
     final difference = expirationDay.difference(today).inDays;
 
+    // Default to 7 days for "at risk" status in the UI, independent of notification settings
+    const int defaultAtRiskDays = 7; 
+
+    ItemStatus status;
     if (difference < 0) {
-      return ItemStatus.expired; // Mark as 'Expired'
-    } else if (difference <= 7) {
-      return ItemStatus.atRisk;
-    } else if (item.status == 'Active') {
-      return ItemStatus.active;
+      status = ItemStatus.expired; // Mark as 'Expired'
+    } else if (difference <= defaultAtRiskDays) { 
+      status = ItemStatus.atRisk;
     } else {
-      return ItemStatus.available;
+      status = ItemStatus.available;
     }
+    return status;
+  }
+
+  Future<void> _checkAndGenerateNotifications() async {
+    if (widget.isGuest) return; // Don't generate notifications for guests
+
+    final prefs = await SharedPreferences.getInstance();
+    final lastCheckString = prefs.getString(_lastNotificationCheckKey);
+    DateTime? lastCheck;
+    if (lastCheckString != null) {
+      lastCheck = DateTime.tryParse(lastCheckString);
+    }
+
+    // Only run the check if it hasn't been run within the interval
+    if (lastCheck != null && DateTime.now().difference(lastCheck) < _notificationCheckInterval) {
+      return;
+    }
+
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final userId = firestoreService.userId;
+    final householdId = firestoreService.selectedHouseholdId;
+
+    if (userId == null || householdId == null) return;
+
+    // Get all pantry items for the current household
+    final pantryItemsSnapshot = await firestoreService.getPantryItemsForHousehold(householdId).first;
+
+    int expiredCount = 0;
+    int atRiskCount = 0;
+    List<String> expiredItemNames = [];
+    List<String> atRiskItemNames = [];
+
+    for (var item in pantryItemsSnapshot) {
+      final status = _getItemStatus(item); // Use the helper to get status without generating notifications
+      if (status == ItemStatus.expired && (_notificationSettings?['expiredItems'] ?? false)) {
+        expiredCount++;
+        expiredItemNames.add(item.name);
+      } else if (status == ItemStatus.atRisk && (_notificationSettings?['atRiskItems'] ?? false)) {
+        atRiskCount++;
+        atRiskItemNames.add(item.name);
+      }
+    }
+
+    // Generate a single summary notification if there are any expired or at-risk items
+    if (expiredCount > 0 || atRiskCount > 0) {
+      String title = 'Pantry Alert!';
+      String body = '';
+      String type = 'pantry_summary';
+      String payload = '{"type": "pantry_summary", "householdId": "$householdId"}';
+
+      if (expiredCount > 0 && atRiskCount > 0) {
+        body = 'You have $expiredCount expired item(s) and $atRiskCount item(s) at risk of expiring soon.';
+      } else if (expiredCount > 0) {
+        body = 'You have $expiredCount expired item(s).';
+      } else if (atRiskCount > 0) {
+        body = 'You have $atRiskCount item(s) at risk of expiring soon.';
+      }
+
+      await firestoreService.addAppNotification(
+        AppNotificationModel(
+          userId: userId,
+          householdId: householdId,
+          title: title,
+          body: body,
+          type: type,
+          createdAt: Timestamp.now(),
+          isRead: false,
+          payload: payload,
+        ),
+      );
+    }
+
+    // Update the last check timestamp
+    await prefs.setString(_lastNotificationCheckKey, DateTime.now().toIso8601String());
   }
 
   // Helper to get the expiration text
@@ -130,6 +226,45 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       if (!mounted) return;
       // No snackbar, just delete and let the stream rebuild the UI
     }
+  }
+
+  // Consume selected items
+  Future<void> _consumeSelectedItems(FirestoreService firestoreService) async {
+    if (_selectedItemIds.isEmpty) return;
+
+    if (widget.isGuest) {
+      List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
+      List<PantryItemModel> updatedGuestPantry = [];
+
+      for (var item in currentGuestPantry) {
+        if (_selectedItemIds.contains(item.id)) {
+          // Mark as consumed and remove if quantity is 0
+          if (item.qty > 0) {
+            // For guest mode, we'll just remove the item for simplicity
+            // A more complex guest implementation would involve a consume quantity dialog
+          }
+        } else {
+          updatedGuestPantry.add(item);
+        }
+      }
+      await firestoreService.saveGuestPantryItems(updatedGuestPantry);
+    } else {
+      // For registered users, use the batch consume method
+      Map<String, int> itemsToConsume = {};
+      for (String itemId in _selectedItemIds) {
+        final item = _items.firstWhere((element) => element.id == itemId);
+        itemsToConsume[itemId] = item.qty; // Consume all quantity for selected items
+      }
+      if (firestoreService.selectedHouseholdId != null) {
+        await firestoreService.batchConsumePantryItems(
+            firestoreService.selectedHouseholdId!, itemsToConsume);
+      }
+    }
+
+    setState(() {
+      _selectedItemIds.clear();
+      _inMultiSelectMode = false;
+    });
   }
 
 
@@ -501,15 +636,16 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.check_box_rounded, color: Colors.white),
+            icon: const Icon(Icons.cancel_rounded, color: Colors.white), // Changed icon to cancel
             onPressed: () {
               setState(() {
                 _selectedItemIds.clear();
+                _inMultiSelectMode = false; // Exit multi-select mode
               });
             },
           ),
           Text(
-            '${_selectedItemIds.length} Items',
+            '${_selectedItemIds.length} Items Selected', // Updated text
             style: const TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -518,25 +654,10 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           ),
           const Spacer(),
           IconButton(
-            tooltip: 'Mark as Consumed',
+            tooltip: 'Consume Selected', // Changed tooltip
             icon: const Icon(Icons.restaurant_menu, color: Colors.white),
             onPressed: () async {
-              List<PantryItemModel> itemsToProcess = _selectedItemIds
-                  .map((id) => _items.firstWhere((element) => element.id == id))
-                  .toList();
-
-              if (itemsToProcess.length == 1) {
-                await _showQuantityPickerDialog(itemsToProcess.first);
-              } else if (itemsToProcess.length > 1) {
-                await showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  builder: (context) => ConsumeQuantityBottomSheet(items: itemsToProcess),
-                );
-              }
-              setState(() {
-                _selectedItemIds.clear();
-              });
+              await _consumeSelectedItems(firestoreService); // Use new consume method
             },
           ),
           IconButton(
@@ -549,6 +670,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               }
               setState(() {
                 _selectedItemIds.clear();
+                _inMultiSelectMode = false; // Exit multi-select mode
               });
             },
           ),
@@ -671,6 +793,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       child: InkWell(
         onLongPress: () {
           setState(() {
+            _inMultiSelectMode = true; // Enter multi-select mode
             if (_selectedItemIds.contains(item.id)) {
               _selectedItemIds.remove(item.id);
             } else {
@@ -679,7 +802,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           });
         },
         onTap: () {
-          if (_inSelectMode) {
+          if (_inMultiSelectMode) { // Check _inMultiSelectMode
             setState(() {
               if (_selectedItemIds.contains(item.id)) {
                 _selectedItemIds.remove(item.id);
@@ -701,19 +824,23 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              // Checkbox for selection mode
-              Checkbox(
-                value: _selectedItemIds.contains(item.id),
-                onChanged: (v) {
-                  setState(() {
-                    if (v == true) {
-                      _selectedItemIds.add(item.id!);
-                    } else {
-                      _selectedItemIds.remove(item.id);
-                    }
-                  });
-                },
-              ),
+              // Checkbox for selection mode (only visible in multi-select mode)
+              if (_inMultiSelectMode) // Conditionally show checkbox
+                Checkbox(
+                  value: _selectedItemIds.contains(item.id),
+                  onChanged: (v) {
+                    setState(() {
+                      if (v == true) {
+                        _selectedItemIds.add(item.id!);
+                      } else {
+                        _selectedItemIds.remove(item.id);
+                        if (_selectedItemIds.isEmpty) {
+                          _inMultiSelectMode = false; // Exit if no items selected
+                        }
+                      }
+                    });
+                  },
+                ),
               // Item image
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
@@ -871,12 +998,12 @@ Text(
     return Scaffold(
       backgroundColor: softCream,
       body: SafeArea(
-        child: FutureBuilder<List<PantryItemModel>>(
-          future: widget.isGuest
-              ? firestoreService.loadGuestPantryItems()
+        child: StreamBuilder<List<PantryItemModel>>(
+          stream: widget.isGuest
+              ? Stream.fromFuture(firestoreService.loadGuestPantryItems())
               : (firestoreService.selectedHouseholdId == null
-                  ? Future.value([])
-                  : firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!).first),
+                  ? Stream.value([])
+                  : firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!)),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -895,7 +1022,7 @@ Text(
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_inSelectMode)
+                if (_inMultiSelectMode) // Use _inMultiSelectMode here
                   _selectionModeTopBar(firestoreService)
                 else ...[
                   _bigTitle(),

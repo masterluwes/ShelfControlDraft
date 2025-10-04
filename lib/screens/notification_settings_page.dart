@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:numberpicker/numberpicker.dart';
+import 'package:provider/provider.dart'; // Import Provider
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 
 class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
@@ -19,9 +22,48 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
   int daysForAtRisk = 0;
   TimeOfDay expiryAndRiskNotificationTime = const TimeOfDay(hour: 7, minute: 0);
 
-  // backend
+  late FirestoreService _firestoreService;
+  late User? _currentUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    _currentUser = FirebaseAuth.instance.currentUser;
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    if (_currentUser == null) return;
+
+    final settings = await _firestoreService.getNotificationSettings(_currentUser!.uid);
+    if (settings != null) {
+      setState(() {
+        expiredItems = settings['expiredItems'] ?? true;
+        atRiskItems = settings['atRiskItems'] ?? true;
+        appUpdates = settings['appUpdates'] ?? true;
+        itemRecommendations = settings['itemRecommendations'] ?? true;
+        tipsSuggestions = settings['tipsSuggestions'] ?? true;
+        daysForAtRisk = settings['daysForAtRisk'] ?? 0;
+
+        final timeString = settings['expiryAndRiskNotificationTime'];
+        if (timeString != null) {
+          final parts = timeString.split(':');
+          expiryAndRiskNotificationTime = TimeOfDay(
+            hour: int.parse(parts[0]),
+            minute: int.parse(parts[1]),
+          );
+        }
+      });
+    }
+  }
+
   Future<void> _updateSetting(String key, dynamic value) async {
-    // TODO:backend
+    if (_currentUser == null) return;
+
+    final currentSettings = await _firestoreService.getNotificationSettings(_currentUser!.uid) ?? {};
+    currentSettings[key] = value;
+    await _firestoreService.saveNotificationSettings(_currentUser!.uid, currentSettings);
     debugPrint("Saving setting: $key -> $value");
   }
 
