@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shelf_control/screens/dietary_preference_page.dart';
 import 'package:shelf_control/screens/privacy_policy_screen.dart';
 import 'package:shelf_control/screens/terms_and_conditions_screen.dart';
 import 'package:shelf_control/screens/notification_settings_page.dart';
@@ -18,6 +19,7 @@ import 'package:shelf_control/screens/household_state.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:shelf_control/screens/scan_item_screen.dart'; // Import for ScanItemScreen
 import 'package:shelf_control/screens/waste_tracker_page.dart';
+import 'history_screen.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -386,6 +388,20 @@ class _DashboardPageState extends State<DashboardPage> {
                 MaterialPageRoute(
                   builder: (context) => const NotificationSettingsPage(),
                 ),
+              );
+            }),
+            _drawerItem(Icons.settings, "Dietary Preferences", () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const DietaryPreferencesPage(),
+                ),
+              );
+            }),
+            _drawerItem(Icons.history, "History", () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HistoryScreen()),
               );
             }),
             _drawerItem(Icons.delete, "Waste Tracker", () {
