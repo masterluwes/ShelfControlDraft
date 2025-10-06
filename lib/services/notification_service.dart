@@ -8,6 +8,8 @@ import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:firebase_core/firebase_core.dart'; // Import FirebaseCore for background handler
 import 'package:intl/intl.dart'; // Import DateFormat
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Timestamp
+import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
+import 'dart:convert'; // Import for jsonDecode
 
 class NotificationService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
@@ -57,12 +59,26 @@ class NotificationService {
       onDidReceiveNotificationResponse: (NotificationResponse response) async {
         // Handle notification tap
         print('Notification tapped: ${response.payload}');
+        if (response.payload != null) {
+          final Map<String, dynamic> payload = jsonDecode(response.payload!);
+          if (payload['action'] == 'consume_prompt' && payload['itemId'] != null) {
+            await _handleConsumeAction(payload['itemId']);
+          }
+        }
       },
     );
 
-    // Get the device token
+    // Get the device token and save it to Firestore
     String? token = await _firebaseMessaging.getToken();
-    print('FCM Token: $token');
+    if (token != null) {
+      print('FCM Token: $token');
+      await _saveTokenToFirestore(token);
+    }
+
+    // Listen for token refreshes
+    _firebaseMessaging.onTokenRefresh.listen(_saveTokenToFirestore).onError((err) {
+      print('Error refreshing FCM token: $err');
+    });
 
     // Handle foreground messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -166,6 +182,53 @@ class NotificationService {
 
     print('Weekly pantry review scheduled for: $scheduledDate');
   }
+
+  Future<void> _saveTokenToFirestore(String token) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId != null) {
+      await _firestoreService.updateUserFCMToken(userId, token);
+      print('FCM token saved/updated for user $userId');
+    } else {
+      print('No user logged in to save FCM token.');
+    }
+  }
+
+  // New method to handle consumption action from notification
+  Future<void> _handleConsumeAction(String itemId) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) {
+      print('User not logged in, cannot handle consume action.');
+      return;
+    }
+
+    // Fetch the pantry item to get its details
+    final itemDoc = await _firestoreService.db.collection('pantryItems').doc(itemId).get();
+    if (!itemDoc.exists) {
+      print('Pantry item $itemId not found for consumption.');
+      return;
+    }
+
+    final item = PantryItemModel.fromFirestore(itemDoc);
+
+    // For simplicity, assume consuming 1 unit for now.
+    // You might want to extend this with more complex logic or a default quantity.
+    await _firestoreService.recordConsumedItem(item, 1);
+    print('Consumed 1 unit of ${item.name} from notification.');
+
+    // Optionally, add an in-app notification for confirmation
+    await _firestoreService.addAppNotification(
+      AppNotificationModel(
+        userId: userId,
+        householdId: item.householdId, // Assuming item has householdId
+        title: 'Item Consumed',
+        body: 'You consumed 1 unit of ${item.name} via notification.',
+        type: 'item_consumed',
+        createdAt: Timestamp.now(),
+        isRead: false,
+        payload: '{"type": "item_consumed", "itemId": "$itemId"}',
+      ),
+    );
+  }
 }
 
 @pragma('vm:entry-point')
@@ -175,26 +238,64 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(); // Initialize Firebase for background processing
 
   print("Handling a background message: ${message.messageId}");
-  // You can also show a local notification from here if needed
-  // For example, if a background message is received, you could show it
-  FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
-  const AndroidNotificationDetails androidPlatformChannelSpecifics =
-      AndroidNotificationDetails(
-    'high_importance_channel', // id
-    'High Importance Notifications', // title
-    channelDescription: 'This channel is used for important notifications.', // description
-    importance: Importance.max,
-    priority: Priority.high,
-    showWhen: false,
-  );
-  const NotificationDetails platformChannelSpecifics =
-      NotificationDetails(android: androidPlatformChannelSpecifics);
-  await flutterLocalNotificationsPlugin.show(
-    0,
-    message.notification?.title,
-    message.notification?.body,
-    platformChannelSpecifics,
-    payload: message.data['payload'],
-  );
+
+  // Initialize FirestoreService and FirebaseAuth for background processing
+  final FirestoreService firestoreService = FirestoreService();
+  final FirebaseAuth auth = FirebaseAuth.instance;
+
+  // Handle interactive actions from background messages
+  if (message.data['action'] == 'consume_prompt' && message.data['itemId'] != null) {
+    final userId = auth.currentUser?.uid;
+    if (userId != null) {
+      // Fetch the pantry item to get its details
+      final itemDoc = await firestoreService.db.collection('pantryItems').doc(message.data['itemId']).get();
+      if (itemDoc.exists) {
+        final item = PantryItemModel.fromFirestore(itemDoc);
+        await firestoreService.recordConsumedItem(item, 1);
+        print('Consumed 1 unit of ${item.name} from background notification.');
+
+        // Optionally, add an in-app notification for confirmation
+        await firestoreService.addAppNotification(
+          AppNotificationModel(
+            userId: userId,
+            householdId: item.householdId,
+            title: 'Item Consumed',
+            body: 'You consumed 1 unit of ${item.name} via background notification.',
+            type: 'item_consumed',
+            createdAt: Timestamp.now(),
+            isRead: false,
+            payload: '{"type": "item_consumed", "itemId": "${message.data['itemId']}"}',
+          ),
+        );
+      } else {
+        print('Pantry item ${message.data['itemId']} not found for background consumption.');
+      }
+    } else {
+      print('No user logged in for background consume action.');
+    }
+  }
+
+  // Show a local notification for the received message (if it has a notification payload)
+  if (message.notification != null) {
+    FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+        FlutterLocalNotificationsPlugin();
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
+      'high_importance_channel', // id
+      'High Importance Notifications', // title
+      channelDescription: 'This channel is used for important notifications.', // description
+      importance: Importance.max,
+      priority: Priority.high,
+      showWhen: false,
+    );
+    const NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      message.notification?.title,
+      message.notification?.body,
+      platformChannelSpecifics,
+      payload: jsonEncode(message.data), // Use the full data payload for interactive handling
+    );
+  }
 }

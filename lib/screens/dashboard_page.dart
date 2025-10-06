@@ -568,6 +568,9 @@ class _DashboardHomeState extends State<DashboardHome> {
                   ],
                 ),
                 const SizedBox(height: 16),
+                if (!widget.isGuest && firestoreService.selectedHouseholdId != null)
+                  _buildQuickConsumeWidget(firestoreService),
+                const SizedBox(height: 16),
                 FutureBuilder<List<PantryItemModel>>(
                   future: widget.isGuest
                       ? firestoreService.loadGuestPantryItems()
@@ -591,6 +594,91 @@ class _DashboardHomeState extends State<DashboardHome> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildQuickConsumeWidget(FirestoreService firestoreService) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: firestoreService.getFrequentlyConsumedItems(firestoreService.selectedHouseholdId!),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const CircularProgressIndicator();
+        }
+        if (snapshot.hasError) {
+          return Text('Error loading quick consume items: ${snapshot.error}');
+        }
+        final items = snapshot.data ?? [];
+
+        if (items.isEmpty) {
+          return Container(); // Don't show if no frequently consumed items
+        }
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Quick Consume",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              ...items.map((itemData) {
+                final productName = itemData['productName'] as String;
+                final pantryItemMap = itemData['pantryItem'] as Map<String, dynamic>?;
+                PantryItemModel? pantryItem;
+                if (pantryItemMap != null) {
+                  pantryItem = PantryItemModel.fromMap(pantryItemMap);
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          productName,
+                          style: const TextStyle(fontSize: 14),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (pantryItem != null && pantryItem.qty > 0)
+                        ElevatedButton(
+                          onPressed: () async {
+                            // Consume 1 unit of the item
+                            await firestoreService.recordConsumedItem(pantryItem!, 1);
+                            // Refresh the UI
+                            setState(() {});
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2E7D32),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            minimumSize: Size.zero, // Remove default minimum size
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap, // Shrink tap area
+                          ),
+                          child: const Text(
+                            "Consume 1",
+                            style: TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                        )
+                      else
+                        const Text(
+                          "Out of Stock",
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ],
+          ),
+        );
+      },
     );
   }
 

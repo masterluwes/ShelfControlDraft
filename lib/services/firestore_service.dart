@@ -555,6 +555,13 @@ class FirestoreService extends ChangeNotifier {
     });
   }
 
+  // Update a user's FCM token
+  Future<void> updateUserFCMToken(String userId, String token) async {
+    await _db.collection('users').doc(userId).set({
+      'fcmToken': token,
+    }, SetOptions(merge: true)); // Use merge to avoid overwriting other user data
+  }
+
   // Leave a household
   Future<void> leaveHousehold(String householdId, String userId) async {
     // Remove user from the household's members array
@@ -595,6 +602,52 @@ class FirestoreService extends ChangeNotifier {
         .map((snapshot) => snapshot.docs
             .map((doc) => Product.fromFirestore(doc))
             .toList());
+  }
+
+  // Get frequently consumed items for a household
+  Future<List<Map<String, dynamic>>> getFrequentlyConsumedItems(String householdId, {int limit = 5, int days = 30}) async {
+    final thirtyDaysAgo = DateTime.now().subtract(Duration(days: days));
+
+    final querySnapshot = await _db
+        .collection('shoppingHistory')
+        .where('householdId', isEqualTo: householdId)
+        .where('actionType', isEqualTo: 'Consumed')
+        .where('purchaseDate', isGreaterThanOrEqualTo: thirtyDaysAgo)
+        .get();
+
+    final Map<String, int> consumptionCounts = {};
+    final Map<String, PantryItemModel> latestPantryItems = {}; // To get current pantry item details
+
+    for (final doc in querySnapshot.docs) {
+      final historyItem = ShoppingHistoryItemModel.fromFirestore(doc);
+      final productName = historyItem.productName;
+      consumptionCounts[productName] = (consumptionCounts[productName] ?? 0) + historyItem.quantity;
+
+      // Try to get the latest pantry item for this product name
+      // This is a simplified approach; a more robust solution might involve tracking item IDs in history
+      final pantryItemQuery = await _db.collection('pantryItems')
+          .where('householdId', isEqualTo: householdId)
+          .where('name', isEqualTo: productName)
+          .orderBy('timestamp', descending: true) // Assuming 'timestamp' is when it was added/updated
+          .limit(1)
+          .get();
+
+      if (pantryItemQuery.docs.isNotEmpty) {
+        latestPantryItems[productName] = PantryItemModel.fromFirestore(pantryItemQuery.docs.first);
+      }
+    }
+
+    final List<Map<String, dynamic>> sortedItems = consumptionCounts.entries
+        .map((entry) => {
+              'productName': entry.key,
+              'totalConsumed': entry.value,
+              'pantryItem': latestPantryItems[entry.key]?.toFirestore(), // Include pantry item details if found
+            })
+        .toList();
+
+    sortedItems.sort((a, b) => b['totalConsumed'].compareTo(a['totalConsumed']));
+
+    return sortedItems.take(limit).toList();
   }
 
   // --- Batch Consumption Method ---

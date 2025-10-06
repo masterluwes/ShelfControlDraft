@@ -15,6 +15,7 @@ class NotificationSettingsPage extends StatefulWidget {
 class NotificationSettingsPageState extends State<NotificationSettingsPage> {
   bool expiredItems = true;
   bool atRiskItems = true;
+  bool didYouConsumePrompts = true; // New setting for interactive consume prompts
   bool appUpdates = true;
   bool itemRecommendations = true;
   bool tipsSuggestions = true;
@@ -41,6 +42,7 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
       setState(() {
         expiredItems = settings['expiredItems'] ?? true;
         atRiskItems = settings['atRiskItems'] ?? true;
+        didYouConsumePrompts = settings['didYouConsumePrompts'] ?? true; // Load new setting
         appUpdates = settings['appUpdates'] ?? true;
         itemRecommendations = settings['itemRecommendations'] ?? true;
         tipsSuggestions = settings['tipsSuggestions'] ?? true;
@@ -279,6 +281,16 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       onChanged: (val) {
                         setState(() => atRiskItems = val);
                         _updateSetting("atRiskItems", val);
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text('"Did You Consume?" Prompts'), // New toggle
+                      value: didYouConsumePrompts,
+                      activeColor: const Color(0xFF2E7D32),
+                      activeTrackColor: const Color(0xFF81C784),
+                      onChanged: (val) {
+                        setState(() => didYouConsumePrompts = val);
+                        _updateSetting("didYouConsumePrompts", val);
                       },
                     ),
                     SwitchListTile(

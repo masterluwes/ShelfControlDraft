@@ -81,6 +81,35 @@ class PantryItemModel {
     );
   }
 
+  // Factory constructor to create a PantryItemModel from a Map
+  factory PantryItemModel.fromMap(Map<String, dynamic> data) {
+    return PantryItemModel(
+      id: data['id'], // Assuming 'id' is present in the map if it's a full item
+      householdId: data['householdId'] ?? '',
+      name: data['name'] ?? '',
+      category: data['category'] ?? 'Uncategorized',
+      imageUrl: data['imageUrl'],
+      qty: data['qty'] ?? 1,
+      expiresText: data['expiresText'],
+      barcode: data['barcode'],
+      brand: data['brand'],
+      quantityUnit: data['quantityUnit'],
+      nutritionFacts: data['nutritionFacts'] is Map ? Map<String, dynamic>.from(data['nutritionFacts']) : null,
+      shelfLifeDays: data['shelfLifeDays'],
+      shelfLifeWeeks: data['shelfLifeWeeks'],
+      shelfLifeMonths: data['shelfLifeMonths'],
+      manufacturedDate: (data['manufacturedDate'] is Timestamp) ? (data['manufacturedDate'] as Timestamp).toDate() : (data['manufacturedDate'] is String ? DateTime.tryParse(data['manufacturedDate']) : null),
+      expirationDate: (data['expirationDate'] is Timestamp) ? (data['expirationDate'] as Timestamp).toDate() : (data['expirationDate'] is String ? DateTime.tryParse(data['expirationDate']) : null),
+      netWeight: data['netWeight'],
+      selected: data['selected'] ?? false,
+      status: data['status'] ?? 'Available',
+      consumedAt: (data['consumedAt'] is Timestamp) ? (data['consumedAt'] as Timestamp).toDate() : (data['consumedAt'] is String ? DateTime.tryParse(data['consumedAt']) : null),
+      deletedAt: (data['deletedAt'] is Timestamp) ? (data['deletedAt'] as Timestamp).toDate() : (data['deletedAt'] is String ? DateTime.tryParse(data['deletedAt']) : null),
+      notes: data['notes'],
+      storageLocation: data['storageLocation'],
+    );
+  }
+
   // Method to convert a PantryItemModel to a Firestore document
   Map<String, dynamic> toFirestore() {
     return {
