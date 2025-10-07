@@ -8,15 +8,14 @@ import 'package:shelf_control/screens/user_guide_page.dart';
 import 'package:shelf_control/screens/notification_page.dart';
 import 'package:shelf_control/services/auth_service.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
-import 'package:shelf_control/screens/pantryinventory.dart'; // Import for Pantryinventory
-import 'package:shelf_control/models/pantry_item_model.dart'; // Import for PantryItemModel
-import 'package:shelf_control/screens/addpantryitem.dart';
-import 'package:shelf_control/screens/editpantryitem.dart';
+import 'package:shelf_control/screens/pantryinventory.dart';
+import 'package:shelf_control/models/pantry_item_model.dart';
+import 'package:shelf_control/screens/addpantryitem.dart' as add_item;
 import 'package:shelf_control/screens/household_page.dart';
-import 'package:shelf_control/screens/shoppinglist.dart'; // Import for ShoppingListPage
+import 'package:shelf_control/screens/shoppinglist.dart';
 import 'package:shelf_control/screens/household_state.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
-import 'package:shelf_control/screens/scan_item_screen.dart'; // Import for ScanItemScreen
+import 'package:shelf_control/screens/scan_item_screen.dart';
 import 'package:shelf_control/screens/waste_tracker_page.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -136,27 +135,23 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // MODIFIED: This function now navigates to a new page
   void _showAddPantryItem() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => AddPantryItem(
+        builder: (context) => add_item.AddPantryItem(
           onAddItem: (newItem) {
             setState(() {
               _pantryItems.add(newItem);
             });
-            // The onBack function (which pops the navigator) will be called
-            // from within the AddPantryItem screen after this.
-            _showPantryInventory(); // Ensure the pantry list is active.
+            _showPantryInventory(); 
           },
-          onBack: () => Navigator.pop(context),
+          onBack: () => Navigator.pop(context), onSave: (updatedItem) {  },
         ),
       ),
     );
   }
 
-  // MODIFIED: This function also now navigates to a new page
   void _showEditPantryItem(PantryItemModel item) {
     Navigator.push(
       context,
@@ -165,16 +160,15 @@ class _DashboardPageState extends State<DashboardPage> {
           item: item,
           onBack: () => Navigator.pop(context),
           onSave: (updatedItem) {
-            setState(() {
-              final index = _pantryItems.indexWhere(
-                (element) => element.id == updatedItem.id,
-              );
-              if (index != -1) {
+            final index = _pantryItems.indexWhere(
+              (element) => element.id == updatedItem.id,
+            );
+            if (index != -1) {
+              setState(() {
                 _pantryItems[index] = updatedItem;
-              }
-            });
-            _showPantryInventory(); // Show the updated pantry list
-            Navigator.pop(context); // Go back from the edit screen
+              });
+            }
+            _showPantryInventory();
           },
         ),
       ),
@@ -311,7 +305,6 @@ class _DashboardPageState extends State<DashboardPage> {
             label: 'Add by Camera',
             labelStyle: const TextStyle(fontSize: 18.0, color: Colors.black),
             onTap: () async {
-              debugPrint('Add by Camera tapped! Navigating to ScanItemScreen.');
               final List<PantryItemModel>? scannedItems = await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const ScanItemScreen()),
@@ -320,7 +313,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 setState(() {
                   _pantryItems.addAll(scannedItems);
                 });
-                _showPantryInventory(); // Refresh pantry inventory to show new items
+                _showPantryInventory();
               }
             },
           ),
@@ -345,10 +338,9 @@ class _DashboardPageState extends State<DashboardPage> {
   ) {
     final isActive =
         (_currentBodyWidget is DashboardHome && label == "Home") ||
-        (_currentBodyWidget is Pantryinventory && label == "Pantry") ||
-        (_currentBodyWidget is Shoppinglist && label == "Shopping") ||
-        (_currentBodyWidget is TipsPage && label == "Tips");
-    // (_currentBodyWidget is HouseholdPage && label == "Households"); // This line was commented out and caused an error
+            (_currentBodyWidget is Pantryinventory && label == "Pantry") ||
+            (_currentBodyWidget is Shoppinglist && label == "Shopping") ||
+            (_currentBodyWidget is TipsPage && label == "Tips");
     return InkWell(
       onTap: onTap,
       child: Column(
@@ -405,7 +397,6 @@ class _DashboardPageState extends State<DashboardPage> {
                 MaterialPageRoute(builder: (context) => WasteTrackerPage()),
               );
             }),
-
             _drawerItem(Icons.info, "User Guide", () {
               Navigator.push(
                 context,
@@ -415,13 +406,13 @@ class _DashboardPageState extends State<DashboardPage> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ListTile(
-                  leading: const Icon(Icons.feedback, color: Colors.white),
-                  title: const Text(
+                const ListTile(
+                  leading: Icon(Icons.feedback, color: Colors.white),
+                  title: Text(
                     "Feedback",
                     style: TextStyle(color: Colors.white),
                   ),
-                  subtitle: const Text(
+                  subtitle: Text(
                     "We would love to hear from you.",
                     style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
@@ -494,6 +485,9 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 }
 
+EditPantryItem({required PantryItemModel item, required void Function() onBack, required Null Function(dynamic updatedItem) onSave}) {
+}
+
 class DashboardHome extends StatelessWidget {
   final List<PantryItemModel> pantryItems;
   const DashboardHome({super.key, required this.pantryItems});
@@ -527,7 +521,8 @@ class DashboardHome extends StatelessWidget {
                   builder: (context, _) {
                     return DropdownButton<String>(
                       value: HouseholdState().selectedPantry,
-                      items: HouseholdState().allPantries
+                      items: HouseholdState()
+                          .allPantries
                           .map(
                             (e) => DropdownMenuItem(value: e, child: Text(e)),
                           )
