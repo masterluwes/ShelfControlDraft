@@ -207,7 +207,7 @@ class _CookingViewPageState extends State<CookingViewPage>
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      widget.recipe.time,
+                      '${widget.recipe.time} min',
                       style: const TextStyle(color: Colors.white, fontSize: 14),
                     ),
                   ],

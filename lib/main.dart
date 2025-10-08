@@ -8,11 +8,17 @@ import 'package:shelf_control/screens/feature_preview_screen.dart';
 import 'package:shelf_control/screens/dashboard_page.dart'; // Import DashboardPage
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart'; // Import provider
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  
+  if (FirebaseAuth.instance.currentUser == null) {
+    await FirebaseAuth.instance.signInAnonymously();
+  }
+
   runApp(
     ChangeNotifierProvider(
       create: (context) => FirestoreService(),
@@ -46,11 +52,13 @@ class _ShelfControlAppState extends State<ShelfControlApp> {
           }
           if (snapshot.hasData) {
             // User is logged in, set the selected household
-            final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+            final firestoreService =
+                Provider.of<FirestoreService>(context, listen: false);
             return FutureBuilder<void>(
               future: firestoreService.setInitialHousehold(snapshot.data!.uid),
               builder: (context, householdSnapshot) {
-                if (householdSnapshot.connectionState == ConnectionState.waiting) {
+                if (householdSnapshot.connectionState ==
+                    ConnectionState.waiting) {
                   return const CircularProgressIndicator();
                 }
                 return const DashboardPage(); // Navigate to DashboardPage

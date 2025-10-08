@@ -177,7 +177,7 @@ class _MealHistoryPageState extends State<MealHistoryPage> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        recipe.time,
+                        '${recipe.time} min',
                         style: const TextStyle(
                           fontFamily: 'Roboto',
                           fontSize: 14,

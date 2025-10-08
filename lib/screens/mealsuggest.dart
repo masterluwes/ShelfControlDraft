@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shelf_control/screens/recipedetails.dart';
 import 'package:shelf_control/screens/mealhistory.dart';
 
-// --- Data Model for a Recipe ---
+// ===== CONFIG =====
+const String kHouseholdId = 'demo-household'; // TODO: replace with your real household/user scope
+const double kMinCoverageToShow = 0.5;        // 50% pantry coverage
+const List<String> kStaples = [
+  'water', 'salt', 'pepper', 'cooking oil', 'oil', 'sugar',
+];
+
+// --- Data Model for a Recipe (kept as your original STRING fields) ---
 class Recipe {
   final String name;
   final String imageUrl;
-  final String servingSize;
-  final String calories;
-  final String time;
+  final String servingSize; 
+  final String calories;    
+  final String time;        
   final String description;
   final List<Map<String, String>> ingredients;
   final List<String> directions;
@@ -23,55 +31,188 @@ class Recipe {
     required this.ingredients,
     required this.directions,
   });
+
+  factory Recipe.fromFirestore(DocumentSnapshot doc) {
+  final data = doc.data() as Map<String, dynamic>? ?? {};
+
+  // — helpers —
+  String _asString(dynamic v) => v == null ? '' : v.toString();
+
+  List<Map<String, String>> _parseIngredients(dynamic raw) {
+    final out = <Map<String, String>>[];
+
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is Map) {
+          final m = item.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
+          out.add({
+            'name': (m['name'] ?? '').toString(),
+            'amount': (m['amount'] ?? '').toString(),
+          });
+        } else if (item is String) {
+          // Allow list of plain strings
+          out.add({'name': item, 'amount': ''});
+        } else {
+          // Unknown entry type -> skip
+        }
+      }
+    } else if (raw is Map) {
+      // Some folks store ingredients as a map of name -> amount
+      raw.forEach((k, v) {
+        out.add({'name': k.toString(), 'amount': (v ?? '').toString()});
+      });
+    } else if (raw is String) {
+      // Split by newlines or commas
+      final parts = raw.split(RegExp(r'[\r\n,]+')).map((s) => s.trim()).where((s) => s.isNotEmpty);
+      for (final p in parts) {
+        out.add({'name': p, 'amount': ''});
+      }
+    }
+    return out;
+  }
+
+  List<String> _parseDirections(dynamic raw) {
+    if (raw is List) {
+      return raw.map((e) => e.toString()).toList();
+    } else if (raw is String) {
+      // Split multiline into steps
+      return raw
+          .split(RegExp(r'[\r\n]+'))
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
+    return const [];
+  }
+
+  final ingredients = _parseIngredients(data['ingredients']);
+  final directions  = _parseDirections(data['directions']);
+
+  return Recipe(
+    name: _asString(data['name']),
+    imageUrl: _asString(data['imageUrl']),
+    servingSize: _asString(data['servingSize']),
+    calories: _asString(data['calories']),
+    time: _asString(data['time']),
+    description: _asString(data['description']),
+    ingredients: ingredients,
+    directions: directions,
+  );
 }
 
-// --- Main Widget ---
-class MealSuggest extends StatelessWidget {
+}
+
+// --- Pantry (only name + qty needed for matching) ---
+class PantryItem {
+  final String name;
+  final num quantity;
+  PantryItem({required this.name, required this.quantity});
+
+  factory PantryItem.fromFirestore(DocumentSnapshot doc) {
+  final data = doc.data() as Map<String, dynamic>? ?? {};
+  num _numify(dynamic v) {
+    if (v is num) return v;
+    if (v is String) {
+      final parsed = num.tryParse(v);
+      if (parsed != null) return parsed;
+    }
+    return 0;
+  }
+
+  return PantryItem(
+    name: (data['name'] ?? '').toString(),
+    quantity: _numify(data['quantity']),
+  );
+}
+}
+
+// --- Main Widget (same UI as yours, but dynamic) ---
+class MealSuggest extends StatefulWidget {
   const MealSuggest({super.key});
 
-  // Centralized list of recipes
-  final List<Recipe> suggestedRecipes = const [
-    Recipe(
-      name: 'Pork Steak',
-      imageUrl:
-          'https://imagesvc.meredithcorp.io/v3/mm/image?url=https%3A%2F%2Fstatic.onecms.io%2Fwp-content%2Fuploads%2Fsites%2F43%2F2023%2F01%2F31%2F212911-filipino-beef-steak-ddmfs-3X4-0284.jpg&q=60&c=sc&poi=auto&orient=true&h=512',
-      servingSize: '2-3',
-      calories: '450 Cal',
-      time: '45 minutes',
-      description:
-          'Pork Steak is a beloved Filipino dish made with tender pork chops marinated in a savory blend of soy sauce and calamansi juice. Simmered until juicy and flavorful, then topped with sautéed onions for a sweet aromatic finish.',
-      ingredients: [
-        {'name': 'Pork chops', 'amount': '4pcs'},
-        {'name': 'Soy Sauce', 'amount': '75 ml or 5 tablespoons'},
-        {'name': 'Calamansi juice or Lemon juice', 'amount': '30-50 ml'},
-        {'name': 'Water', 'amount': '250-375 ml'},
-        {'name': 'Cooking oil', 'amount': '120 ml'},
-        {'name': 'Sugar', 'amount': '15 ml'},
-        {'name': 'Salt and Pepper', 'amount': ''},
-        {'name': 'Onions', 'amount': '1 to 2 medium, sliced into rings'},
-        {'name': 'Garlic (Optional)', 'amount': '4 to 6 cloves, minced'},
-      ],
-      directions: [
-        'Marinate pork chops in soy sauce, calamansi juice, and garlic for at least 1 hour.',
-        'Heat cooking oil in a pan over medium heat. Pan-fry the marinated pork chops until browned.',
-        'Pour in the remaining marinade and water. Bring to a boil and simmer until the pork is tender.',
-        'Season with sugar, salt, and pepper to taste.',
-        'In a separate pan, sauté the onion rings until tender. Top the pork steak with sautéed onions before serving.',
-      ],
-    ),
-    // Add other recipes here...
-  ];
+  @override
+  State<MealSuggest> createState() => _MealSuggestState();
+}
+
+class _MealSuggestState extends State<MealSuggest> {
+  bool _refreshing = false;
+
+  // Normalization helpers
+  String _norm(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9 ]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  bool _isOptionalLine(String ingredientName) {
+    final n = _norm(ingredientName);
+    if (n.contains('optional')) return true;
+    return kStaples.contains(n);
+  }
+
+  // Returns (coverage: 0..1, missingNames)
+  (double, List<String>) _coverage(Recipe r, Map<String, num> pantryCounts) {
+    final ingr = r.ingredients;
+    if (ingr.isEmpty) return (0, const []);
+
+    int requiredCount = 0;
+    int haveCount = 0;
+    final missing = <String>[];
+
+    for (final line in ingr) {
+      final rawName = (line['name'] ?? '').toString();
+      final name = _norm(rawName);
+      if (name.isEmpty) continue;
+
+      final isOptional = _isOptionalLine(name);
+      if (!isOptional) requiredCount++;
+
+      final hasIt = pantryCounts.entries.any((e) {
+        final pn = _norm(e.key);
+        final qty = e.value;
+        return qty > 0 && (pn == name || pn.contains(name) || name.contains(pn));
+      });
+
+      if (hasIt) {
+        haveCount++;
+      } else if (!isOptional) {
+        missing.add(rawName);
+      }
+    }
+
+    final denom = requiredCount == 0 ? ingr.length : requiredCount;
+    final coverage = denom == 0 ? 1.0 : (haveCount / denom).clamp(0, 1).toDouble();
+
+    return (coverage, missing);
+  }
+
+  Future<void> _manualRefresh() async {
+    setState(() => _refreshing = true);
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (mounted) setState(() => _refreshing = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     const Color pageBg = Color(0xFFFFFBE6);
     const Color greenAccent = Color(0xFF2E7D32);
 
+    // Streams
+    final pantryStream = FirebaseFirestore.instance
+        .collection('households')
+        .doc(kHouseholdId)
+        .collection('pantry')
+        .snapshots();
+
+    final recipesStream =
+        FirebaseFirestore.instance.collection('recipes').snapshots();
+
     return Scaffold(
       backgroundColor: pageBg,
       appBar: AppBar(
         backgroundColor: pageBg,
         elevation: 1,
+        shadowColor: Colors.grey.shade300,
         centerTitle: false,
         titleSpacing: 0.0,
         iconTheme: const IconThemeData(color: greenAccent),
@@ -89,35 +230,83 @@ class MealSuggest extends StatelessWidget {
           ),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: () {}),
+          IconButton(
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 20, height: 20, child: CircularProgressIndicator())
+                : const Icon(Icons.refresh),
+            onPressed: _manualRefresh,
+          ),
           IconButton(
             icon: const Icon(Icons.history),
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const MealHistoryPage(),
-                ),
+                MaterialPageRoute(builder: (context) => const MealHistoryPage()),
               );
             },
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              _buildNoteBanner(),
-              const SizedBox(height: 20),
-              ...suggestedRecipes
-                  .map(
-                    (recipe) =>
-                        _buildMealCard(context: context, recipe: recipe),
-                  )
-                  .toList(),
-            ],
-          ),
-        ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: pantryStream,
+        builder: (context, pantrySnap) {
+          if (pantrySnap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (pantrySnap.hasError) {
+            return Center(child: Text('Error loading pantry: ${pantrySnap.error}'));
+          }
+          final pantryDocs = pantrySnap.data?.docs ?? [];
+          final pantry = pantryDocs.map((d) => PantryItem.fromFirestore(d)).toList();
+          final pantryMap = {for (final p in pantry) p.name: p.quantity};
+
+          return StreamBuilder<QuerySnapshot>(
+            stream: recipesStream,
+            builder: (context, recipeSnap) {
+              if (recipeSnap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (recipeSnap.hasError) {
+                return Center(child: Text('Error loading recipes: ${recipeSnap.error}'));
+              }
+              final docs = recipeSnap.data?.docs ?? [];
+              final all = docs.map((d) => Recipe.fromFirestore(d)).toList();
+
+              // Score & filter
+              final scored = <({Recipe r, double coverage, List<String> missing})>[];
+              for (final r in all) {
+                final (cov, missing) = _coverage(r, pantryMap);
+                if (cov >= kMinCoverageToShow) {
+                  scored.add((r: r, coverage: cov, missing: missing));
+                }
+              }
+              scored.sort((a, b) => b.coverage.compareTo(a.coverage));
+
+              // === SAME UI AS BEFORE ===
+              return SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      _buildNoteBanner(),
+                      const SizedBox(height: 20),
+                      if (scored.isEmpty)
+                        const Text(
+                          'No good matches yet. Add more pantry items!',
+                          style: TextStyle(fontFamily: 'Inter', fontSize: 15),
+                        )
+                      else
+                        ...scored.map((s) => _buildMealCard(
+                              context: context,
+                              recipe: s.r,
+                            )),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -130,16 +319,16 @@ class MealSuggest extends StatelessWidget {
         borderRadius: BorderRadius.circular(12.0),
         border: Border.all(color: const Color(0xFF2E7D32)),
       ),
-      child: Row(
+      child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.lightbulb_outline, color: Color(0xFF2E7D32)),
-          const SizedBox(width: 12),
+          Icon(Icons.lightbulb_outline, color: Color(0xFF2E7D32)),
+          SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Discover delicious recipes using the ingredients you already have at your pantry inventory!',
                   style: TextStyle(
                     fontFamily: 'Inter',
@@ -147,15 +336,15 @@ class MealSuggest extends StatelessWidget {
                     color: Colors.black,
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 Text.rich(
                   TextSpan(
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Roboto',
                       fontSize: 14,
                       color: Color(0xFF595959),
                     ),
-                    children: const [
+                    children: [
                       TextSpan(
                         text: 'Note: ',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -201,7 +390,6 @@ class MealSuggest extends StatelessWidget {
             padding: const EdgeInsets.all(12.0),
             child: Row(
               children: [
-                // <-- MODIFIED: Replaced placeholder with the actual recipe image
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8.0),
                   child: Image.network(
