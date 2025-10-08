@@ -22,10 +22,12 @@ import 'package:shelf_control/models/household_model.dart'; // Import Household 
 import 'package:collection/collection.dart'; // Import for firstWhereOrNull
 import 'package:provider/provider.dart'; // Import provider
 import 'package:shelf_control/screens/waste_tracker_page.dart';
+import 'package:shelf_control/screens/mealsuggest.dart';
 
 class DashboardPage extends StatefulWidget {
   final int initialIndex; // Add initialIndex parameter
-  const DashboardPage({super.key, this.initialIndex = 0}); // Default to Home (index 0)
+  const DashboardPage(
+      {super.key, this.initialIndex = 0}); // Default to Home (index 0)
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -38,11 +40,13 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget? _lastPageBeforeNotifications;
   bool _hasUnreadNotifications = false;
   bool _isSnoozed = false;
+  bool _isMealSuggestActive = false;
 
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.initialIndex; // Set initial index from widget parameter
+    _selectedIndex =
+        widget.initialIndex; // Set initial index from widget parameter
     _updateBodyWidget(_selectedIndex); // Set initial body widget
     _listenForNotifications();
   }
@@ -75,7 +79,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       backgroundColor: const Color(0xFFFFFBE6),
       appBar: AppBar(
@@ -87,7 +90,34 @@ class _DashboardPageState extends State<DashboardPage> {
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
+        
         actions: [
+          IconButton(
+            splashRadius: 22,
+            tooltip: 'Suggest a Meal',
+            onPressed: () async {
+              setState(() => _isMealSuggestActive = true);
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const MealSuggest()),
+              );
+              if (!mounted) return;
+              setState(() => _isMealSuggestActive = false);
+            },
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 150),
+              transitionBuilder: (child, anim) =>
+                  ScaleTransition(scale: anim, child: child),
+              child: Icon(
+                _isMealSuggestActive
+                    ? Icons.local_dining
+                    : Icons.local_dining_outlined,
+                key: ValueKey<bool>(_isMealSuggestActive),
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
           Stack(
             children: [
               IconButton(
@@ -128,6 +158,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
             ],
           ),
+          
           IconButton(
             icon: const Icon(Icons.group, color: Colors.white),
             onPressed: () {
@@ -214,7 +245,9 @@ class _DashboardPageState extends State<DashboardPage> {
                 if (!mounted) return;
                 // Navigate to DashboardPage with Pantry tab selected
                 Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)), // 1 for Pantry
+                  MaterialPageRoute(
+                      builder: (context) =>
+                          const DashboardPage(initialIndex: 1)), // 1 for Pantry
                   (Route<dynamic> route) => false,
                 );
               }
@@ -382,7 +415,8 @@ class DashboardHome extends StatefulWidget {
 class _DashboardHomeState extends State<DashboardHome> {
   @override
   Widget build(BuildContext context) {
-    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+    final firestoreService = Provider.of<FirestoreService>(
+        context); // Get the FirestoreService instance
 
     return Column(
       children: [
@@ -402,7 +436,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                   overflow: TextOverflow.ellipsis, // Add ellipsis for long text
                 ),
               ),
-              const SizedBox(width: 10), // Add some spacing between the text and dropdown
+              const SizedBox(
+                  width: 10), // Add some spacing between the text and dropdown
               Flexible(
                 fit: FlexFit.tight,
                 child: StreamBuilder<List<Household>>(
@@ -437,7 +472,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                       selectedHousehold = households.firstWhere(
                           (h) => h.isPersonal,
                           orElse: () => households.first);
-                      firestoreService.selectedHouseholdId = selectedHousehold.id;
+                      firestoreService.selectedHouseholdId =
+                          selectedHousehold.id;
                     }
 
                     return Container(
@@ -454,8 +490,11 @@ class _DashboardHomeState extends State<DashboardHome> {
                               (h) => DropdownMenuItem(
                                 value: h.id,
                                 child: Text(
-                                  h.isPersonal ? "${h.name} (Personal)" : h.name,
-                                  overflow: TextOverflow.ellipsis, // Add ellipsis for long names
+                                  h.isPersonal
+                                      ? "${h.name} (Personal)"
+                                      : h.name,
+                                  overflow: TextOverflow
+                                      .ellipsis, // Add ellipsis for long names
                                 ),
                               ),
                             )
@@ -467,7 +506,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                         },
                         dropdownColor: const Color(0xFF2E7D32),
                         underline: Container(),
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 14),
                         iconEnabledColor: Colors.white,
                       ),
                     );
@@ -505,7 +545,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                 StreamBuilder<List<PantryItemModel>>(
                   stream: firestoreService.selectedHouseholdId == null
                       ? Stream.value([])
-                      : firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
+                      : firestoreService.getPantryItemsForHousehold(
+                          firestoreService.selectedHouseholdId!),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const CircularProgressIndicator();
