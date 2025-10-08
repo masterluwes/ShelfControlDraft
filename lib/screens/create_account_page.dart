@@ -48,8 +48,16 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
 
       if (_passwordController.text.isEmpty) {
         _passwordError = "Password is required";
-      } else if (_passwordController.text.length < 8) {
-        _passwordError = "Password must be at least 8 characters";
+      } else if (_passwordController.text.length < 10) {
+        _passwordError = "Password must be at least 10 characters";
+      } else if (!RegExp(r'^(?=.*?[A-Z])').hasMatch(_passwordController.text)) {
+        _passwordError = "Password must have at least one uppercase letter";
+      } else if (!RegExp(r'^(?=.*?[a-z])').hasMatch(_passwordController.text)) {
+        _passwordError = "Password must have at least one lowercase letter";
+      } else if (!RegExp(r'^(?=.*?[0-9])').hasMatch(_passwordController.text)) {
+        _passwordError = "Password must have at least one number";
+      } else if (!RegExp(r'^(?=.*?[!@#\$&*~])').hasMatch(_passwordController.text)) {
+        _passwordError = "Password must have at least one special character";
       } else {
         _passwordError = null;
       }
@@ -115,9 +123,26 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
         }
 
         if (!mounted) return; // Check if the widget is still mounted before using context
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginPage()),
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text("Verification Email Sent"),
+              content: const Text("A verification link has been sent to your email address. Please verify your email to log in."),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LoginPage()),
+                    );
+                  },
+                  child: const Text("OK"),
+                ),
+              ],
+            );
+          },
         );
       } on FirebaseAuthException catch (e) {
         String errorMessage;

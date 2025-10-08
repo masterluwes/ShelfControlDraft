@@ -12,7 +12,19 @@ class AuthService {
   }
 
   Future<UserCredential> createUserWithEmailAndPassword(String email, String password) async {
-    return await _auth.createUserWithEmailAndPassword(email: email, password: password);
+    UserCredential userCredential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
+    // Send email verification
+    if (userCredential.user != null && !userCredential.user!.emailVerified) {
+      await userCredential.user!.sendEmailVerification();
+    }
+    return userCredential;
+  }
+
+  Future<void> sendVerificationEmail() async {
+    User? user = _auth.currentUser;
+    if (user != null && !user.emailVerified) {
+      await user.sendEmailVerification();
+    }
   }
 
   // Method to check if the current user is a guest

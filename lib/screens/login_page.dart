@@ -63,17 +63,47 @@ class _LoginPageState extends State<LoginPage> {
         if (!mounted) return;
         Navigator.pushReplacementNamed(context, '/dashboard');
       } on FirebaseAuthException catch (e) {
-        String errorMessage = e.message ?? 'Invalid email or password.';
-        // For debugging, you might log the specific error:
-        // print('Firebase Auth Error: ${e.code} - ${e.message}');
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
-          ),
-        );
+        String errorMessage;
+        if (e.code == 'user-not-found' || e.code == 'wrong-password') {
+          errorMessage = 'Invalid email or password.';
+        } else if (e.code == 'invalid-email') {
+          errorMessage = 'The email address is not valid.';
+        } else if (e.code == 'user-disabled') {
+          errorMessage = 'This user has been disabled.';
+        } else if (e.code == 'too-many-requests') {
+          errorMessage = 'Too many requests. Try again later.';
+        } else if (e.code == 'network-request-failed') {
+          errorMessage = 'Network error. Please check your connection.';
+        } else {
+          errorMessage = e.message ?? 'An unexpected error occurred.';
+        }
+
+        if (e.code == 'user-not-found' && FirebaseAuth.instance.currentUser != null && !FirebaseAuth.instance.currentUser!.emailVerified) {
+          // This case is unlikely to be hit with standard Firebase logic, but as a fallback
+          errorMessage = 'Please verify your email before logging in.';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              action: SnackBarAction(
+                label: 'Resend',
+                onPressed: () async {
+                  await _authService.sendVerificationEmail();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Verification email sent!')),
+                  );
+                },
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
+            ),
+          );
+        }
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
