@@ -145,7 +145,26 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
     );
     await firestoreService.updatePantryItem(updatedItem);
     if (!mounted) return;
-    Navigator.of(context).pop();
+
+    // Determine the status of the item to pass back to the pantry screen
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final expirationDay = updatedItem.expirationDate != null ? DateTime(updatedItem.expirationDate!.year, updatedItem.expirationDate!.month, updatedItem.expirationDate!.day) : null;
+    final difference = expirationDay?.difference(today).inDays;
+
+    String status = 'none';
+    if (difference != null) {
+      if (difference < 0) {
+        status = 'expired';
+      } else if (difference <= 7) { // Using a default of 7 days for UI feedback
+        status = 'atRisk';
+      }
+    }
+
+    Navigator.of(context).pop({
+      'status': status,
+      'itemName': updatedItem.name,
+    });
   }
 
   // Small label

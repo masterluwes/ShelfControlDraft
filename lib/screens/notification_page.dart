@@ -5,6 +5,7 @@ import 'package:provider/provider.dart'; // Import Provider
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:shelf_control/models/app_notification_model.dart'; // Import AppNotificationModel
+import 'package:dropdown_button2/dropdown_button2.dart'; // Import for custom dropdown
 
 class NotificationPage extends StatefulWidget {
   final Function(int unreadCount, bool isSnoozed)? onStatusChanged; // Changed to int unreadCount
@@ -22,6 +23,13 @@ class _NotificationPageState extends State<NotificationPage> {
 
   DateTime? snoozeUntil;
   bool snoozeIndefinite = false;
+
+  // Filter and Sort state
+  String _selectedFilter = 'All';
+  String _selectedSort = 'Newest';
+
+  final List<String> _filterOptions = ['All', 'Unread', 'Expired', 'At Risk', 'Recommendations', 'Tips'];
+  final List<String> _sortOptions = ['Newest', 'Oldest', 'Type'];
 
   bool get isSnoozed {
     if (snoozeIndefinite) return true;
@@ -273,6 +281,66 @@ class _NotificationPageState extends State<NotificationPage> {
     );
   }
 
+  // Helper for building dropdowns
+  Widget _buildDropdown({
+    required String value,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+    required String tooltip,
+  }) {
+    return DropdownButtonHideUnderline(
+      child: DropdownButton2<String>(
+        value: value,
+        customButton: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE9E1C7),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Color(0xFF20451F),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              const Icon(
+                Icons.arrow_drop_down,
+                color: Color(0xFF20451F),
+              ),
+            ],
+          ),
+        ),
+        items: items
+            .map((item) => DropdownMenuItem<String>(
+                  value: item,
+                  child: Text(
+                    item,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ))
+            .toList(),
+        onChanged: onChanged,
+        dropdownStyleData: DropdownStyleData(
+          width: 160,
+          padding: EdgeInsets.zero,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(15),
+            color: Colors.white,
+          ),
+          offset: const Offset(0, 0),
+        ),
+        menuItemStyleData: const MenuItemStyleData(
+          height: 40,
+          padding: EdgeInsets.only(left: 14, right: 14),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     String? snoozeText;
@@ -294,15 +362,39 @@ class _NotificationPageState extends State<NotificationPage> {
         if (snapshot.hasError) {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
-        final notifications = snapshot.data ?? [];
+        List<AppNotificationModel> notifications = snapshot.data ?? [];
 
-        String? snoozeText;
-        if (snoozeIndefinite) {
-          snoozeText = "Snoozed until turned back on";
-        } else if (isSnoozed && snoozeUntil != null) {
-          snoozeText =
-              "Snoozed until ${DateFormat.yMMMd().add_jm().format(snoozeUntil!)}";
-        }
+        // Apply filtering
+        notifications = notifications.where((notif) {
+          switch (_selectedFilter) {
+            case 'Unread':
+              return !notif.isRead;
+            case 'Expired':
+              return notif.type == 'expired';
+            case 'At Risk':
+              return notif.type == 'at_risk';
+            case 'Recommendations':
+              return notif.type == 'recommendation';
+            case 'Tips':
+              return notif.type == 'tip';
+            case 'All':
+            default:
+              return true;
+          }
+        }).toList();
+
+        // Apply sorting
+        notifications.sort((a, b) {
+          switch (_selectedSort) {
+            case 'Oldest':
+              return a.createdAt.compareTo(b.createdAt);
+            case 'Type':
+              return a.type.compareTo(b.type);
+            case 'Newest':
+            default:
+              return b.createdAt.compareTo(a.createdAt);
+          }
+        });
 
         return Column(
           children: [
@@ -321,36 +413,34 @@ class _NotificationPageState extends State<NotificationPage> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  if (notifications.isNotEmpty)
-                    Expanded( // Use Expanded to prevent overflow
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end, // Align buttons to the end
-                        children: [
-                          IconButton(
-                            icon: const Icon(
-                              Icons.done_all,
-                              color: Color(0xFF2E7D32),
-                            ),
-                            onPressed: () => _markAllAsRead(notifications),
-                            tooltip: "Mark all as read",
+                  Expanded( // Use Expanded to prevent overflow
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end, // Align buttons to the end
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.filter_list, // Filter/Sort icon
+                            color: Color(0xFF2E7D32),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.snooze, color: Color(0xFF2E7D32)),
-                            onPressed: _showSnoozeDialog,
+                          onPressed: _showFilterSortBottomSheet,
+                          tooltip: "Filter and Sort",
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.done_all,
+                            color: Color(0xFF2E7D32),
                           ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.clear_all,
-                              color: Color(0xFF2E7D32),
-                            ),
-                            onPressed: () {
-                              // For Spark plan, we mark all as read instead of clearing
-                              _markAllAsRead(notifications);
-                            },
-                          ),
-                        ],
-                      ),
+                          onPressed: notifications.isNotEmpty ? () => _markAllAsRead(notifications) : null,
+                          tooltip: "Mark all as read",
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.snooze, color: Color(0xFF2E7D32)),
+                          onPressed: _showSnoozeDialog,
+                          tooltip: "Snooze notifications",
+                        ),
+                      ],
                     ),
+                  ),
                 ],
               ),
             ),
@@ -457,8 +547,79 @@ class _NotificationPageState extends State<NotificationPage> {
         return Icons.lightbulb_outline;
       case 'tip':
         return Icons.info_outline;
+      case 'pantry_summary': // Added for pantry_summary type
+        return Icons.fastfood; // Or another appropriate icon
       default:
         return Icons.notifications;
     }
+  }
+
+  void _showFilterSortBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Container(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Filter Notifications',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  Wrap(
+                    spacing: 8.0,
+                    children: _filterOptions.map((filter) {
+                      return ChoiceChip(
+                        label: Text(filter),
+                        selected: _selectedFilter == filter,
+                        onSelected: (selected) {
+                          if (selected) {
+                            setModalState(() {
+                              _selectedFilter = filter;
+                            });
+                            setState(() {
+                              _selectedFilter = filter;
+                            });
+                          }
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Sort By',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  Wrap(
+                    spacing: 8.0,
+                    children: _sortOptions.map((sort) {
+                      return ChoiceChip(
+                        label: Text(sort),
+                        selected: _selectedSort == sort,
+                        onSelected: (selected) {
+                          if (selected) {
+                            setModalState(() {
+                              _selectedSort = sort;
+                            });
+                            setState(() {
+                              _selectedSort = sort;
+                            });
+                          }
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 10), // Reduced spacing
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 }

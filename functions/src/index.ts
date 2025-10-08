@@ -33,7 +33,7 @@ interface Household {
     name: string;
 }
 
-// Helper function to add a notification to the in-app history
+// Helper function to add or update an in-app notification
 async function addAppNotificationToFirestore(
     userId: string,
     householdId: string,
@@ -43,6 +43,31 @@ async function addAppNotificationToFirestore(
     payload: { [key: string]: any } = {},
 ) {
     try {
+        // For pantry_summary, we want to find and update the existing one to avoid duplicates.
+        if (type === "pantry_summary") {
+            const querySnapshot = await db.collection("appNotifications")
+                .where("userId", "==", userId)
+                .where("householdId", "==", householdId)
+                .where("type", "==", "pantry_summary")
+                .limit(1)
+                .get();
+
+            if (!querySnapshot.empty) {
+                // If an existing summary notification is found, update it.
+                const docId = querySnapshot.docs[0].id;
+                await db.collection("appNotifications").doc(docId).update({
+                    title: title,
+                    body: body,
+                    payload: JSON.stringify(payload),
+                    createdAt: admin.firestore.Timestamp.now(), // Update timestamp to show it's recent
+                    isRead: false, // Mark as unread so the user sees the update
+                });
+                console.log(`Updated pantry_summary notification for user ${userId} in household ${householdId}`);
+                return; // Exit after updating
+            }
+        }
+
+        // If it's not a pantry_summary or no existing one was found, create a new notification.
         await db.collection("appNotifications").add({
             userId: userId,
             householdId: householdId,
@@ -55,7 +80,7 @@ async function addAppNotificationToFirestore(
         });
         console.log(`Added in-app notification for user ${userId} in household ${householdId}`);
     } catch (error) {
-        console.error(`Failed to add in-app notification for user ${userId}:`, error);
+        console.error(`Failed to add/update in-app notification for user ${userId}:`, error);
     }
 }
 
@@ -232,9 +257,9 @@ async function processAndSendNotifications() {
                 await addAppNotificationToFirestore(
                     userId,
                     householdId,
-                    message.notification?.title || `[${householdName}] Pantry Alert!`,
-                    message.notification?.body || notificationBody,
-                    "summary_alert", // Type for summary notifications
+                    `[${householdName}] Pantry Alert!`, // Use a concise, consistent title
+                    notificationBody.trim(), // The body contains the full details
+                    "pantry_summary",
                     message.data,
                 );
 
@@ -322,39 +347,15 @@ export const onPantryItemCreate = onDocumentCreated("pantryItems/{itemId}", asyn
                 createdAt: now,
             });
 
-            // Send the immediate notification
-            const message: admin.messaging.Message = {
-                token: userProfile.fcmToken,
-                notification: {
-                    title: `[${householdName}] Pantry Alert!`,
-                    body: notificationBody,
-                },
-                data: {
-                    householdId: item.householdId,
-                    action: "view_pantry_alerts",
-                },
-                android: {
-                    notification: {
-                        clickAction: "FLUTTER_NOTIFICATION_CLICK",
-                    },
-                },
-            };
-
-            try {
-                await messaging.send(message);
-                console.log(`Sent immediate notification to user ${userId} for item ${item.name}`);
-                // Add to in-app notification history
-                await addAppNotificationToFirestore(
-                    userId,
-                    item.householdId,
-                    message.notification?.title || `[${householdName}] Pantry Alert!`,
-                    message.notification?.body || notificationBody,
-                    promptType,
-                    message.data,
-                );
-            } catch (error) {
-                console.error(`Failed to send immediate notification to user ${userId}:`, error);
-            }
+            console.log(`Immediate notification for user ${userId} for item ${item.name} would have been sent.`);
+            await addAppNotificationToFirestore(
+                userId,
+                item.householdId,
+                `[${householdName}] Pantry Alert!`,
+                notificationBody,
+                promptType,
+                { householdId: item.householdId, action: "view_pantry_alerts" },
+            );
         }
     }
 });
@@ -447,37 +448,15 @@ export const onPantryItemUpdate = onDocumentUpdated("pantryItems/{itemId}", asyn
                 createdAt: now,
             });
 
-            const message: admin.messaging.Message = {
-                token: userProfile.fcmToken,
-                notification: {
-                    title: `[${householdName}] Pantry Alert!`,
-                    body: notificationBody,
-                },
-                data: {
-                    householdId: newItem.householdId,
-                    action: "view_pantry_alerts",
-                },
-                android: {
-                    notification: {
-                        clickAction: "FLUTTER_NOTIFICATION_CLICK",
-                    },
-                },
-            };
-
-            try {
-                await messaging.send(message);
-                console.log(`Sent immediate update notification to user ${userId} for item ${newItem.name}`);
-                await addAppNotificationToFirestore(
-                    userId,
-                    newItem.householdId,
-                    message.notification?.title || `[${householdName}] Pantry Alert!`,
-                    message.notification?.body || notificationBody,
-                    promptType,
-                    message.data,
-                );
-            } catch (error) {
-                console.error(`Failed to send immediate update notification to user ${userId}:`, error);
-            }
+            console.log(`Immediate update notification for user ${userId} for item ${newItem.name} would have been sent.`);
+            await addAppNotificationToFirestore(
+                userId,
+                newItem.householdId,
+                `[${householdName}] Pantry Alert!`,
+                notificationBody,
+                promptType,
+                { householdId: newItem.householdId, action: "view_pantry_alerts" },
+            );
         }
     }
 });

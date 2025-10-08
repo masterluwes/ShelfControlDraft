@@ -144,10 +144,7 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
         guestPantry.add(newItem);
         await firestoreService.saveGuestPantryItems(guestPantry);
         if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1, isGuest: true)),
-          (Route<dynamic> route) => false,
-        );
+        _returnToPantryWithStatus(context, newItem, isGuest: true);
       } else {
         if (firestoreService.selectedHouseholdId == null) {
           if (!mounted) return;
@@ -158,10 +155,7 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
         }
         await firestoreService.addPantryItem(newItem);
         if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)),
-          (Route<dynamic> route) => false,
-        );
+        _returnToPantryWithStatus(context, newItem);
       }
     } catch (e) {
       if (!mounted) return;
@@ -270,10 +264,8 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                     IconButton(
                       icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF2E7D32)),
                       onPressed: () {
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(builder: (context) => DashboardPage(initialIndex: 1, isGuest: widget.isGuest)),
-                          (Route<dynamic> route) => false,
-                        );
+                        // When cancelling, just pop without a result
+                        Navigator.of(context).pop();
                       },
                     ),
                     const Text(
@@ -472,5 +464,27 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
         ),
       ),
     );
+  }
+
+  // Helper to return to pantry with item status for banner
+  void _returnToPantryWithStatus(BuildContext context, PantryItemModel item, {bool isGuest = false}) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final expirationDay = item.expirationDate != null ? DateTime(item.expirationDate!.year, item.expirationDate!.month, item.expirationDate!.day) : null;
+    final difference = expirationDay?.difference(today).inDays;
+
+    String status = 'none';
+    if (difference != null) {
+      if (difference < 0) {
+        status = 'expired';
+      } else if (difference <= 7) { // Using a default of 7 days for UI feedback
+        status = 'atRisk';
+      }
+    }
+
+    Navigator.of(context).pop({
+      'status': status,
+      'itemName': item.name,
+    });
   }
 }

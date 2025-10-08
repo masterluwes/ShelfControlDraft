@@ -703,9 +703,8 @@ class FirestoreService extends ChangeNotifier {
     if (notification.type == 'pantry_summary') {
       // For pantry_summary, ensure only one exists per household
       querySnapshot = await _db
-          .collection('users')
-          .doc(notification.userId)
-          .collection('notifications')
+          .collection('appNotifications')
+          .where('userId', isEqualTo: notification.userId) // Filter by userId
           .where('type', isEqualTo: 'pantry_summary')
           .where('householdId', isEqualTo: notification.householdId) // Use householdId for summary notifications
           .limit(1)
@@ -713,9 +712,8 @@ class FirestoreService extends ChangeNotifier {
     } else {
       // For other types, use existing de-duplication logic
       querySnapshot = await _db
-          .collection('users')
-          .doc(notification.userId)
-          .collection('notifications')
+          .collection('appNotifications')
+          .where('userId', isEqualTo: notification.userId) // Filter by userId
           .where('type', isEqualTo: notification.type)
           .where('payload', isEqualTo: notification.payload)
           .limit(1)
@@ -734,16 +732,15 @@ class FirestoreService extends ChangeNotifier {
       });
     } else {
       // Add new notification
-      await _db.collection('users').doc(notification.userId).collection('notifications').add(notification.toFirestore());
+      await _db.collection('appNotifications').add(notification.toFirestore());
     }
   }
 
   // Get a stream of app notifications for a user
   Stream<List<AppNotificationModel>> getAppNotificationsStream(String userId) {
     return _db
-        .collection('users')
-        .doc(userId)
-        .collection('notifications')
+        .collection('appNotifications')
+        .where('userId', isEqualTo: userId) // Filter by userId
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
@@ -753,7 +750,7 @@ class FirestoreService extends ChangeNotifier {
 
   // Mark a specific notification as read
   Future<void> markNotificationAsRead(String userId, String notificationId) async {
-    await _db.collection('users').doc(userId).collection('notifications').doc(notificationId).update({
+    await _db.collection('appNotifications').doc(notificationId).update({
       'isRead': true,
     });
   }
@@ -761,9 +758,8 @@ class FirestoreService extends ChangeNotifier {
   // Get a stream of the count of unread notifications for a user
   Stream<int> getUnreadNotificationsCountStream(String userId) {
     return _db
-        .collection('users')
-        .doc(userId)
-        .collection('notifications')
+        .collection('appNotifications')
+        .where('userId', isEqualTo: userId) // Filter by userId
         .where('isRead', isEqualTo: false)
         .snapshots()
         .map((snapshot) => snapshot.docs.length);

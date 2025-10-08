@@ -60,23 +60,17 @@ service cloud.firestore {
       allow delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
     }
 
-    // Allow read/write for authenticated users to their own user document
+    // Allow read/write for notification settings field within the user document
     match /users/{userId} {
-      allow read: if request.auth.uid != null; // Allow any authenticated user to read user documents
-      allow update, delete: if request.auth.uid == userId;
-      allow create: if request.auth.uid != null;
-
-      // Allow read/write for notification settings field within the user document
       allow update: if request.auth.uid == userId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notificationSettings']);
       allow read: if request.auth.uid == userId;
+    }
 
-      // Rules for the notifications subcollection
-      match /notifications/{notificationId} {
-        allow read: if request.auth.uid == userId;
-        allow create: if request.auth.uid == userId && request.resource.data.userId == userId;
-        allow update, delete: if request.auth.uid == userId && resource.data.userId == userId;
-      }
+    // Rules for the root-level appNotifications collection
+    match /appNotifications/{notificationId} {
+      allow read: if request.auth.uid != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth.uid != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth.uid != null && resource.data.userId == request.auth.uid;
     }
   }
-}
 }

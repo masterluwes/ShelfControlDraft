@@ -9,6 +9,7 @@ import 'package:shelf_control/widgets/consume_quantity_bottom_sheet.dart'; // Im
 import 'package:shelf_control/models/app_notification_model.dart'; // Import AppNotificationModel
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Timestamp
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
+import 'package:shelf_control/screens/addpantryitem.dart'; // Import AddPantryItem
 
 class Pantryinventory extends StatefulWidget {
   final bool isGuest; // New parameter to indicate guest mode
@@ -56,6 +57,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   Map<String, dynamic>? _notificationSettings; // To store user's notification settings
   static const String _lastNotificationCheckKey = 'lastNotificationCheck';
   static const Duration _notificationCheckInterval = Duration(hours: 24); // Check once every 24 hours
+
 
   @override
   void initState() {
@@ -786,6 +788,80 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
+  // Helper function to navigate to the edit screen and handle the result for the banner
+  Future<void> _navigateToEditItem(PantryItemModel item, {bool isViewing = false}) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditPantryItem(item: item, isViewing: isViewing),
+      ),
+    );
+
+    if (result is Map<String, dynamic>) {
+      final status = result['status'] as String?;
+      final itemName = result['itemName'] as String?;
+
+      print('DEBUG: _navigateToEditItem received status: $status, itemName: $itemName');
+
+      if (itemName != null && status != null && status != 'none') {
+        String message;
+        Color backgroundColor;
+        if (status == 'expired') {
+          message = 'Heads up! The $itemName you updated has already expired.';
+          backgroundColor = Colors.red.shade700;
+        } else { // atRisk
+          message = 'Heads up! The $itemName you updated is at risk of expiring soon.';
+          backgroundColor = Colors.orange.shade700;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: backgroundColor,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  // Helper function to navigate to the add item screen and handle the result for the banner
+  Future<void> _navigateToAddItem() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddPantryItem(isGuest: widget.isGuest),
+      ),
+    );
+
+    if (result is Map<String, dynamic>) {
+      final status = result['status'] as String?;
+      final itemName = result['itemName'] as String?;
+
+      print('DEBUG: _navigateToAddItem received status: $status, itemName: $itemName');
+
+      if (itemName != null && status != null && status != 'none') {
+        String message;
+        Color backgroundColor;
+        if (status == 'expired') {
+          message = 'Heads up! The $itemName you added has already expired.';
+          backgroundColor = Colors.red.shade700;
+        } else { // atRisk
+          message = 'Heads up! The $itemName you added is at risk of expiring soon.';
+          backgroundColor = Colors.orange.shade700;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: backgroundColor,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   // Widget for each row in the inventory list
   Widget _rowTile(PantryItemModel item, int visualIndex) {
     return Material(
@@ -812,12 +888,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             });
           } else {
             // Navigate to item details/edit screen in view mode
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => EditPantryItem(item: item, isViewing: true),
-              ),
-            );
+            _navigateToEditItem(item, isViewing: true);
           }
         },
         child: Padding(
@@ -976,15 +1047,8 @@ Text(
           return true; // Remove item from the visible list
         } else {
           // Swipe left to edit
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => EditPantryItem(item: item)),
-          );
-          // If item was edited, update it in Firestore
-          if (result != null && result is PantryItemModel) {
-            await firestoreService.updatePantryItem(result);
-          }
-          return false; // Do not dismiss the item
+          await _navigateToEditItem(item);
+          return false; // Do not dismiss the item, as the stream will rebuild it
         }
       },
       child: _rowTile(item, idx),
