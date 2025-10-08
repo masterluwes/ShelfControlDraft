@@ -364,42 +364,42 @@ class _TipsPageState extends State<TipsPage> {
   String selectedCategory = 'General';
 
   final Map<String, Map<String, List<Map<String, dynamic>>>> allTips = {
-    'General': {
-      'General': [
-        {
-          'title': 'Know your food labels',
-          'subtitle':
-              'Not sure what "Best Before" really means? Read labels the right way.',
-          'details':
-              'Food labels provide important info like expiry dates, storage instructions, and nutritional values. "Best Before" = quality; "Use By" = safety.',
-          'icon': Icons.label_important_outline,
-        },
-        {
-          'title': 'How to store items properly',
-          'subtitle':
-              'Keep your food fresh for longer! Find out where and how to store each item.',
-          'details':
-              'Proper storage prevents spoilage. Keep potatoes in a cool dark place, bread in a breadbox, leafy greens in the fridge with a damp paper towel.',
-          'icon': Icons.inventory_2_outlined,
-        },
-        {
-          'title': 'Nutrition facts check!',
-          'subtitle':
-              'Want to know what’s in your food? Quickly check the nutrition info.',
-          'details':
-              'Checking nutrition facts helps you make informed choices. Compare sugar, sodium, and fats to choose healthier options.',
-          'icon': Icons.fact_check_outlined,
-        },
-        {
-          'title': 'Reduce food waste',
-          'subtitle':
-              'Small changes make a big difference. Try these simple tips to waste less.',
-          'details':
-              'Plan meals, store food properly, and use leftovers creatively. Donate excess food where possible.',
-          'icon': Icons.recycling_outlined,
-        },
-      ],
-    },
+    // 'General': {
+    //   'General': [
+    //     {
+    //       'title': 'Know your food labels',
+    //       'subtitle':
+    //           'Not sure what "Best Before" really means? Read labels the right way.',
+    //       'details':
+    //           'Food labels provide important info like expiry dates, storage instructions, and nutritional values. "Best Before" = quality; "Use By" = safety.',
+    //       'icon': Icons.label_important_outline,
+    //     },
+    //     {
+    //       'title': 'How to store items properly',
+    //       'subtitle':
+    //           'Keep your food fresh for longer! Find out where and how to store each item.',
+    //       'details':
+    //           'Proper storage prevents spoilage. Keep potatoes in a cool dark place, bread in a breadbox, leafy greens in the fridge with a damp paper towel.',
+    //       'icon': Icons.inventory_2_outlined,
+    //     },
+    //     {
+    //       'title': 'Nutrition facts check!',
+    //       'subtitle':
+    //           'Want to know what’s in your food? Quickly check the nutrition info.',
+    //       'details':
+    //           'Checking nutrition facts helps you make informed choices. Compare sugar, sodium, and fats to choose healthier options.',
+    //       'icon': Icons.fact_check_outlined,
+    //     },
+    //     {
+    //       'title': 'Reduce food waste',
+    //       'subtitle':
+    //           'Small changes make a big difference. Try these simple tips to waste less.',
+    //       'details':
+    //           'Plan meals, store food properly, and use leftovers creatively. Donate excess food where possible.',
+    //       'icon': Icons.recycling_outlined,
+    //     },
+    //   ],
+    // },
     'Meat': {
       'Chicken': [
         {
