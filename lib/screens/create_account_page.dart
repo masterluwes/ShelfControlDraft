@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shelf_control/services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shelf_control/screens/privacy_policy_screen.dart';
 import 'package:shelf_control/screens/terms_and_conditions_screen.dart';
 import 'package:shelf_control/screens/login_page.dart';
@@ -33,6 +33,23 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
   final RegExp _emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
   final AuthService _authService = AuthService();
 
+  // pass validation ui dynamic
+  bool hasUppercase = false;
+  bool hasLowercase = false;
+  bool hasNumber = false;
+  bool hasSpecialChar = false;
+  bool hasMinLength = false;
+
+  void _checkPasswordStrength(String password) {
+    setState(() {
+      hasUppercase = password.contains(RegExp(r'[A-Z]'));
+      hasLowercase = password.contains(RegExp(r'[a-z]'));
+      hasNumber = password.contains(RegExp(r'\d'));
+      hasSpecialChar = password.contains(RegExp(r'[!@#\$%\^&\*]'));
+      hasMinLength = password.length >= 8;
+    });
+  }
+
   void _validateAndSubmit() async {
     setState(() {
       if (_emailController.text.isEmpty) {
@@ -43,10 +60,14 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
         _emailError = null;
       }
 
+      final passwordRegex = RegExp(
+        r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#\$%\^&\*]).{8,}$',
+      );
+
       if (_passwordController.text.isEmpty) {
         _passwordError = "Password is required";
-      } else if (_passwordController.text.length < 8) {
-        _passwordError = "Password must be at least 8 characters";
+      } else if (!passwordRegex.hasMatch(_passwordController.text)) {
+        _passwordError = "Password must meet all requirements listed below.";
       } else {
         _passwordError = null;
       }
@@ -78,23 +99,25 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
         _policyError == null &&
         _termsError == null) {
       try {
-        UserCredential userCredential =
-            await _authService.createUserWithEmailAndPassword(
-          _emailController.text,
-          _passwordController.text,
-        );
+        UserCredential userCredential = await _authService
+            .createUserWithEmailAndPassword(
+              _emailController.text,
+              _passwordController.text,
+            );
 
-        // Save user details to Realtime Database
-        FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
-          'email': userCredential.user!.email,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(userCredential.user!.uid)
+            .set({
+              'email': userCredential.user!.email,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
 
-        if (!mounted) return; // Check if the widget is still mounted before using context
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Account created successfully!')),
         );
-        if (!mounted) return; // Check if the widget is still mounted before using context
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const LoginPage()),
@@ -108,15 +131,35 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
         } else {
           errorMessage = 'An error occurred: ${e.message}';
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMessage)));
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('An unexpected error occurred: $e')),
         );
       }
     }
+  }
+
+  Widget _buildPasswordRequirement(String text, bool conditionMet) {
+    return Row(
+      children: [
+        Icon(
+          conditionMet ? Icons.check_circle : Icons.cancel,
+          size: 16,
+          color: conditionMet ? Colors.green : Colors.grey,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: 12,
+            color: conditionMet ? Colors.green : Colors.grey,
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -136,7 +179,9 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                   } else {
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (context) => const LoginPage()),
+                      MaterialPageRoute(
+                        builder: (context) => const LoginPage(),
+                      ),
                     );
                   }
                 },
@@ -196,6 +241,7 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
               TextField(
                 controller: _passwordController,
                 obscureText: !_isPasswordVisible,
+                onChanged: _checkPasswordStrength,
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: Colors.white,
@@ -215,6 +261,29 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                     },
                   ),
                 ),
+              ),
+              const SizedBox(height: 6),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildPasswordRequirement(
+                    "At least 8 characters",
+                    hasMinLength,
+                  ),
+                  _buildPasswordRequirement(
+                    "One uppercase letter",
+                    hasUppercase,
+                  ),
+                  _buildPasswordRequirement(
+                    "One lowercase letter",
+                    hasLowercase,
+                  ),
+                  _buildPasswordRequirement("One number", hasNumber),
+                  _buildPasswordRequirement(
+                    "One special character (!@#\$%^&*)",
+                    hasSpecialChar,
+                  ),
+                ],
               ),
 
               const SizedBox(height: 16),
@@ -252,7 +321,9 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                     onChanged: (bool? value) async {
                       final result = await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()),
+                        MaterialPageRoute(
+                          builder: (context) => const PrivacyPolicyScreen(),
+                        ),
                       );
                       if (result != null && result is bool) {
                         setState(() {
@@ -265,7 +336,9 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                     onTap: () async {
                       final result = await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()),
+                        MaterialPageRoute(
+                          builder: (context) => const PrivacyPolicyScreen(),
+                        ),
                       );
                       if (result != null && result is bool) {
                         setState(() {
@@ -299,7 +372,10 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                     onChanged: (bool? value) async {
                       final result = await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen()),
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const TermsAndConditionsScreen(),
+                        ),
                       );
                       if (result != null && result is bool) {
                         setState(() {
@@ -312,7 +388,10 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                     onTap: () async {
                       final result = await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen()),
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const TermsAndConditionsScreen(),
+                        ),
                       );
                       if (result != null && result is bool) {
                         setState(() {

@@ -42,26 +42,32 @@ class _LoginPageState extends State<LoginPage> {
 
     if (_emailError == null && _passwordError == null) {
       try {
-        UserCredential userCredential = await _authService.signInWithEmailAndPassword(
-          _emailController.text,
-          _passwordController.text,
-        );
+        UserCredential userCredential = await _authService
+            .signInWithEmailAndPassword(
+              _emailController.text,
+              _passwordController.text,
+            );
 
         // Update user details in Firestore upon successful login
         if (userCredential.user != null) {
-          await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set(
-            {
-              'email': userCredential.user!.email,
-              'lastLoginAt': FieldValue.serverTimestamp(),
-            },
-            SetOptions(merge: true), // Use merge: true to update existing fields without overwriting others
-          );
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userCredential.user!.uid)
+              .set(
+                {
+                  'email': userCredential.user!.email,
+                  'lastLoginAt': FieldValue.serverTimestamp(),
+                },
+                SetOptions(
+                  merge: true,
+                ), // Use merge: true to update existing fields without overwriting others
+              );
         }
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login successful!')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Login successful!')));
         // Navigate to the home screen or feature preview screen upon successful login
         if (!mounted) return;
         Navigator.pushReplacementNamed(context, '/feature-preview');
@@ -70,9 +76,9 @@ class _LoginPageState extends State<LoginPage> {
         // For debugging, you might log the specific error:
         // print('Firebase Auth Error: ${e.code} - ${e.message}');
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMessage)));
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -150,6 +156,7 @@ class _LoginPageState extends State<LoginPage> {
 
                             if (resetEmailError == null) {
                               try {
+                                //TODO: backend integ
                                 await _authService.sendPasswordResetEmail(
                                   resetEmailController.text,
                                 );
@@ -163,7 +170,8 @@ class _LoginPageState extends State<LoginPage> {
                                 });
                               } catch (e) {
                                 setState(() {
-                                  resetEmailError = 'An unexpected error occurred: $e';
+                                  resetEmailError =
+                                      'An unexpected error occurred: $e';
                                   emailSent = false;
                                 });
                               }
@@ -228,7 +236,9 @@ class _LoginPageState extends State<LoginPage> {
                   } else {
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (context) => const WelcomePage()),
+                      MaterialPageRoute(
+                        builder: (context) => const WelcomePage(),
+                      ),
                     );
                   }
                 },

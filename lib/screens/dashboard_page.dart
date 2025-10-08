@@ -20,6 +20,7 @@ import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:shelf_control/screens/scan_item_screen.dart'; // Import for ScanItemScreen
 import 'package:shelf_control/screens/waste_tracker_page.dart';
 import 'history_screen.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -364,127 +365,156 @@ class _DashboardPageState extends State<DashboardPage> {
     return Drawer(
       backgroundColor: const Color(0xFF2E7D32),
       child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-          children: [
-            const Text(
-              "ShelfControl",
-              style: TextStyle(
-                fontSize: 34,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 10),
-            _drawerItem(Icons.person, "Profile", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ProfilePage()),
-              );
-            }),
-            _drawerItem(Icons.notifications, "Notification Settings", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const NotificationSettingsPage(),
-                ),
-              );
-            }),
-            _drawerItem(Icons.settings, "Dietary Preferences", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const DietaryPreferencesPage(),
-                ),
-              );
-            }),
-            _drawerItem(Icons.history, "History", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const HistoryScreen()),
-              );
-            }),
-            _drawerItem(Icons.delete, "Waste Tracker", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => WasteTrackerPage()),
-              );
-            }),
-
-            _drawerItem(Icons.info, "User Guide", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const UserGuidePage()),
-              );
-            }),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        child: FutureBuilder<PackageInfo>(
+          future: PackageInfo.fromPlatform(),
+          builder: (context, snapshot) {
+            String version = '';
+            if (snapshot.hasData) {
+              version = 'Version ${snapshot.data!.version}';
+            }
+            return ListView(
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
               children: [
-                ListTile(
-                  leading: const Icon(Icons.feedback, color: Colors.white),
-                  title: const Text(
-                    "Feedback",
+                const Text(
+                  "ShelfControl",
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _drawerItem(Icons.person, "Profile", () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ProfilePage(),
+                    ),
+                  );
+                }),
+                _drawerItem(Icons.notifications, "Notification Settings", () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const NotificationSettingsPage(),
+                    ),
+                  );
+                }),
+                _drawerItem(Icons.settings, "Dietary Preferences", () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const DietaryPreferencesPage(),
+                    ),
+                  );
+                }),
+                _drawerItem(Icons.history, "History", () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const HistoryScreen(),
+                    ),
+                  );
+                }),
+                _drawerItem(Icons.delete, "Waste Tracker", () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => WasteTrackerPage()),
+                  );
+                }),
+                _drawerItem(Icons.info, "User Guide", () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const UserGuidePage(),
+                    ),
+                  );
+                }),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.feedback, color: Colors.white),
+                      title: const Text(
+                        "Feedback",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      subtitle: const Text(
+                        "We would love to hear from you.",
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: ElevatedButton(
+                        onPressed: () {},
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          shape: const StadiumBorder(),
+                          minimumSize: const Size(double.infinity, 36),
+                        ),
+                        child: const Text(
+                          "Email Us",
+                          style: TextStyle(color: Colors.black),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                _drawerItem(Icons.description, "Terms and Conditions", () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TermsAndConditionsScreen(),
+                    ),
+                  );
+                }),
+                _drawerItem(Icons.privacy_tip, "Privacy Policy", () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PrivacyPolicyScreen(),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 10),
+                ElevatedButton(
+                  onPressed: () async {
+                    final navigator = Navigator.of(context);
+                    await AuthService().signOut();
+                    if (!mounted) return;
+                    navigator.pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (context) => const WelcomePage(),
+                      ),
+                      (Route<dynamic> route) => false,
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    shape: const StadiumBorder(),
+                  ),
+                  child: const Text(
+                    "Log Out",
                     style: TextStyle(color: Colors.white),
                   ),
-                  subtitle: const Text(
-                    "We would love to hear from you.",
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      shape: const StadiumBorder(),
-                      minimumSize: const Size(double.infinity, 36),
-                    ),
-                    child: const Text(
-                      "Email Us",
-                      style: TextStyle(color: Colors.black),
+                if (snapshot.connectionState == ConnectionState.done)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12.0),
+                    child: Center(
+                      child: Text(
+                        version,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
                     ),
                   ),
-                ),
               ],
-            ),
-            _drawerItem(Icons.description, "Terms and Conditions", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const TermsAndConditionsScreen(),
-                ),
-              );
-            }),
-            _drawerItem(Icons.privacy_tip, "Privacy Policy", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const PrivacyPolicyScreen(),
-                ),
-              );
-            }),
-            const SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: () async {
-                final navigator = Navigator.of(context);
-                await AuthService().signOut();
-                if (!mounted) return;
-                navigator.pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const WelcomePage()),
-                  (Route<dynamic> route) => false,
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                shape: const StadiumBorder(),
-              ),
-              child: const Text(
-                "Log Out",
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
