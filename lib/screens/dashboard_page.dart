@@ -34,8 +34,8 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  int _selectedIndex = 0; // Track selected index for bottom navigation
-  Widget? _currentBodyWidget;
+  int _selectedIndex = 0;
+  late final List<Widget> _pages; // <-- ADD
   bool _isOnNotificationPage = false;
   Widget? _lastPageBeforeNotifications;
   bool _hasUnreadNotifications = false;
@@ -45,36 +45,26 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
-    _selectedIndex =
-        widget.initialIndex; // Set initial index from widget parameter
-    _updateBodyWidget(_selectedIndex); // Set initial body widget
-    _listenForNotifications();
-  }
+    _selectedIndex = widget.initialIndex;
 
-  void _updateBodyWidget(int index) {
-    setState(() {
-      _selectedIndex = index;
-      switch (index) {
-        case 0:
-          _currentBodyWidget = const DashboardHome();
-          break;
-        case 1:
-          _currentBodyWidget = const Pantryinventory();
-          break;
-        case 2:
-          _currentBodyWidget = const Shoppinglist();
-          break;
-        case 3:
-          _currentBodyWidget = const TipsPage();
-          break;
-        default:
-          _currentBodyWidget = const DashboardHome();
-      }
-    });
+    // Build each tab page ONCE and keep them alive
+    _pages = const [
+      DashboardHome(),
+      Pantryinventory(),
+      Shoppinglist(),
+      TipsPage(), // <-- your weather tab
+    ];
+
+    _listenForNotifications();
   }
 
   void _listenForNotifications() {
     // This is a placeholder for future notification backend integration.
+  }
+  void _updateBodyWidget(int index) {
+    setState(() {
+      _selectedIndex = index; // only switch the IndexedStack index
+    });
   }
 
   @override
@@ -90,7 +80,6 @@ class _DashboardPageState extends State<DashboardPage> {
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
-        
         actions: [
           IconButton(
             splashRadius: 22,
@@ -122,25 +111,20 @@ class _DashboardPageState extends State<DashboardPage> {
             children: [
               IconButton(
                 icon: const Icon(Icons.notifications, color: Colors.white),
-                onPressed: () {
-                  setState(() {
-                    if (_isOnNotificationPage) {
-                      _currentBodyWidget = _lastPageBeforeNotifications;
-                      _isOnNotificationPage = false;
-                    } else {
-                      _lastPageBeforeNotifications = _currentBodyWidget;
-                      _currentBodyWidget = NotificationPage(
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => NotificationPage(
                         onStatusChanged: (hasUnread, isSnoozed) {
                           setState(() {
                             _hasUnreadNotifications = hasUnread;
                             _isSnoozed = isSnoozed;
                           });
                         },
-                      );
-                      _isOnNotificationPage = true;
-                      _hasUnreadNotifications = false;
-                    }
-                  });
+                      ),
+                    ),
+                  );
                 },
               ),
               if (_hasUnreadNotifications && !_isSnoozed)
@@ -158,7 +142,6 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
             ],
           ),
-          
           IconButton(
             icon: const Icon(Icons.group, color: Colors.white),
             onPressed: () {
@@ -171,7 +154,10 @@ class _DashboardPageState extends State<DashboardPage> {
         ],
       ),
       drawer: _buildSidePanel(context),
-      body: _currentBodyWidget,
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _pages,
+      ),
       bottomNavigationBar: BottomAppBar(
         color: const Color(0xFF2E7D32),
         shape: const CircularNotchedRectangle(),

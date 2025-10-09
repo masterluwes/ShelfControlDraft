@@ -2,21 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shelf_control/screens/recipedetails.dart';
 import 'package:shelf_control/screens/mealhistory.dart';
+import 'package:shelf_control/services/meal_planner.dart';
 
 // ===== CONFIG =====
-const String kHouseholdId = 'demo-household'; // TODO: replace with your real household/user scope
-const double kMinCoverageToShow = 0.5;        // 50% pantry coverage
+const String kHouseholdId =
+    'demo_household'; // TODO: replace with your real household/user scope
+const double kMinCoverageToShow = 0.5; // 50% pantry coverage
 const List<String> kStaples = [
-  'water', 'salt', 'pepper', 'cooking oil', 'oil', 'sugar',
+  'water',
+  'salt',
+  'pepper',
+  'cooking oil',
+  'oil',
+  'sugar',
 ];
 
 // --- Data Model for a Recipe (kept as your original STRING fields) ---
 class Recipe {
   final String name;
   final String imageUrl;
-  final String servingSize; 
-  final String calories;    
-  final String time;        
+  final String servingSize;
+  final String calories;
+  final String time;
   final String description;
   final List<Map<String, String>> ingredients;
   final List<String> directions;
@@ -33,98 +40,78 @@ class Recipe {
   });
 
   factory Recipe.fromFirestore(DocumentSnapshot doc) {
-  final data = doc.data() as Map<String, dynamic>? ?? {};
+    final data = doc.data() as Map<String, dynamic>? ?? {};
 
-  // — helpers —
-  String _asString(dynamic v) => v == null ? '' : v.toString();
+    // — helpers —
+    String _asString(dynamic v) => v == null ? '' : v.toString();
 
-  List<Map<String, String>> _parseIngredients(dynamic raw) {
-    final out = <Map<String, String>>[];
+    List<Map<String, String>> _parseIngredients(dynamic raw) {
+      final out = <Map<String, String>>[];
 
-    if (raw is List) {
-      for (final item in raw) {
-        if (item is Map) {
-          final m = item.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
-          out.add({
-            'name': (m['name'] ?? '').toString(),
-            'amount': (m['amount'] ?? '').toString(),
-          });
-        } else if (item is String) {
-          // Allow list of plain strings
-          out.add({'name': item, 'amount': ''});
-        } else {
-          // Unknown entry type -> skip
+      if (raw is List) {
+        for (final item in raw) {
+          if (item is Map) {
+            final m = item
+                .map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
+            out.add({
+              'name': (m['name'] ?? '').toString(),
+              'amount': (m['amount'] ?? '').toString(),
+            });
+          } else if (item is String) {
+            // Allow list of plain strings
+            out.add({'name': item, 'amount': ''});
+          } else {
+            // Unknown entry type -> skip
+          }
+        }
+      } else if (raw is Map) {
+        // Some folks store ingredients as a map of name -> amount
+        raw.forEach((k, v) {
+          out.add({'name': k.toString(), 'amount': (v ?? '').toString()});
+        });
+      } else if (raw is String) {
+        // Split by newlines or commas
+        final parts = raw
+            .split(RegExp(r'[\r\n,]+'))
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty);
+        for (final p in parts) {
+          out.add({'name': p, 'amount': ''});
         }
       }
-    } else if (raw is Map) {
-      // Some folks store ingredients as a map of name -> amount
-      raw.forEach((k, v) {
-        out.add({'name': k.toString(), 'amount': (v ?? '').toString()});
-      });
-    } else if (raw is String) {
-      // Split by newlines or commas
-      final parts = raw.split(RegExp(r'[\r\n,]+')).map((s) => s.trim()).where((s) => s.isNotEmpty);
-      for (final p in parts) {
-        out.add({'name': p, 'amount': ''});
+      return out;
+    }
+
+    List<String> _parseDirections(dynamic raw) {
+      if (raw is List) {
+        return raw.map((e) => e.toString()).toList();
+      } else if (raw is String) {
+        // Split multiline into steps
+        return raw
+            .split(RegExp(r'[\r\n]+'))
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
       }
+      return const [];
     }
-    return out;
+
+    final ingredients = _parseIngredients(data['ingredients']);
+    final directions = _parseDirections(data['directions']);
+
+    return Recipe(
+      name: _asString(data['name']),
+      imageUrl: _asString(data['imageUrl']),
+      servingSize: _asString(data['servingSize']),
+      calories: _asString(data['calories']),
+      time: _asString(data['time']),
+      description: _asString(data['description']),
+      ingredients: ingredients,
+      directions: directions,
+    );
   }
-
-  List<String> _parseDirections(dynamic raw) {
-    if (raw is List) {
-      return raw.map((e) => e.toString()).toList();
-    } else if (raw is String) {
-      // Split multiline into steps
-      return raw
-          .split(RegExp(r'[\r\n]+'))
-          .map((s) => s.trim())
-          .where((s) => s.isNotEmpty)
-          .toList();
-    }
-    return const [];
-  }
-
-  final ingredients = _parseIngredients(data['ingredients']);
-  final directions  = _parseDirections(data['directions']);
-
-  return Recipe(
-    name: _asString(data['name']),
-    imageUrl: _asString(data['imageUrl']),
-    servingSize: _asString(data['servingSize']),
-    calories: _asString(data['calories']),
-    time: _asString(data['time']),
-    description: _asString(data['description']),
-    ingredients: ingredients,
-    directions: directions,
-  );
 }
 
-}
-
-// --- Pantry (only name + qty needed for matching) ---
-class PantryItem {
-  final String name;
-  final num quantity;
-  PantryItem({required this.name, required this.quantity});
-
-  factory PantryItem.fromFirestore(DocumentSnapshot doc) {
-  final data = doc.data() as Map<String, dynamic>? ?? {};
-  num _numify(dynamic v) {
-    if (v is num) return v;
-    if (v is String) {
-      final parsed = num.tryParse(v);
-      if (parsed != null) return parsed;
-    }
-    return 0;
-  }
-
-  return PantryItem(
-    name: (data['name'] ?? '').toString(),
-    quantity: _numify(data['quantity']),
-  );
-}
-}
 
 // --- Main Widget (same UI as yours, but dynamic) ---
 class MealSuggest extends StatefulWidget {
@@ -170,7 +157,8 @@ class _MealSuggestState extends State<MealSuggest> {
       final hasIt = pantryCounts.entries.any((e) {
         final pn = _norm(e.key);
         final qty = e.value;
-        return qty > 0 && (pn == name || pn.contains(name) || name.contains(pn));
+        return qty > 0 &&
+            (pn == name || pn.contains(name) || name.contains(pn));
       });
 
       if (hasIt) {
@@ -181,7 +169,8 @@ class _MealSuggestState extends State<MealSuggest> {
     }
 
     final denom = requiredCount == 0 ? ingr.length : requiredCount;
-    final coverage = denom == 0 ? 1.0 : (haveCount / denom).clamp(0, 1).toDouble();
+    final coverage =
+        denom == 0 ? 1.0 : (haveCount / denom).clamp(0, 1).toDouble();
 
     return (coverage, missing);
   }
@@ -199,13 +188,10 @@ class _MealSuggestState extends State<MealSuggest> {
 
     // Streams
     final pantryStream = FirebaseFirestore.instance
-        .collection('households')
+        .collection('pantries')
         .doc(kHouseholdId)
-        .collection('pantry')
+        .collection('pantryItems')
         .snapshots();
-
-    final recipesStream =
-        FirebaseFirestore.instance.collection('recipes').snapshots();
 
     return Scaffold(
       backgroundColor: pageBg,
@@ -241,75 +227,72 @@ class _MealSuggestState extends State<MealSuggest> {
             icon: const Icon(Icons.history),
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const MealHistoryPage()),
+                MaterialPageRoute(
+                    builder: (context) => const MealHistoryPage()),
               );
             },
           ),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: pantryStream,
-        builder: (context, pantrySnap) {
-          if (pantrySnap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (pantrySnap.hasError) {
-            return Center(child: Text('Error loading pantry: ${pantrySnap.error}'));
-          }
-          final pantryDocs = pantrySnap.data?.docs ?? [];
-          final pantry = pantryDocs.map((d) => PantryItem.fromFirestore(d)).toList();
-          final pantryMap = {for (final p in pantry) p.name: p.quantity};
+  stream: pantryStream,
+  builder: (context, pantrySnap) {
+    if (pantrySnap.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (pantrySnap.hasError) {
+      return Center(child: Text('Error loading pantry: ${pantrySnap.error}'));
+    }
+    if (!pantrySnap.hasData) {
+      return const Center(child: Text('No pantry data.'));
+    }
 
-          return StreamBuilder<QuerySnapshot>(
-            stream: recipesStream,
-            builder: (context, recipeSnap) {
-              if (recipeSnap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (recipeSnap.hasError) {
-                return Center(child: Text('Error loading recipes: ${recipeSnap.error}'));
-              }
-              final docs = recipeSnap.data?.docs ?? [];
-              final all = docs.map((d) => Recipe.fromFirestore(d)).toList();
+    // 1) Build pantry items from Firestore snapshot (filters expired/consumed inside)
+    final pantryItems = MealPlanner.fromSnapshot(pantrySnap.data!);
 
-              // Score & filter
-              final scored = <({Recipe r, double coverage, List<String> missing})>[];
-              for (final r in all) {
-                final (cov, missing) = _coverage(r, pantryMap);
-                if (cov >= kMinCoverageToShow) {
-                  scored.add((r: r, coverage: cov, missing: missing));
-                }
-              }
-              scored.sort((a, b) => b.coverage.compareTo(a.coverage));
+    // 2) Generate suggestions from pantry (near-expiry prioritized, <=2 missing)
+    final suggestions = MealPlanner.generate(
+      pantry: pantryItems,
+      nearExpiryDays: 5,
+      maxMissing: 2,
+      maxResults: 12,
+    );
 
-              // === SAME UI AS BEFORE ===
-              return SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      _buildNoteBanner(),
-                      const SizedBox(height: 20),
-                      if (scored.isEmpty)
-                        const Text(
-                          'No good matches yet. Add more pantry items!',
-                          style: TextStyle(fontFamily: 'Inter', fontSize: 15),
-                        )
-                      else
-                        ...scored.map((s) => _buildMealCard(
-                              context: context,
-                              recipe: s.r,
-                            )),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
+    // 3) Map to your existing Recipe model (string fields)
+    final suggested = suggestions.map((s) => Recipe(
+      name: s.name,
+      imageUrl: s.imageUrl,
+      servingSize: s.servingSize,
+      calories: s.calories,
+      time: s.time,
+      description: s.description,
+      ingredients: s.ingredients,
+      directions: s.directions,
+    )).toList();
+
+    // 4) Build the UI (same layout you already use)
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            _buildNoteBanner(),
+            const SizedBox(height: 20),
+            if (suggested.isEmpty)
+              const Text('No suggestions yet. Add more pantry items!')
+            else
+              ...suggested.map((r) => _buildMealCard(context: context, recipe: r)),
+          ],
+        ),
       ),
     );
+  },
+),
+    );
+    
   }
+
+  
 
   Widget _buildNoteBanner() {
     return Container(

@@ -458,25 +458,7 @@ class _TipsPageState extends State<TipsPage> {
       ],
     },
     'Dairy': {
-      'Milk': [
-        {
-          'title': 'Keep Milk Fresh',
-          'subtitle':
-              'Store milk in the main body of the fridge, not the door.',
-          'details':
-              'The temperature in the refrigerator door fluctuates more than the shelves, which can cause milk to spoil faster. Always seal it tightly after use.',
-          'icon': Icons.opacity,
-        },
-      ],
-      'Cheese': [
-        {
-          'title': 'Cheese Storage 101',
-          'subtitle': 'Wrap cheese in parchment paper, not plastic wrap.',
-          'details':
-              'Cheese needs to breathe. Wrapping it in parchment or wax paper allows for air circulation while preventing it from drying out.',
-          'icon': Icons.icecream_outlined,
-        },
-      ],
+      
     },
     'Produce': {
       'Apples': [

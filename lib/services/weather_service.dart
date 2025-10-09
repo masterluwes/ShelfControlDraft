@@ -55,6 +55,8 @@ class WeatherAlert {
 class WeatherService {
   WeatherService._();
   static final WeatherService instance = WeatherService._();
+  WeatherAlert? _cachedAlert;
+  DateTime? _cachedAt;
 
   // Philippine bounding box (rough) to validate emulator/real GPS
   static bool isInPhilippines(double lat, double lon) {
@@ -71,6 +73,53 @@ class WeatherService {
         hasOfficialAlert ? 'Advisories present' : 'No active advisories';
     return '$today - $tomorrow • $tail';
   }
+
+  Future<WeatherAlert>? _inFlight;
+
+  /// Public: one-shot per app session.
+/// Returns the same alert for the whole session unless forceRefresh = true.
+Future<WeatherAlert> getAlertOnce({bool forceRefresh = false}) async {
+  // 1) Serve cache if available and not forcing refresh
+  if (!forceRefresh) {
+    if (_cachedAlert != null) return _cachedAlert!;
+    if (_inFlight != null) return _inFlight!;
+  }
+
+  // 2) If no cache, start a single in-flight computation and share it
+  _inFlight = _computeAlert();
+
+  try {
+    final result = await _inFlight!;
+    _cachedAlert = result;
+    _cachedAt = DateTime.now();
+    return result;
+  } finally {
+    // Clear the in-flight future AFTER it resolves/rejects,
+    // otherwise later forceRefresh won't start a new call.
+    _inFlight = null;
+  }
+}
+
+/// Private: does the real work once (position -> area -> network fetch),
+/// with safe fallbacks so UI never freezes if anything fails.
+Future<WeatherAlert> _computeAlert() async {
+  try {
+    final pos = await getPosition();
+    String area;
+    try {
+      area = await getAreaName(pos);
+    } catch (_) {
+      area = 'Your Area';
+    }
+    // Your existing network call:
+    final alert = await fetchAlert(pos: pos, areaName: area);
+    return alert;
+  } catch (_) {
+    // Any error (permission denied, GPS off, network), use your PH default
+    return await fetchAlertForDefaultPH();
+  }
+}
+
 
   /// Step 1: Get user position (prompts permission if needed)
   Future<Position> getPosition() async {
