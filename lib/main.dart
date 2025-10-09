@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart'; // Added for Firebase App Check
 import 'package:shelf_control/screens/create_account_page.dart';
 import 'package:shelf_control/screens/login_page.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
@@ -13,6 +14,9 @@ import 'package:shelf_control/services/notification_service.dart'; // Import the
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  await FirebaseAppCheck.instance.activate(
+    androidProvider: AndroidProvider.playIntegrity,
+  );
 
   // Initialize NotificationService
   final NotificationService notificationService = NotificationService();

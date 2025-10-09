@@ -12,6 +12,7 @@ import 'package:shelf_control/models/app_notification_model.dart'; // Import App
 import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 import 'dart:convert'; // For JSON encoding/decoding
+// import 'package:fuzzywuzzy/fuzzywuzzy.dart'; // Removed fuzzywuzzy
 
 class FirestoreService extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;

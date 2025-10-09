@@ -34,6 +34,8 @@ dependencies:
   collection: ^1.18.0
   firebase_messaging: ^16.0.2 # Updated to resolve conflict
   flutter_local_notifications: ^17.0.0 # Use the latest stable version
+  firebase_app_check: ^0.4.1 # Updated for Firebase App Check
+  fuzzywuzzy: ^0.1.0 # For fuzzy matching category suggestions
 
 dev_dependencies:
   flutter_test:

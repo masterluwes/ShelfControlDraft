@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
+import 'package:shelf_control/models/product_model.dart'; // Import ProductModel
 
 import 'package:intl/intl.dart';
 import 'dart:io'; // Import dart:io for File
+import 'dart:async'; // Import for Timer
 
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import provider
@@ -40,18 +42,81 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
   File? _imageFile; // To store the picked image
   final ImagePicker _picker = ImagePicker(); // Image picker instance
 
+  Timer? _debounce; // For autocomplete debouncing
+
   final List<String> _categories = <String>[
-    'Uncategorized',
     'Beverages',
     'Canned Goods',
+    'Condiments',
     'Dairy',
     'Dry Goods',
     'Snacks',
-    'Condiments',
-    'Frozen',
-    'Produce',
     'Other',
   ];
+
+  // Define default shelf lives for categories in days based on research
+  // These are general defaults; specific items will override in _updateExpirationDateFromCategory
+  final Map<String, int> _categoryShelfLives = {
+    'Beverages': 270, // 9 months (general, UHT milk/juice longer, fresh juice shorter)
+    'Canned Goods': 730, // 2 years
+    'Condiments': 365, // 12 months (unopened)
+    'Dairy': 14, // 2 weeks (for refrigerated items like milk, yogurt)
+    'Dry Goods': 547, // 18 months (rice, pasta, flour)
+    'Snacks': 180, // 6 months
+    'Other': 180, // 6 months
+  };
+
+  // More granular shelf lives for specific subcategories/keywords
+  final Map<String, Map<String, int>> _subcategoryShelfLives = {
+    'Dairy': {
+      'fresh milk': 7,
+      'powdered milk': 270, // 9 months
+      'cheese': 60, // 2 months (hard cheese, softer cheese shorter)
+      'yogurt': 21, // 3 weeks
+      'butter': 90, // 3 months
+      'eggs': 30, // 1 month
+    },
+    'Beverages': {
+      'fresh juice': 7,
+      'uht milk': 270, // 9 months
+      'coffee': 365, // 12 months (unopened)
+      'tea': 730, // 2 years
+      'soda': 180, // 6 months
+      'water': 730, // 2 years
+    },
+    'Condiments': {
+      'vinegar': 730, // 2 years
+      'soy sauce': 365, // 1 year
+      'ketchup': 365, // 1 year
+      'mustard': 365, // 1 year
+      'dressing': 180, // 6 months
+      'spices': 730, // 2 years
+      'powder': 730, // 2 years
+      'salt': 1825, // 5 years
+      // 'sugar': 1825, // Moved to Dry Goods
+    },
+    'Dry Goods': {
+      'rice': 730, // 2 years
+      'pasta': 730, // 2 years
+      'flour': 180, // 6 months
+      'cereal': 180, // 6 months
+      'oil': 365, // 1 year
+      'beans': 730, // 2 years (dried)
+      'sugar': 1825, // 5 years (moved from Condiments)
+    },
+    'Snacks': {
+      'chips': 90, // 3 months
+      'crackers': 180, // 6 months
+      'cookies': 180, // 6 months
+      'chocolates': 270, // 9 months
+      'biscuits': 180, // 6 months (from Bakery)
+      'packed fudge bars': 180, // 6 months (from Bakery)
+      'mamon': 7, // 1 week (from Bakery)
+      'donut': 3, // 3 days (from Bakery)
+      'pandesal': 7, // 1 week (from Bakery)
+      'ensaymada': 7, // 1 week (from Bakery)
+    }
+  };
 
   @override
   void initState() {
@@ -105,6 +170,64 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
     super.dispose();
   }
 
+  String? _suggestCategoryFromName(String itemName) {
+    itemName = itemName.toLowerCase();
+
+    // Define keywords for each category, prioritizing more specific ones
+    final Map<String, List<String>> categoryKeywords = {
+      'Dairy': ['milk', 'yogurt', 'cheese', 'butter', 'margarine', 'spread', 'cream', 'eggs', 'evaporada', 'condensada'],
+      'Beverages': ['coffee', 'tea', 'juice', 'soda', 'water', 'chocolate drink', 'malt', 'drink', 'softdrink', 'powdered drink'],
+      'Canned Goods': ['canned', 'beans', 'soup', 'tuna', 'sardines', 'corned beef', 'meat loaf', 'luncheon meat', 'fruit cocktail'],
+      'Dry Goods': ['rice', 'pasta', 'flour', 'cereal', 'grains', 'seeds', 'oil', 'legumes', 'beans', 'soup mix', 'broth', 'noodles', 'sago', 'oats', 'oatmeal', 'sugar'], // Added sugar
+      'Snacks': [
+        'chips', 'crackers', 'cookies', 'nuts', 'candies', 'chocolates', 'biscuits', 'dips', 'wafer', 'bar', 'pastillas', 'polvoron',
+        'bread', 'cake', 'pastries', 'baking needs', 'buns', 'muffin', 'donut', 'pandesal', 'ensaymada', 'packed fudge bars', 'mamon' // Merged from Bakery
+      ],
+      'Condiments': ['vinegar', 'soy sauce', 'ketchup', 'mustard', 'dressing', 'sauce', 'spices', 'powder', 'salt', 'bbq', 'seasoning', 'garlic bits', 'bagoong', 'chili', 'patis', 'fish sauce'], // Removed sugar
+      'Other': [], // Explicitly define 'Other' for clarity, though it's the fallback
+    };
+
+    // Iterate through categories and their keywords to find a match
+    for (final categoryEntry in categoryKeywords.entries) {
+      final category = categoryEntry.key;
+      final keywords = categoryEntry.value;
+      for (final keyword in keywords) {
+        if (itemName.contains(keyword)) {
+          return category;
+        }
+      }
+    }
+
+    return 'Other'; // Default if no strong match
+  }
+
+  void _updateExpirationDateFromCategory({bool forceUpdate = false}) {
+    // Only update if the expiration date is not manually set, or if forced
+    if ((_expCtrl.text.isEmpty || forceUpdate) && _selectedCategory != null && widget.item.manufacturedDate != null) {
+      int? shelfLife = _categoryShelfLives[_selectedCategory];
+      String itemName = _nameCtrl.text.toLowerCase();
+
+      // Check for more granular shelf lives based on subcategory keywords
+      if (_subcategoryShelfLives.containsKey(_selectedCategory)) {
+        final subcategoryMap = _subcategoryShelfLives[_selectedCategory]!;
+        for (final subcategoryEntry in subcategoryMap.entries) {
+          final subcategoryKeyword = subcategoryEntry.key;
+          final subcategorySpecificShelfLife = subcategoryEntry.value;
+          if (itemName.contains(subcategoryKeyword)) {
+            shelfLife = subcategorySpecificShelfLife;
+            break; // Found a more specific match, use it
+          }
+        }
+      }
+
+      if (shelfLife != null) {
+        setState(() {
+          _expCtrl.text = DateFormat('MMMM d, yyyy').format(widget.item.manufacturedDate!.add(Duration(days: shelfLife!)));
+        });
+      }
+    }
+  }
+
   Future<void> _saveChanges(FirestoreService firestoreService) async {
     if (firestoreService.selectedHouseholdId == null) {
       if (!mounted) return;
@@ -121,6 +244,16 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
         return; // Image upload failed
       }
     }
+
+    // Attempt to suggest category if not already set or if it's 'Other'
+    if (_selectedCategory == null || _selectedCategory == 'Other' && _nameCtrl.text.isNotEmpty) {
+      setState(() {
+        _selectedCategory = _suggestCategoryFromName(_nameCtrl.text);
+      });
+    }
+
+    // After category is set (either by user or suggestion), attempt to set expiration date
+    _updateExpirationDateFromCategory();
 
     final updatedItem = PantryItemModel(
       id: widget.item.id,
@@ -189,12 +322,14 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
     int maxLines = 1,
     VoidCallback? onTap,
     TextInputType keyboardType = TextInputType.text, // Added keyboardType
+    ValueChanged<String>? onChanged, // Add onChanged parameter
   }) {
     return TextField(
       controller: ctrl,
       readOnly: readOnly,
       maxLines: maxLines,
       onTap: onTap,
+      onChanged: onChanged, // Pass onChanged to TextField
       decoration: InputDecoration(
         isDense: true,
         filled: true,
@@ -243,7 +378,10 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
                 ),
               )
               .toList(),
-          onChanged: readOnly ? null : (val) => setState(() => _selectedCategory = val),
+          onChanged: readOnly ? null : (val) => setState(() {
+            _selectedCategory = val;
+            _updateExpirationDateFromCategory(); // Update expiration date when category changes
+          }),
         ),
       ),
     );
@@ -416,6 +554,7 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
     TextInputType keyboardType = TextInputType.text,
     bool readOnly = false,
     VoidCallback? onTap,
+    ValueChanged<String>? onChanged,
   }) {
     return SizedBox(
       width: 150, // Fixed width for compact fields
@@ -430,6 +569,7 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
                   readOnly: readOnly,
                   onTap: onTap,
                   keyboardType: keyboardType,
+                  onChanged: onChanged,
                 ),
                 const SizedBox(height: 14),
               ],
@@ -528,7 +668,67 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _label('Item Name'),
-                        _filledField(_nameCtrl, readOnly: isViewing),
+                        Autocomplete<Product>(
+                          optionsBuilder: (TextEditingValue textEditingValue) async {
+                            if (textEditingValue.text.isEmpty) {
+                              return const Iterable<Product>.empty();
+                            }
+
+                            // Debounce the search
+                            if (_debounce?.isActive ?? false) _debounce!.cancel();
+                            await Future.delayed(const Duration(milliseconds: 300)); // Small delay for better UX
+
+                            final products = await firestoreService.searchProducts(textEditingValue.text).first;
+                            return products.take(5); // Limit to 5 suggestions
+                          },
+                          displayStringForOption: (Product option) => option.productName,
+                          fieldViewBuilder: (BuildContext context,
+                              TextEditingController fieldTextEditingController,
+                              FocusNode fieldFocusNode,
+                              VoidCallback onFieldSubmitted) {
+                            _nameCtrl = fieldTextEditingController; // Keep _nameCtrl updated
+                            return TextField(
+                              controller: fieldTextEditingController,
+                              focusNode: fieldFocusNode,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                filled: true,
+                                fillColor: const Color(0xFFE9E9E9),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              style: const TextStyle(fontSize: 14),
+                              onChanged: (value) {
+                                // Trigger category suggestion and expiration date update on manual text change
+                                setState(() {
+                                  _selectedCategory = _suggestCategoryFromName(value);
+                                  _updateExpirationDateFromCategory();
+                                });
+                              },
+                            );
+                          },
+                          onSelected: (Product selection) {
+                            setState(() {
+                              _nameCtrl.text = selection.productName;
+                              _quantityUnitCtrl.text = selection.netWeight ?? ''; // Assuming netWeight is quantityUnit
+                              if (selection.category != null) {
+                                _selectedCategory = selection.category;
+                              } else {
+                                // If product from autocomplete doesn't have a category, try to suggest one
+                                _selectedCategory = _suggestCategoryFromName(selection.productName);
+                              }
+
+                              // Attempt to set expiration date based on category default
+                              _updateExpirationDateFromCategory();
+                            });
+                          },
+                        ),
                         const SizedBox(height: 14),
                       ],
                     ),
@@ -569,6 +769,7 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
                             if (pickedDate != null) {
                               setState(() {
                                 _expCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
+                                // No shelf life calculator in edit, so no need to clear
                               });
                             }
                           },

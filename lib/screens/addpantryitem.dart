@@ -3,6 +3,9 @@ import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryIt
 import 'package:shelf_control/models/product_model.dart'; // Import ProductModel
 import 'package:intl/intl.dart';
 import 'dart:io'; // Import dart:io for File
+import 'dart:async'; // Import for Timer
+
+// import 'package:fuzzywuzzy/fuzzywuzzy.dart'; // Removed fuzzywuzzy
 
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import provider
@@ -27,8 +30,6 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
   late TextEditingController _expCtrl;
   late TextEditingController _dopCtrl;
   late TextEditingController _notesCtrl;
-  late TextEditingController _barcodeCtrl;
-  late TextEditingController _brandCtrl;
   late TextEditingController _netWeightCtrl;
 
   String? _selectedCategory;
@@ -38,18 +39,88 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
   DateTime? _selectedExpDate; // To store the actual expiration date
   DateTime? _selectedDopDate; // To store the actual date of purchase
 
+  Timer? _debounce; // For autocomplete debouncing
+
+  // For optional shelf life calculator
+  bool _showShelfLifeCalculator = false;
+  late TextEditingController _shelfLifeValueCtrl;
+  String? _selectedShelfLifeUnit;
+  final List<String> _shelfLifeUnits = ['Days', 'Weeks', 'Months', 'Years'];
+
   final List<String> _categories = <String>[
-    'Uncategorized',
     'Beverages',
     'Canned Goods',
+    'Condiments',
     'Dairy',
     'Dry Goods',
     'Snacks',
-    'Condiments',
-    'Frozen',
-    'Produce',
     'Other',
   ];
+
+  // Define default shelf lives for categories in days based on research
+  // Define default shelf lives for categories in days based on research
+  // These are general defaults; specific items will override in _updateExpirationDateFromCategory
+  final Map<String, int> _categoryShelfLives = {
+    'Beverages': 270, // 9 months (general, UHT milk/juice longer, fresh juice shorter)
+    'Canned Goods': 730, // 2 years
+    'Condiments': 365, // 12 months (unopened)
+    'Dairy': 14, // 2 weeks (for refrigerated items like milk, yogurt)
+    'Dry Goods': 547, // 18 months (rice, pasta, flour)
+    'Snacks': 180, // 6 months
+    'Other': 180, // 6 months
+  };
+
+  // More granular shelf lives for specific subcategories/keywords
+  final Map<String, Map<String, int>> _subcategoryShelfLives = {
+    'Dairy': {
+      'fresh milk': 7,
+      'powdered milk': 270, // 9 months
+      'cheese': 60, // 2 months (hard cheese, softer cheese shorter)
+      'yogurt': 21, // 3 weeks
+      'butter': 90, // 3 months
+      'eggs': 30, // 1 month
+    },
+    'Beverages': {
+      'fresh juice': 7,
+      'uht milk': 270, // 9 months
+      'coffee': 365, // 12 months (unopened)
+      'tea': 730, // 2 years
+      'soda': 180, // 6 months
+      'water': 730, // 2 years
+    },
+    'Condiments': {
+      'vinegar': 730, // 2 years
+      'soy sauce': 365, // 1 year
+      'ketchup': 365, // 1 year
+      'mustard': 365, // 1 year
+      'dressing': 180, // 6 months
+      'spices': 730, // 2 years
+      'powder': 730, // 2 years
+      'salt': 1825, // 5 years
+      // 'sugar': 1825, // Moved to Dry Goods
+    },
+    'Dry Goods': {
+      'rice': 730, // 2 years
+      'pasta': 730, // 2 years
+      'flour': 180, // 6 months
+      'cereal': 180, // 6 months
+      'oil': 365, // 1 year
+      'beans': 730, // 2 years (dried)
+      'sugar': 1825, // 5 years (moved from Condiments)
+    },
+    'Snacks': {
+      'chips': 90, // 3 months
+      'crackers': 180, // 6 months
+      'cookies': 180, // 6 months
+      'chocolates': 270, // 9 months
+      'biscuits': 180, // 6 months (from Bakery)
+      'packed fudge bars': 180, // 6 months (from Bakery)
+      'mamon': 7, // 1 week (from Bakery)
+      'donut': 3, // 3 days (from Bakery)
+      'pandesal': 7, // 1 week (from Bakery)
+      'ensaymada': 7, // 1 week (from Bakery)
+    }
+  };
 
   @override
   void initState() {
@@ -60,10 +131,10 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
     _expCtrl = TextEditingController(text: '');
     _dopCtrl = TextEditingController(text: DateFormat('MMMM d, yyyy').format(_selectedDopDate!));
     _notesCtrl = TextEditingController(text: '');
-    _barcodeCtrl = TextEditingController(text: '');
-    _brandCtrl = TextEditingController(text: '');
     _netWeightCtrl = TextEditingController(text: '');
-    _selectedCategory = null;
+    _selectedCategory = 'Other'; // Default to 'Other' instead of null or 'Uncategorized'
+    _shelfLifeValueCtrl = TextEditingController(text: '');
+    _selectedShelfLifeUnit = 'Days'; // Default unit
   }
 
   Future<void> _pickImage() async {
@@ -99,13 +170,110 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
     _expCtrl.dispose();
     _dopCtrl.dispose();
     _notesCtrl.dispose();
-    _barcodeCtrl.dispose();
-    _brandCtrl.dispose();
     _netWeightCtrl.dispose();
+    _shelfLifeValueCtrl.dispose();
     super.dispose();
   }
 
+  String? _suggestCategoryFromName(String itemName) {
+    itemName = itemName.toLowerCase();
+
+    // Define keywords for each category, prioritizing more specific ones
+    final Map<String, List<String>> categoryKeywords = {
+      'Dairy': ['milk', 'yogurt', 'cheese', 'butter', 'margarine', 'spread', 'cream', 'eggs', 'evaporada', 'condensada'],
+      'Beverages': ['coffee', 'tea', 'juice', 'soda', 'water', 'chocolate drink', 'malt', 'drink', 'softdrink', 'powdered drink'],
+      'Canned Goods': ['canned', 'beans', 'soup', 'tuna', 'sardines', 'corned beef', 'meat loaf', 'luncheon meat', 'fruit cocktail'],
+      'Dry Goods': ['rice', 'pasta', 'flour', 'cereal', 'grains', 'seeds', 'oil', 'legumes', 'beans', 'soup mix', 'broth', 'noodles', 'sago', 'oats', 'oatmeal', 'sugar'], // Added sugar
+      'Snacks': [
+        'chips', 'crackers', 'cookies', 'nuts', 'candies', 'chocolates', 'biscuits', 'dips', 'wafer', 'bar', 'pastillas', 'polvoron',
+        'bread', 'cake', 'pastries', 'baking needs', 'buns', 'muffin', 'donut', 'pandesal', 'ensaymada', 'packed fudge bars', 'mamon' // Merged from Bakery
+      ],
+      'Condiments': ['vinegar', 'soy sauce', 'ketchup', 'mustard', 'dressing', 'sauce', 'spices', 'powder', 'salt', 'bbq', 'seasoning', 'garlic bits', 'bagoong', 'chili', 'patis', 'fish sauce'], // Removed sugar
+      'Other': [], // Explicitly define 'Other' for clarity, though it's the fallback
+    };
+
+    // Iterate through categories and their keywords to find a match
+    for (final categoryEntry in categoryKeywords.entries) {
+      final category = categoryEntry.key;
+      final keywords = categoryEntry.value;
+      for (final keyword in keywords) {
+        if (itemName.contains(keyword)) {
+          return category;
+        }
+      }
+    }
+
+    return 'Other'; // Default if no strong match
+  }
+
+  void _calculateExpirationDate({bool forceUpdate = false}) {
+    // Only calculate if the expiration date is not manually set, or if forced
+    if ((_expCtrl.text.isEmpty || forceUpdate) && _selectedDopDate != null && _shelfLifeValueCtrl.text.isNotEmpty && _selectedShelfLifeUnit != null) {
+      final int? value = int.tryParse(_shelfLifeValueCtrl.text);
+      if (value == null || value <= 0) return;
+
+      DateTime calculatedExpDate = _selectedDopDate!;
+      switch (_selectedShelfLifeUnit) {
+        case 'Days':
+          calculatedExpDate = _selectedDopDate!.add(Duration(days: value));
+          break;
+        case 'Weeks':
+          calculatedExpDate = _selectedDopDate!.add(Duration(days: value * 7));
+          break;
+        case 'Months':
+          calculatedExpDate = DateTime(_selectedDopDate!.year, _selectedDopDate!.month + value, _selectedDopDate!.day);
+          break;
+        case 'Years':
+          calculatedExpDate = DateTime(_selectedDopDate!.year + value, _selectedDopDate!.month, _selectedDopDate!.day);
+          break;
+      }
+
+      setState(() {
+        _selectedExpDate = calculatedExpDate;
+        _expCtrl.text = DateFormat('MMMM d, yyyy').format(_selectedExpDate!);
+      });
+    }
+  }
+
+  void _updateExpirationDateFromCategory({bool forceUpdate = false}) {
+    // Only update if the expiration date is not manually set, or if forced
+    if ((_expCtrl.text.isEmpty || forceUpdate) && _selectedCategory != null && _selectedDopDate != null) {
+      int? shelfLife = _categoryShelfLives[_selectedCategory];
+      String itemName = _nameCtrl.text.toLowerCase();
+
+      // Check for more granular shelf lives based on subcategory keywords
+      if (_subcategoryShelfLives.containsKey(_selectedCategory)) {
+        final subcategoryMap = _subcategoryShelfLives[_selectedCategory]!;
+        for (final subcategoryEntry in subcategoryMap.entries) {
+          final subcategoryKeyword = subcategoryEntry.key;
+          final subcategorySpecificShelfLife = subcategoryEntry.value;
+          if (itemName.contains(subcategoryKeyword)) {
+            shelfLife = subcategorySpecificShelfLife;
+            break; // Found a more specific match, use it
+          }
+        }
+      }
+
+      if (shelfLife != null) {
+        setState(() {
+          _selectedExpDate = _selectedDopDate!.add(Duration(days: shelfLife!)); // Use null-assertion operator
+          _expCtrl.text = DateFormat('MMMM d, yyyy').format(_selectedExpDate!);
+        });
+      }
+    }
+  }
+
   Future<void> _registerItem(FirestoreService firestoreService) async {
+    // Attempt to suggest category if not already set
+    if (_selectedCategory == null || _selectedCategory == 'Other' && _nameCtrl.text.isNotEmpty) {
+      setState(() {
+        _selectedCategory = _suggestCategoryFromName(_nameCtrl.text);
+      });
+    }
+
+    // After category is set (either by user or suggestion), attempt to set expiration date
+    _updateExpirationDateFromCategory();
+
     if (_nameCtrl.text.isEmpty || _selectedCategory == null || _qtyCtrl.text.isEmpty || _expCtrl.text.isEmpty || _selectedDopDate == null) {
       if (!mounted) return; // Guard against async gap
       ScaffoldMessenger.of(context).showSnackBar(
@@ -130,8 +298,6 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
       imageUrl: imageUrl ?? 'https://via.placeholder.com/150',
       qty: int.tryParse(_qtyCtrl.text) ?? 1,
       expiresText: _expCtrl.text,
-      barcode: _barcodeCtrl.text.isEmpty ? null : _barcodeCtrl.text,
-      brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
       netWeight: _netWeightCtrl.text.isEmpty ? null : _netWeightCtrl.text,
       expirationDate: _selectedExpDate,
       manufacturedDate: _selectedDopDate,
@@ -185,12 +351,14 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
     int maxLines = 1,
     VoidCallback? onTap,
     TextInputType keyboardType = TextInputType.text,
+    ValueChanged<String>? onChanged, // Add onChanged parameter
   }) {
     return TextField(
       controller: ctrl,
       readOnly: readOnly,
       maxLines: maxLines,
       onTap: onTap,
+      onChanged: onChanged, // Pass onChanged to TextField
       decoration: InputDecoration(
         isDense: true,
         filled: true,
@@ -238,7 +406,12 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                 ),
               )
               .toList(),
-          onChanged: (val) => setState(() => _selectedCategory = val),
+          onChanged: (val) {
+            setState(() {
+              _selectedCategory = val;
+              _updateExpirationDateFromCategory(); // Update expiration date when category changes
+            });
+          },
         ),
       ),
     );
@@ -311,11 +484,17 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
               const SizedBox(height: 24),
               label('Item Name'),
               Autocomplete<Product>(
-                optionsBuilder: (TextEditingValue textEditingValue) {
+                optionsBuilder: (TextEditingValue textEditingValue) async {
                   if (textEditingValue.text.isEmpty) {
                     return const Iterable<Product>.empty();
                   }
-                  return firestoreService.searchProducts(textEditingValue.text).first;
+
+                  // Debounce the search
+                  if (_debounce?.isActive ?? false) _debounce!.cancel();
+                  await Future.delayed(const Duration(milliseconds: 300)); // Small delay for better UX
+
+                  final products = await firestoreService.searchProducts(textEditingValue.text).first;
+                  return products.take(5); // Limit to 5 suggestions
                 },
                 displayStringForOption: (Product option) => option.productName,
                 fieldViewBuilder: (BuildContext context,
@@ -340,23 +519,41 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                       ),
                     ),
                     style: const TextStyle(fontSize: 14),
+                    onChanged: (value) {
+                      // Trigger category suggestion and expiration date update on manual text change
+                      setState(() {
+                        _selectedCategory = _suggestCategoryFromName(value);
+                        _updateExpirationDateFromCategory();
+                      });
+                    },
                   );
                 },
                 onSelected: (Product selection) {
                   setState(() {
                     _nameCtrl.text = selection.productName;
                     _netWeightCtrl.text = selection.netWeight ?? '';
-                    // Optionally set brand if available in Product model
-                    // _brandCtrl.text = selection.brand ?? '';
+                    if (selection.category != null) {
+                      _selectedCategory = selection.category;
+                    } else {
+                      // If product from autocomplete doesn't have a category, try to suggest one
+                      _selectedCategory = _suggestCategoryFromName(selection.productName);
+                    }
+
+                    // If the selected product has a manufactured date, use it for DOP
+                    if (selection.manufacturedDate != null) {
+                      _selectedDopDate = selection.manufacturedDate;
+                      _dopCtrl.text = DateFormat('MMMM d, yyyy').format(_selectedDopDate!);
+                    } else {
+                      // Otherwise, reset DOP to today if no specific date is available
+                      _selectedDopDate = DateTime.now();
+                      _dopCtrl.text = DateFormat('MMMM d, yyyy').format(_selectedDopDate!);
+                    }
+
+                    // Attempt to set expiration date based on category default, forcing an update
+                    _updateExpirationDateFromCategory(forceUpdate: true);
                   });
                 },
               ),
-              const SizedBox(height: 14),
-              label('Barcode (Optional)'),
-              filledField(_barcodeCtrl),
-              const SizedBox(height: 14),
-              label('Brand (Optional)'),
-              filledField(_brandCtrl),
               const SizedBox(height: 14),
               label('Item Category'),
               greenDropdown(),
@@ -367,7 +564,21 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
               label('Net Weight (e.g., "1L", "397g") (Optional)'),
               filledField(_netWeightCtrl),
               const SizedBox(height: 14),
-              label('Expiration Date'),
+              Row(
+                children: [
+                  label('Expiration Date'),
+                  const SizedBox(width: 8),
+                  // Tooltip for expiration date guidance
+                  Tooltip(
+                    message: 'Look for "EXP", "USE BY", or "BEST BEFORE" on the lid, bottom, or side of the packaging. Dates are typically in Day-Month-Year format (e.g., 09 September 2025). On mobile, long-press to view this tip.',
+                    child: Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
               filledField(
                 _expCtrl,
                 readOnly: true,
@@ -378,34 +589,141 @@ class _AddPantryItemBodyState extends State<AddPantryItem> {
                     firstDate: DateTime(2000),
                     lastDate: DateTime(2100),
                   );
-                  if (pickedDate != null) {
+                    if (pickedDate != null) {
+                      setState(() {
+                        _selectedExpDate = pickedDate;
+                        _expCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
+                        // Clear shelf life calculator fields if expiration date is manually set
+                        _shelfLifeValueCtrl.clear();
+                        _selectedShelfLifeUnit = 'Days';
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 14),
+                // Optional Shelf Life Calculator Section
+                GestureDetector(
+                  onTap: () {
                     setState(() {
-                      _selectedExpDate = pickedDate;
-                      _expCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
+                      _showShelfLifeCalculator = !_showShelfLifeCalculator;
+                      if (_showShelfLifeCalculator) {
+                        // If showing, try to calculate based on existing data
+                        _calculateExpirationDate(forceUpdate: true);
+                      } else {
+                        // If hiding, clear shelf life calculator fields
+                        _shelfLifeValueCtrl.clear();
+                        _selectedShelfLifeUnit = 'Days';
+                      }
                     });
-                  }
-                },
-              ),
-              const SizedBox(height: 14),
-              label('Date of Purchase'),
-              filledField(
-                _dopCtrl,
-                readOnly: true,
-                onTap: () async {
-                  final pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: _selectedDopDate ?? DateTime.now(),
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (pickedDate != null) {
-                    setState(() {
-                      _selectedDopDate = pickedDate;
-                      _dopCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
-                    });
-                  }
-                },
-              ),
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _showShelfLifeCalculator ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                          color: headerGreen,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Calculate from Production Date (Optional)',
+                          style: TextStyle(
+                            color: headerGreen,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_showShelfLifeCalculator) ...[
+                  const SizedBox(height: 14),
+                  label('Production Date'),
+                  filledField(
+                    _dopCtrl,
+                    readOnly: true,
+                    onTap: () async {
+                      final pickedDate = await showDatePicker(
+                        context: context,
+                        initialDate: _selectedDopDate ?? DateTime.now(),
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (pickedDate != null) {
+                        setState(() {
+                          _selectedDopDate = pickedDate;
+                          _dopCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
+                          _calculateExpirationDate(forceUpdate: true); // Recalculate expiration if DOP changes
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  label('Shelf Life Duration'),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: filledField(
+                          _shelfLifeValueCtrl,
+                          keyboardType: TextInputType.number,
+                          onTap: () {
+                            // Clear expiration date if user starts typing here
+                            setState(() {
+                              _expCtrl.text = '';
+                              _selectedExpDate = null;
+                            });
+                          },
+                          onChanged: (value) {
+                            _calculateExpirationDate(forceUpdate: true);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 1,
+                        child: Container(
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: headerGreen,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isExpanded: true,
+                              value: _selectedShelfLifeUnit,
+                              icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+                              dropdownColor: Colors.white,
+                              hint: const Text(
+                                'Unit',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                              ),
+                              items: _shelfLifeUnits
+                                  .map(
+                                    (unit) => DropdownMenuItem(
+                                      value: unit,
+                                      child: Text(
+                                        unit,
+                                        style: const TextStyle(color: Colors.black87, fontSize: 14),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (val) {
+                                setState(() {
+                                  _selectedShelfLifeUnit = val;
+                                  _calculateExpirationDate(forceUpdate: true); // Recalculate expiration if unit changes
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               const SizedBox(height: 14),
               label('Notes (Optional)'),
               filledField(_notesCtrl, maxLines: 5),
