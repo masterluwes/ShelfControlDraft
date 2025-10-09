@@ -504,6 +504,19 @@ class FirestoreService extends ChangeNotifier {
     }
   }
 
+  Future<void> markAsWasted(PantryItemModel item) async {
+  if (selectedHouseholdId == null || item.id == null) {
+    throw Exception("No household selected or item ID is missing.");
+  }
+  final updated = item.copyWith(
+    status: 'wasted',
+    wastedAt: DateTime.now(),
+  );
+  await _pantryCol(selectedHouseholdId!)
+      .doc(item.id)
+      .update(updated.toFirestore());
+}
+
   // Search for products in the local_products_ph collection
   Stream<List<Product>> searchProducts(String query) {
     if (query.isEmpty) {

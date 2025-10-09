@@ -34,8 +34,19 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   List<PantryItemModel> _items = [];
 
   // Options
-  final List<String> _sortOptions = const ['Category', 'Name', 'Quantity', 'Expiry'];
-  final List<String> _filterOptions = const ['All Items', 'Active', 'At risk', 'Available', 'Expired'];
+  final List<String> _sortOptions = const [
+    'Category',
+    'Name',
+    'Quantity',
+    'Expiry'
+  ];
+  final List<String> _filterOptions = const [
+    'All Items',
+    'Active',
+    'At risk',
+    'Available',
+    'Expired'
+  ];
 
   bool get _inSelectMode => _selectedItemIds.isNotEmpty;
 
@@ -48,7 +59,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final expirationDay = DateTime(item.expirationDate!.year, item.expirationDate!.month, item.expirationDate!.day);
+    final expirationDay = DateTime(item.expirationDate!.year,
+        item.expirationDate!.month, item.expirationDate!.day);
     final difference = expirationDay.difference(today).inDays;
 
     if (difference < 0) {
@@ -68,7 +80,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     }
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final expirationDay = DateTime(item.expirationDate!.year, item.expirationDate!.month, item.expirationDate!.day);
+    final expirationDay = DateTime(item.expirationDate!.year,
+        item.expirationDate!.month, item.expirationDate!.day);
     final difference = expirationDay.difference(today).inDays;
 
     if (difference == 0) {
@@ -92,7 +105,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     });
   }
 
-  Future<void> _deletePantryItem(PantryItemModel item, FirestoreService firestoreService) async {
+  Future<void> _deletePantryItem(
+      PantryItemModel item, FirestoreService firestoreService) async {
     if (item.id != null) {
       await firestoreService.deletePantryItem(item.id!);
       if (!mounted) return;
@@ -112,12 +126,23 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
       final status = _getItemStatus(it);
       switch (filterBy) {
-        case 'Active': if (status != ItemStatus.active) return false; break;
-        case 'At risk': if (status != ItemStatus.atRisk) return false; break;
-        case 'Available': if (status != ItemStatus.available) return false; break;
-        case 'Consumed': if (status != ItemStatus.consumed) return false; break;
-        case 'Expired': if (status != ItemStatus.expired) return false; break;
-        default: break;
+        case 'Active':
+          if (status != ItemStatus.active) return false;
+          break;
+        case 'At risk':
+          if (status != ItemStatus.atRisk) return false;
+          break;
+        case 'Available':
+          if (status != ItemStatus.available) return false;
+          break;
+        case 'Consumed':
+          if (status != ItemStatus.consumed) return false;
+          break;
+        case 'Expired':
+          if (status != ItemStatus.expired) return false;
+          break;
+        default:
+          break;
       }
       if (_query.isNotEmpty) {
         final q = _query.toLowerCase();
@@ -134,29 +159,40 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         final statusA = _getItemStatus(a);
         final statusB = _getItemStatus(b);
 
-        if (statusA == ItemStatus.expired && statusB != ItemStatus.expired) return -1;
-        if (statusA != ItemStatus.expired && statusB == ItemStatus.expired) return 1;
-        if (statusA == ItemStatus.atRisk && statusB != ItemStatus.atRisk && statusB != ItemStatus.expired) return -1;
-        if (statusA != ItemStatus.atRisk && statusB == ItemStatus.atRisk && statusA != ItemStatus.expired) return 1;
+        if (statusA == ItemStatus.expired && statusB != ItemStatus.expired)
+          return -1;
+        if (statusA != ItemStatus.expired && statusB == ItemStatus.expired)
+          return 1;
+        if (statusA == ItemStatus.atRisk &&
+            statusB != ItemStatus.atRisk &&
+            statusB != ItemStatus.expired) return -1;
+        if (statusA != ItemStatus.atRisk &&
+            statusB == ItemStatus.atRisk &&
+            statusA != ItemStatus.expired) return 1;
       }
 
       switch (sortBy) {
-        case 'Name': return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-        case 'Quantity': return b.qty.compareTo(a.qty);
+        case 'Name':
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        case 'Quantity':
+          return b.qty.compareTo(a.qty);
         case 'Expiry':
           if (a.expirationDate == null && b.expirationDate == null) return 0;
           if (a.expirationDate == null) return 1;
           if (b.expirationDate == null) return -1;
           return a.expirationDate!.compareTo(b.expirationDate!);
         case 'Category':
-        default: return a.category.toLowerCase().compareTo(b.category.toLowerCase());
+        default:
+          return a.category.toLowerCase().compareTo(b.category.toLowerCase());
       }
     });
     return list;
   }
 
-  Future<void> _updateItemStatus(PantryItemModel item, String newStatus, {int? consumedQuantity}) async {
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+  Future<void> _updateItemStatus(PantryItemModel item, String newStatus,
+      {int? consumedQuantity}) async {
+    final firestoreService =
+        Provider.of<FirestoreService>(context, listen: false);
     if (newStatus == 'Consumed' && consumedQuantity != null) {
       await firestoreService.recordConsumedItem(item, consumedQuantity);
     } else if (newStatus == 'Consumed') {
@@ -174,21 +210,31 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       builder: (BuildContext context) {
         return AlertDialog(
           backgroundColor: softCream,
-          title: Text('Consume ${item.name}', style: TextStyle(color: headerGreen, fontWeight: FontWeight.bold)),
+          title: Text('Consume ${item.name}',
+              style:
+                  TextStyle(color: headerGreen, fontWeight: FontWeight.bold)),
           content: StatefulBuilder(
             builder: (BuildContext context, StateSetter setState) {
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Available: ${item.qty}', style: const TextStyle(color: Colors.grey)),
+                  Text('Available: ${item.qty}',
+                      style: const TextStyle(color: Colors.grey)),
                   NumberPicker(
                     value: selectedQuantity!,
                     minValue: 0,
                     maxValue: item.qty,
-                    onChanged: (value) => setState(() => selectedQuantity = value),
-                    textStyle: const TextStyle(fontSize: 14, color: Colors.black54),
-                    selectedTextStyle: TextStyle(fontSize: 18, color: headerGreen, fontWeight: FontWeight.bold),
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: sep)),
+                    onChanged: (value) =>
+                        setState(() => selectedQuantity = value),
+                    textStyle:
+                        const TextStyle(fontSize: 14, color: Colors.black54),
+                    selectedTextStyle: TextStyle(
+                        fontSize: 18,
+                        color: headerGreen,
+                        fontWeight: FontWeight.bold),
+                    decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: sep)),
                   ),
                 ],
               );
@@ -203,7 +249,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop(selectedQuantity),
               style: ElevatedButton.styleFrom(backgroundColor: headerGreen),
-              child: const Text('Consume', style: TextStyle(color: Colors.white)),
+              child:
+                  const Text('Consume', style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -215,8 +262,10 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     });
   }
 
-  Future<void> _updateItemQuantity(PantryItemModel item, int newQuantity) async {
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+  Future<void> _updateItemQuantity(
+      PantryItemModel item, int newQuantity) async {
+    final firestoreService =
+        Provider.of<FirestoreService>(context, listen: false);
     if (newQuantity <= 0) {
       await _showQuantityPickerDialog(item);
     } else {
@@ -237,7 +286,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       backgroundColor: softCream,
       body: SafeArea(
         child: StreamBuilder<List<PantryItemModel>>(
-          stream: firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
+          stream: firestoreService.getPantryItemsForHousehold(
+              firestoreService.selectedHouseholdId!),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -246,7 +296,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               return Center(child: Text('Error: ${snapshot.error}'));
             }
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return const Center(child: Text('No pantry items yet. Add some!'));
+              return const Center(
+                  child: Text('No pantry items yet. Add some!'));
             }
 
             _items = snapshot.data!;
@@ -255,7 +306,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_inSelectMode) _selectionModeTopBar(firestoreService) else ...[
+                if (_inSelectMode)
+                  _selectionModeTopBar(firestoreService)
+                else ...[
                   _bigTitle(),
                   _controlsRow(),
                 ],
@@ -263,8 +316,10 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                 Expanded(
                   child: ListView.separated(
                     itemCount: view.length,
-                    separatorBuilder: (_, __) => Divider(height: 1, thickness: 1, color: sep),
-                    itemBuilder: (_, i) => _dismissibleRow(view, i, firestoreService),
+                    separatorBuilder: (_, __) =>
+                        Divider(height: 1, thickness: 1, color: sep),
+                    itemBuilder: (_, i) =>
+                        _dismissibleRow(view, i, firestoreService),
                   ),
                 ),
               ],
@@ -284,23 +339,49 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.check_box_outline_blank, color: Colors.white),
+            icon:
+                const Icon(Icons.check_box_outline_blank, color: Colors.white),
             onPressed: () => setState(() => _selectedItemIds.clear()),
           ),
-          Text('${_selectedItemIds.length} Items', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+          Text('${_selectedItemIds.length} Items',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
           const Spacer(),
           IconButton(
             tooltip: 'Mark as Consumed',
             icon: const Icon(Icons.restaurant_menu, color: Colors.white),
             onPressed: () async {
-              List<PantryItemModel> itemsToProcess = _selectedItemIds.map((id) => _items.firstWhere((element) => element.id == id)).toList();
+              List<PantryItemModel> itemsToProcess = _selectedItemIds
+                  .map((id) => _items.firstWhere((element) => element.id == id))
+                  .toList();
               if (itemsToProcess.length == 1) {
                 await _showQuantityPickerDialog(itemsToProcess.first);
               } else if (itemsToProcess.length > 1) {
                 await showModalBottomSheet(
                   context: context,
                   isScrollControlled: true,
-                  builder: (context) => ConsumeQuantityBottomSheet(items: itemsToProcess),
+                  builder: (context) =>
+                      ConsumeQuantityBottomSheet(items: itemsToProcess),
+                );
+              }
+              setState(() => _selectedItemIds.clear());
+            },
+          ),
+          IconButton(
+            tooltip: 'Mark as Wasted',
+            icon: const Icon(Icons.delete_forever, color: Colors.white),
+            onPressed: () async {
+              for (final itemId in _selectedItemIds) {
+                final item = _items.firstWhere((e) => e.id == itemId);
+                await firestoreService
+                    .markAsWasted(item); // <-- your service helper
+              }
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Selected items marked as wasted')),
                 );
               }
               setState(() => _selectedItemIds.clear());
@@ -311,7 +392,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             icon: const Icon(Icons.delete, color: Colors.white),
             onPressed: () async {
               for (String itemId in _selectedItemIds) {
-                final item = _items.firstWhere((element) => element.id == itemId);
+                final item =
+                    _items.firstWhere((element) => element.id == itemId);
                 await _deletePantryItem(item, firestoreService);
               }
               setState(() => _selectedItemIds.clear());
@@ -325,7 +407,11 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   Widget _bigTitle() {
     return const Padding(
       padding: EdgeInsets.fromLTRB(12, 12, 12, 6),
-      child: Text('Pantry Inventory', style: TextStyle(color: Color(0xFF20451F), fontSize: 24, fontWeight: FontWeight.w900)),
+      child: Text('Pantry Inventory',
+          style: TextStyle(
+              color: Color(0xFF20451F),
+              fontSize: 24,
+              fontWeight: FontWeight.w900)),
     );
   }
 
@@ -343,15 +429,22 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               hintText: 'Search items or categories...',
               filled: true,
               fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               prefixIcon: const Icon(Icons.search),
               suffixIcon: IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: _toggleSearch,
               ),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: sep)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: sep)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: headerGreen)),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: sep)),
+              enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: sep)),
+              focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: headerGreen)),
             ),
           ),
         ),
@@ -368,8 +461,16 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               physics: const BouncingScrollPhysics(),
               child: Row(
                 children: [
-                  _dropdownPill(label: 'Sort by', value: sortBy, items: _sortOptions, onChanged: (v) => setState(() => sortBy = v!)),
-                  _dropdownPill(label: 'Filter', value: filterBy, items: _filterOptions, onChanged: (v) => setState(() => filterBy = v!)),
+                  _dropdownPill(
+                      label: 'Sort by',
+                      value: sortBy,
+                      items: _sortOptions,
+                      onChanged: (v) => setState(() => sortBy = v!)),
+                  _dropdownPill(
+                      label: 'Filter',
+                      value: filterBy,
+                      items: _filterOptions,
+                      onChanged: (v) => setState(() => filterBy = v!)),
                 ],
               ),
             ),
@@ -384,7 +485,11 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  Widget _dropdownPill({required String label, required String value, required List<String> items, required void Function(String?) onChanged}) {
+  Widget _dropdownPill(
+      {required String label,
+      required String value,
+      required List<String> items,
+      required void Function(String?) onChanged}) {
     return Container(
       margin: const EdgeInsets.only(right: 8),
       child: DropdownButtonHideUnderline(
@@ -392,25 +497,43 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           value: value,
           customButton: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(color: sep, borderRadius: BorderRadius.circular(24)),
+            decoration: BoxDecoration(
+                color: sep, borderRadius: BorderRadius.circular(24)),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF20451F), fontSize: 13)),
-                Text(value, style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF20451F), fontSize: 13)),
+                Text('$label: ',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF20451F),
+                        fontSize: 13)),
+                Text(value,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF20451F),
+                        fontSize: 13)),
                 const SizedBox(width: 4),
-                const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF20451F)),
+                const Icon(Icons.keyboard_arrow_down_rounded,
+                    size: 18, color: Color(0xFF20451F)),
               ],
             ),
           ),
-          items: items.map((e) => DropdownMenuItem<String>(value: e, child: Text(e, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)))).toList(),
+          items: items
+              .map((e) => DropdownMenuItem<String>(
+                  value: e,
+                  child: Text(e,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13))))
+              .toList(),
           onChanged: onChanged,
           dropdownStyleData: DropdownStyleData(
             padding: EdgeInsets.zero,
             maxHeight: 240,
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(12)),
           ),
-          menuItemStyleData: const MenuItemStyleData(height: 36, padding: EdgeInsets.symmetric(horizontal: 10)),
+          menuItemStyleData: const MenuItemStyleData(
+              height: 36, padding: EdgeInsets.symmetric(horizontal: 10)),
         ),
       ),
     );
@@ -422,20 +545,40 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     ItemStatus currentStatus = _getItemStatus(item);
 
     switch (currentStatus) {
-      case ItemStatus.active: text = 'Active'; bg = const Color(0xFF58A66A); break;
-      case ItemStatus.atRisk: text = 'At risk'; bg = const Color(0xFFF1A648); break;
-      case ItemStatus.available: text = 'Available'; bg = const Color(0xFFF2DE7E); break;
-      case ItemStatus.consumed: text = 'Consumed'; bg = Colors.grey.shade500; break;
-      case ItemStatus.expired: text = 'Expired'; bg = Colors.red.shade700; break;
+      case ItemStatus.active:
+        text = 'Active';
+        bg = const Color(0xFF58A66A);
+        break;
+      case ItemStatus.atRisk:
+        text = 'At risk';
+        bg = const Color(0xFFF1A648);
+        break;
+      case ItemStatus.available:
+        text = 'Available';
+        bg = const Color(0xFFF2DE7E);
+        break;
+      case ItemStatus.consumed:
+        text = 'Consumed';
+        bg = Colors.grey.shade500;
+        break;
+      case ItemStatus.expired:
+        text = 'Expired';
+        bg = Colors.red.shade700;
+        break;
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
-      child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
+      child: Text(text,
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w700)),
     );
   }
 
   Widget _rowTile(PantryItemModel item, int visualIndex) {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+
     return Material(
       color: visualIndex.isEven ? Colors.white : rowAlt,
       child: InkWell(
@@ -492,7 +635,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                     width: 44,
                     height: 44,
                     fit: BoxFit.cover,
-                    errorBuilder: (error, stackTrace, hint) => const Icon(Icons.image),
+                    errorBuilder: (error, stackTrace, hint) =>
+                        const Icon(Icons.image),
                   ),
                 ),
               const SizedBox(width: 12),
@@ -500,11 +644,23 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF20451F)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(item.name,
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF20451F)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 4),
-                    Text('• ${item.category}', style: const TextStyle(fontSize: 11, color: Color(0xFF6F6F6F))),
+                    Text('• ${item.category}',
+                        style: const TextStyle(
+                            fontSize: 11, color: Color(0xFF6F6F6F))),
                     const SizedBox(height: 2),
-                    Text(_getExpiresText(item), style: const TextStyle(fontSize: 11, color: Color(0xFF6F6F6F), fontWeight: FontWeight.w700)),
+                    Text(_getExpiresText(item),
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF6F6F6F),
+                            fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
@@ -514,14 +670,44 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      PopupMenuButton<String>(
+                        onSelected: (value) async {
+                          if (value == 'waste') {
+                            await firestoreService.markAsWasted(item);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('Item marked as wasted')),
+                              );
+                            }
+                          } else if (value == 'consume') {
+                            await _showQuantityPickerDialog(
+                                item); // your existing consume flow
+                          } else if (value == 'delete') {
+                            await _deletePantryItem(item, firestoreService);
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                              value: 'consume',
+                              child: Text('Mark as Consumed')),
+                          PopupMenuItem(
+                              value: 'waste', child: Text('Mark as Wasted')),
+                          PopupMenuItem(value: 'delete', child: Text('Delete')),
+                        ],
+                      ),
                       IconButton(
                         icon: const Icon(Icons.remove_circle_outline, size: 20),
-                        onPressed: () => _updateItemQuantity(item, item.qty - 1),
+                        onPressed: () =>
+                            _updateItemQuantity(item, item.qty - 1),
                       ),
-                      Text('${item.qty}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text('${item.qty}',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold)),
                       IconButton(
                         icon: const Icon(Icons.add_circle_outline, size: 20),
-                        onPressed: () => _updateItemQuantity(item, item.qty + 1),
+                        onPressed: () =>
+                            _updateItemQuantity(item, item.qty + 1),
                       ),
                     ],
                   ),
@@ -535,11 +721,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  Widget _dismissibleRow(List<PantryItemModel> view, int idx, FirestoreService firestoreService) {
+  Widget _dismissibleRow(
+      List<PantryItemModel> view, int idx, FirestoreService firestoreService) {
     final item = view[idx];
     return Dismissible(
       key: ValueKey(item.id),
-      direction: _inSelectMode ? DismissDirection.none : DismissDirection.horizontal,
+      direction:
+          _inSelectMode ? DismissDirection.none : DismissDirection.horizontal,
       background: Container(
         color: Colors.red.shade700,
         padding: const EdgeInsets.symmetric(horizontal: 20),

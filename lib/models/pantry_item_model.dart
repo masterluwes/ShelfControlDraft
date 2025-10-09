@@ -21,6 +21,7 @@ class PantryItemModel {
   bool selected; // New field for selection in UI
   String status; // New field for item status (e.g., "Available", "Active", "At Risk", "Consumed")
   DateTime? consumedAt; // New field for when the item was consumed
+  DateTime? wastedAt; // New field for when the item was wasted
   DateTime? deletedAt; // New field for when the item was deleted
   String? notes; // New field for notes
   String? storageLocation; // New field for storage location
@@ -47,6 +48,7 @@ class PantryItemModel {
     this.selected = false, // Default to false
     this.status = 'Available', // Default status to "Available"
     this.consumedAt, // Add consumedAt to constructor
+    this.wastedAt, // Add wastedAt to constructor
     this.deletedAt, // Add deletedAt to constructor
     this.notes, // Add notes to constructor
     this.storageLocation, // Add storageLocation to constructor
@@ -77,6 +79,9 @@ class PantryItemModel {
       selected: data['selected'] ?? false, // Add selected to fromFirestore
       status: data['status'] ?? 'Available', // Add status to fromFirestore
       consumedAt: (data['consumedAt'] as Timestamp?)?.toDate(), // Add consumedAt to fromFirestore
+      wastedAt: data['wastedAt'] != null
+    ? (data['wastedAt'] as Timestamp).toDate()
+    : null, // Add wastedAt to fromFirestore
       deletedAt: (data['deletedAt'] as Timestamp?)?.toDate(), // Add deletedAt to fromFirestore
       notes: data['notes'], // Add notes to fromFirestore
       storageLocation: data['storageLocation'], // Add storageLocation to fromFirestore
@@ -105,6 +110,7 @@ class PantryItemModel {
       'selected': selected, // Add selected to toFirestore
       'status': status, // Add status to toFirestore
       'consumedAt': consumedAt != null ? Timestamp.fromDate(consumedAt!) : null, // Add consumedAt to toFirestore
+      'wastedAt': wastedAt, // Add wastedAt to toFirestore
       'deletedAt': deletedAt != null ? Timestamp.fromDate(deletedAt!) : null, // Add deletedAt to toFirestore
       'notes': notes, // Add notes to toFirestore
       'storageLocation': storageLocation, // Add storageLocation to toFirestore
@@ -119,6 +125,7 @@ class PantryItemModel {
     String? status,
     int? qty,
     DateTime? consumedAt,
+    DateTime? wastedAt,
     DateTime? deletedAt,
     String? notes, // Add notes to copyWith
     String? storageLocation, // Add storageLocation to copyWith
@@ -145,6 +152,7 @@ class PantryItemModel {
     selected: selected,
     status: status ?? this.status,
     consumedAt: consumedAt ?? this.consumedAt,
+    wastedAt: wastedAt ?? this.wastedAt, 
     deletedAt: deletedAt ?? this.deletedAt,
     notes: notes ?? this.notes,
     storageLocation: storageLocation ?? this.storageLocation,

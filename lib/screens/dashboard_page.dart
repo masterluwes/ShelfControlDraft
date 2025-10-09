@@ -249,7 +249,8 @@ class _DashboardPageState extends State<DashboardPage> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const AddPantryItemWrapper()),
+                MaterialPageRoute(
+                    builder: (context) => const AddPantryItemWrapper()),
               );
             },
           ),
@@ -407,6 +408,28 @@ class DashboardHome extends StatefulWidget {
   State<DashboardHome> createState() => _DashboardHomeState();
 }
 
+// Proxies so we don't break your existing style during "no data" state.
+// If you already have _buildEmptyCard/_buildTipCard, you can remove these proxies.
+class _EmptyCardProxy extends StatelessWidget {
+  final IconData icon;
+  const _EmptyCardProxy({required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return _DashboardHomeState._metricCard(icon: icon, label: "No data", value: "—", sublabel: "No data available yet!");
+  }
+}
+
+class _EmptyTipProxy extends StatelessWidget {
+  const _EmptyTipProxy();
+
+  @override
+  Widget build(BuildContext context) {
+    return _DashboardHomeState._tipCard(icon: Icons.lightbulb, tipText: "No data available yet!");
+  }
+}
+
+
 class _DashboardHomeState extends State<DashboardHome> {
   @override
   Widget build(BuildContext context) {
@@ -517,40 +540,201 @@ class _DashboardHomeState extends State<DashboardHome> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    _buildEmptyCard(icon: Icons.delete),
-                    _buildEmptyCard(icon: Icons.bar_chart),
-                    _buildEmptyCard(icon: Icons.shopping_cart),
-                    _buildEmptyCard(icon: Icons.insights),
-                    _buildEmptyCard(icon: Icons.access_alarm),
-                    _buildTipCard(
-                      icon: Icons.lightbulb_outline,
-                      tipText:
-                          "Put new groceries behind older ones – use the old stuff first.",
-                    ),
-                  ],
-                ),
+                // GridView.count(
+                //   crossAxisCount: 2,
+                //   shrinkWrap: true,
+                //   crossAxisSpacing: 10,
+                //   mainAxisSpacing: 10,
+                //   physics: const NeverScrollableScrollPhysics(),
+                //   children: [
+                //     _buildEmptyCard(icon: Icons.delete),
+                //     _buildEmptyCard(icon: Icons.bar_chart),
+                //     _buildEmptyCard(icon: Icons.shopping_cart),
+                //     _buildEmptyCard(icon: Icons.insights),
+                //     _buildEmptyCard(icon: Icons.access_alarm),
+                //     _buildTipCard(
+                //       icon: Icons.lightbulb_outline,
+                //       tipText:
+                //           "Put new groceries behind older ones – use the old stuff first.",
+                //     ),
+                //   ],
+                // ),
                 const SizedBox(height: 16),
                 StreamBuilder<List<PantryItemModel>>(
                   stream: firestoreService.selectedHouseholdId == null
                       ? Stream.value([])
                       : firestoreService.getPantryItemsForHousehold(
-                          firestoreService.selectedHouseholdId!),
+                          firestoreService.selectedHouseholdId!,
+                        ),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const CircularProgressIndicator();
+                      // while loading, you can show placeholders or a simple progress
+                      return const SizedBox(
+                        height: 220,
+                        child: Center(child: CircularProgressIndicator()),
+                      );
                     }
-                    if (snapshot.hasError) {
-                      return Text('Error: ${snapshot.error}');
-                    }
+
                     final items = snapshot.data ?? [];
-                    return _buildPantryOverview(items);
+
+                    // === when NO DATA ===
+                    if (items.isEmpty) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          GridView.count(
+                            crossAxisCount: 2,
+                            shrinkWrap: true,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                            physics: const NeverScrollableScrollPhysics(),
+                            children: const [
+                              // keep your existing empty cards
+                              // (icons based on your design)
+                              // Waste
+                              _EmptyCardProxy(icon: Icons.delete),
+                              // Usage
+                              _EmptyCardProxy(icon: Icons.bar_chart),
+                              // Restock
+                              _EmptyCardProxy(icon: Icons.shopping_cart),
+                              // Insights
+                              _EmptyCardProxy(icon: Icons.insights),
+                              // Expiry
+                              _EmptyCardProxy(icon: Icons.access_alarm),
+                              // Tip
+                              _EmptyTipProxy(),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          _buildPantryOverview(items), // will show "no data" state in your impl
+                        ],
+                      );
+                    }
+
+                    // === when THERE IS DATA ===
+                    final now = DateTime.now();
+                    final weekAgo = now.subtract(const Duration(days: 7));
+
+                    final wastedThisWeek = items
+                        .where((i) =>
+                            i.status == 'wasted' &&
+                            i.wastedAt != null &&
+                            i.wastedAt!.isAfter(weekAgo))
+                        .length;
+
+                    final consumedThisWeek = items
+                        .where((i) =>
+                            i.status == 'consumed' &&
+                            i.consumedAt != null &&
+                            i.consumedAt!.isAfter(weekAgo))
+                        .length;
+
+                    final denom = wastedThisWeek + consumedThisWeek;
+                    final wastePct = denom == 0
+                        ? 0
+                        : ((wastedThisWeek / denom) * 100).round();
+
+                    // Usage tracker = consumed in last 7 days
+                    final usageCount = consumedThisWeek;
+
+                    // Restock suggestions = low stock (qty <= 1) — tweak threshold if you prefer
+                    const restockThreshold = 1;
+                    final lowStockCount = items
+                        .where((i) => (i.qty ?? 0) <= restockThreshold)
+                        .length;
+
+                    // Overall insights = simple efficiency (consumed vs consumed+wasted)
+                    final totalConsumed =
+                        items.where((i) => i.status == 'consumed').length;
+                    final totalWasted =
+                        items.where((i) => i.status == 'wasted').length;
+                    final effDenom = totalConsumed + totalWasted;
+                    final efficiencyPct = effDenom == 0
+                        ? 100
+                        : ((totalConsumed / effDenom) * 100).round();
+
+                    // Expiry alert = expiring within 7 days (future only)
+                    final expiringSoonCount = items
+                        .where((i) =>
+                            i.expirationDate != null &&
+                            i.expirationDate!.isAfter(now) &&
+                            i.expirationDate!.difference(now).inDays <= 7)
+                        .length;
+
+                    // Suggestion text (simple rules)
+                    final String suggestionText = () {
+                      if (wastePct >= 30) {
+                        return "Waste is high this week — try smaller purchases or prioritize near-expiry items.";
+                      }
+                      if (lowStockCount > 0) {
+                        return "You have $lowStockCount low-stock items — consider restocking essentials.";
+                      }
+                      if (expiringSoonCount > 0) {
+                        return "$expiringSoonCount items expiring soon — plan meals to use them first.";
+                      }
+                      return "Great job keeping waste low! Rotate stock: use older items before new ones.";
+                    }();
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // ==== DYNAMIC METRICS GRID ====
+                        GridView.count(
+                          crossAxisCount: 2,
+                          shrinkWrap: true,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                          physics: const NeverScrollableScrollPhysics(),
+                          children: [
+                            // 1) Waste Tracker
+                            _metricCard(
+                              icon: Icons.delete,
+                              label: "Waste",
+                              value: "$wastePct%",
+                              sublabel: "of items leaving pantry this week",
+                            ),
+                            // 2) Usage Tracker
+                            _metricCard(
+                              icon: Icons.bar_chart,
+                              label: "Usage",
+                              value: "$usageCount",
+                              sublabel: "consumed in last 7 days",
+                            ),
+                            // 3) Restock Suggestions
+                            _metricCard(
+                              icon: Icons.shopping_cart,
+                              label: "Restock",
+                              value: "$lowStockCount",
+                              sublabel: "low-stock items (≤1)",
+                            ),
+                            // 4) Overall Insights (Efficiency)
+                            _metricCard(
+                              icon: Icons.insights,
+                              label: "Efficiency",
+                              value: "$efficiencyPct%",
+                              sublabel: "consumed vs wasted (all-time)",
+                            ),
+                            // 5) Expiry Alert
+                            _metricCard(
+                              icon: Icons.access_alarm,
+                              label: "Expiring Soon",
+                              value: "$expiringSoonCount",
+                              sublabel: "within 7 days",
+                            ),
+                            // 6) Suggestion Box
+                            _tipCard(
+                              icon: Icons.lightbulb,
+                              tipText: suggestionText,
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // ==== PANTRY OVERVIEW (dynamic by the same items) ====
+                        _buildPantryOverview(items),
+                      ],
+                    );
                   },
                 ),
               ],
@@ -581,6 +765,69 @@ class _DashboardHomeState extends State<DashboardHome> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Minimal metric card
+  static Widget _metricCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    String? sublabel,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 28),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12)),
+          if (sublabel != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              sublabel,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 11, color: Colors.black54),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+// Minimal tip card
+  static Widget _tipCard({required IconData icon, required String tipText}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 28),
+          const SizedBox(height: 8),
+          const Text("Suggestion",
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text(tipText,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12)),
+        ],
       ),
     );
   }
