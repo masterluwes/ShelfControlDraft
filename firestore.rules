@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read/write for authenticated users to their own user document
+    match /users/{userId} {
+      allow read: if request.auth.uid != null; // Allow any authenticated user to read user documents
+      allow update, delete: if request.auth.uid == userId;
+      allow create: if request.auth.uid != null;
+    }
+
+    // Allow read/write for household documents
+    match /households/{householdId} {
+      // Allow any authenticated user to read household documents.
+      // This is necessary to allow users to query for households by joinCode.
+      // Note: This makes household information, including member lists, readable by any authenticated user.
+      allow read: if request.auth.uid != null;
+      allow create: if request.auth.uid != null; // Allow any authenticated user to create a household
+      allow update: if request.auth.uid != null && (
+        (
+          // Allow a user to add themselves to the members list (only 'members' field can change)
+          request.resource.data.members.size() == resource.data.members.size() + 1 &&
+          request.resource.data.members.hasAll(resource.data.members.concat([request.auth.uid])) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+        ) ||
+        (
+          // Allow a user to remove themselves from the members list (only 'members' field can change)
+          resource.data.members.hasAll([request.auth.uid]) && // User was a member
+          request.resource.data.members.size() == resource.data.members.size() - 1 && // One member removed
+          !request.resource.data.members.hasAny([request.auth.uid]) && // Current user is no longer a member
+          resource.data.members.hasAll(request.resource.data.members) && // All other members are still there
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']) // Only members field changed
+        )
+      );
+      allow delete: if request.auth.uid == resource.data.ownerId; // Only owner can delete
+    }
+
+    // Allow read/write for pantry items within a household
+    match /pantryItems/{pantryItemId} {
+      allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+    }
+
+    // Allow authenticated users to read from the local_products_ph collection
+    match /local_products_ph/{productId} {
+      allow read: if request.auth.uid != null;
+    }
+
+    // Allow read/write for shopping lists within a household
+    match /shoppingLists/{listId} {
+      allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+    }
+
+    // Allow read/write for shopping history items within a household
+    match /shoppingHistory/{historyItemId} {
+      allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+    }
+  }
+}
