@@ -23,6 +23,7 @@ import 'package:collection/collection.dart'; // Import for firstWhereOrNull
 import 'package:provider/provider.dart'; // Import provider
 import 'package:shelf_control/screens/waste_tracker_page.dart';
 import 'package:shelf_control/screens/mealsuggest.dart';
+import 'package:shelf_control/screens/dietary_preference_page.dart';
 
 class DashboardPage extends StatefulWidget {
   final int initialIndex; // Add initialIndex parameter
@@ -314,6 +315,13 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               );
             }),
+            _drawerItem(Icons.restaurant_menu, "Dietary Preferences", () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const DietaryPreferencesPage()),
+              );
+            }),
             _drawerItem(Icons.history, "History", () {
               Navigator.push(
                 context,
@@ -324,7 +332,7 @@ class _DashboardPageState extends State<DashboardPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const WasteTrackerPage(),
+                  builder: (context) => WasteTrackerPage(),
                 ),
               );
             }),

@@ -4,6 +4,17 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:shelf_control/screens/welcome_page.dart'; // Import your WelcomePage
+
+// --- UI Color Constants ---
+const Color primaryGreen = Color(0xFF2E7D32);
+const Color pageBackground = Color(0xFFFDFDFC);
+const Color deleteRed = Color(0xFFBF5959);
+const Color mediumGrey = Color(0xFF666666);
+const Color strokeGrey = Color(0xFFB8B8B8);
+const Color inputText = Color(0xFF222222);
+const Color pureWhite = Color(0xFFFFFFFF);
+const Color lightGrey = Color(0xFFBDBDBD); // For disabled elements
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -13,433 +24,790 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  // --- Keys and Controllers ---
   final _formKey = GlobalKey<FormState>();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController(text: "••••••••");
+  final TextEditingController _changePasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _deleteConfirmController = TextEditingController();
+
+  // --- Firebase Instances ---
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController usernameController = TextEditingController();
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController(
-    text: "********",
-  );
-  final TextEditingController changePasswordController =
-      TextEditingController();
-  final TextEditingController confirmPasswordController =
-      TextEditingController();
-
-  bool obscurePassword = true;
-  bool obscureChangePassword = true;
-  bool obscureConfirmPassword = true;
-
+  // --- State Variables ---
+  bool _hasChanges = false;
+  bool _isSaveButtonEnabled = false;
   File? _profileImage;
   String? _profileImageUrl;
   final ImagePicker _picker = ImagePicker();
 
+  // States for password visibility
+  bool _isPasswordVisible = false;
+  bool _isChangePasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
+
+  // For password validation UI
+  final FocusNode _passwordFocusNode = FocusNode();
+  bool _isPasswordFocused = false;
+  bool _has8Characters = false;
+  bool _hasUppercase = false;
+  bool _hasLowercase = false;
+  bool _hasNumber = false;
+  bool _hasSpecialCharacter = false;
+
+  // Store initial values to detect changes
+  String _initialName = '';
+  String _initialUsername = '';
   File? _initialProfileImage;
-  bool _hasChanges = false;
+
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
 
-    nameController.addListener(_checkForChanges);
-    usernameController.addListener(_checkForChanges);
-    changePasswordController.addListener(_checkForChanges);
-    confirmPasswordController.addListener(_checkForChanges);
+    // Add listeners to controllers to update form state
+    _nameController.addListener(_updateFormState);
+    _usernameController.addListener(_updateFormState);
+    _changePasswordController.addListener(_updateFormState);
+    _confirmPasswordController.addListener(_updateFormState);
+
+    // Listener for password validation UI
+    _changePasswordController.addListener(_onPasswordChanged);
+    _passwordFocusNode.addListener(() {
+      setState(() {
+        _isPasswordFocused = _passwordFocusNode.hasFocus;
+      });
+    });
   }
 
+  @override
+  void dispose() {
+    // Dispose controllers to free up resources
+    _nameController.dispose();
+    _usernameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _changePasswordController.dispose();
+    _confirmPasswordController.dispose();
+    _deleteConfirmController.dispose();
+    _passwordFocusNode.dispose();
+    super.dispose();
+  }
+  
+  /// Reverts all fields to their initial saved state.
+  void _revertChanges() {
+    setState(() {
+      _nameController.text = _initialName;
+      _usernameController.text = _initialUsername;
+      _changePasswordController.clear();
+      _confirmPasswordController.clear();
+      _profileImage = null; // Revert any newly picked image
+    });
+    // This call ensures the button state and hasChanges flag are reset correctly
+    _updateFormState();
+  }
+
+  /// Checks for form changes and validity to update the save button state.
+  void _updateFormState() {
+    // 1. Check for any changes from the initial state
+    final bool hasTextChanged = _nameController.text != _initialName ||
+                                _usernameController.text != _initialUsername ||
+                                _changePasswordController.text.isNotEmpty ||
+                                _confirmPasswordController.text.isNotEmpty;
+    final bool hasImageChanged = _profileImage != _initialProfileImage;
+    final bool hasChanges = hasTextChanged || hasImageChanged;
+
+    // 2. Check if the main required fields are filled
+    final bool areRequiredFieldsFilled = _nameController.text.isNotEmpty &&
+                                         _usernameController.text.isNotEmpty;
+
+    // 3. Update the state to enable the save button
+    if (mounted) {
+      setState(() {
+        _hasChanges = hasChanges;
+        _isSaveButtonEnabled = hasChanges && areRequiredFieldsFilled;
+      });
+    }
+  }
+
+  /// Validates the password against the defined criteria for the UI.
+  void _onPasswordChanged() {
+    final password = _changePasswordController.text;
+    if (mounted) {
+      setState(() {
+        _has8Characters = password.length >= 8;
+        _hasUppercase = password.contains(RegExp(r'[A-Z]'));
+        _hasLowercase = password.contains(RegExp(r'[a-z]'));
+        _hasNumber = password.contains(RegExp(r'[0-9]'));
+        _hasSpecialCharacter = password.contains(RegExp(r'[!@#\$%^&*]'));
+      });
+    }
+  }
+
+  /// Loads user data from Firestore and populates the text fields.
   Future<void> _loadUserData() async {
     User? user = _auth.currentUser;
     if (user != null) {
-      DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
-      if (userDoc.exists) {
-        Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
-        nameController.text = userData['name'] ?? '';
-        usernameController.text = userData['username'] ?? '';
-        emailController.text = user.email ?? '';
-        _profileImageUrl = userData['profileImageUrl'];
-        if (_profileImageUrl != null) {
-          setState(() {}); // Trigger rebuild to show image
+      try {
+        DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
+        if (userDoc.exists && mounted) {
+          Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+          setState(() {
+            _initialName = userData['name'] ?? '';
+            _initialUsername = userData['username'] ?? '';
+            _nameController.text = _initialName;
+            _usernameController.text = _initialUsername;
+            _emailController.text = user.email ?? '';
+            _profileImageUrl = userData['profileImageUrl'];
+          });
         }
-      } else {
-        // If user document doesn't exist, create it with basic info
-        await _firestore.collection('users').doc(user.uid).set({
-          'email': user.email,
-          'name': '',
-          'username': '',
-          'profileImageUrl': null,
-        });
-        emailController.text = user.email ?? '';
+      } catch (e) {
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Failed to load user data: $e")),
+          );
+        }
       }
     }
   }
 
-  void _checkForChanges() {
-    setState(() {
-      _hasChanges =
-          nameController.text.isNotEmpty ||
-          usernameController.text.isNotEmpty ||
-          changePasswordController.text.isNotEmpty ||
-          confirmPasswordController.text.isNotEmpty ||
-          _profileImage?.path != _initialProfileImage?.path;
-    });
-  }
-
+  /// Opens the image gallery to pick a new profile picture.
   Future<void> _pickImage() async {
     final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
       setState(() {
         _profileImage = File(pickedFile.path);
-        _hasChanges = true;
       });
+      _updateFormState(); // Update button state after picking image
     }
   }
 
-  Future<void> _saveChanges() async {
-    if (!_hasChanges) return;
+  /// Saves all modified data to Firebase.
+  Future<void> _saveProfile() async {
+    // Validate the form fields; if not valid, stop execution.
+    if (!_formKey.currentState!.validate()) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
 
     User? user = _auth.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+       Navigator.pop(context);
+       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("No user logged in.")),
       );
       return;
     }
 
     try {
-      // Update user profile in Firestore
       Map<String, dynamic> updates = {};
-      if (nameController.text.isNotEmpty) {
-        updates['name'] = nameController.text;
+
+      if (_nameController.text != _initialName) {
+        updates['name'] = _nameController.text;
       }
-      if (usernameController.text.isNotEmpty) {
-        updates['username'] = usernameController.text;
+      if (_usernameController.text != _initialUsername) {
+        updates['username'] = _usernameController.text;
+      }
+      
+      // If the password field has text, perform strict validation now.
+      if (_changePasswordController.text.isNotEmpty) {
+        final bool isPasswordValid = _has8Characters &&
+                                     _hasUppercase &&
+                                     _hasLowercase &&
+                                     _hasNumber &&
+                                     _hasSpecialCharacter;
+        if (!isPasswordValid) {
+          throw 'Password does not meet the security requirements.';
+        }
+        // The form validator already checks for mismatch, but this is a final safeguard.
+        if (_changePasswordController.text != _confirmPasswordController.text) {
+          throw 'Passwords do not match.';
+        }
+        await user.updatePassword(_changePasswordController.text);
       }
 
-      // Handle password change
-      if (changePasswordController.text.isNotEmpty ||
-          confirmPasswordController.text.isNotEmpty) {
-        if (changePasswordController.text.length < 8 ||
-            confirmPasswordController.text.length < 8) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Passwords must be at least 8 characters."),
-            ),
-          );
-          return;
-        }
-        if (changePasswordController.text != confirmPasswordController.text) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Passwords do not match.")),
-          );
-          return;
-        }
-        await user.updatePassword(changePasswordController.text);
-      }
-
-      // Handle profile image upload
-      if (_profileImage != null && _profileImage?.path != _initialProfileImage?.path) {
+      if (_profileImage != null) {
         String fileName = user.uid;
         Reference storageRef = _storage.ref().child('profile_images/$fileName');
         UploadTask uploadTask = storageRef.putFile(_profileImage!);
         TaskSnapshot snapshot = await uploadTask;
         String downloadUrl = await snapshot.ref.getDownloadURL();
         updates['profileImageUrl'] = downloadUrl;
+        _profileImageUrl = downloadUrl;
       }
 
       if (updates.isNotEmpty) {
         await _firestore.collection('users').doc(user.uid).update(updates);
       }
+      
+      Navigator.pop(context);
+      _showSuccessDialog("Success!", "Profile saved!");
 
-      if (!mounted) return; // Guard against BuildContext across async gaps
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Profile updated successfully.")),
-      );
-      _initialProfileImage = _profileImage;
-      _hasChanges = false;
-      changePasswordController.clear();
-      confirmPasswordController.clear();
-    } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error updating profile: ${e.message}")),
-      );
+      if(mounted) {
+        setState(() {
+          _initialName = _nameController.text;
+          _initialUsername = _usernameController.text;
+          _initialProfileImage = _profileImage;
+          _changePasswordController.clear();
+          _confirmPasswordController.clear();
+          _updateFormState(); // This will reset hasChanges and disable the button
+        });
+      }
+
     } catch (e) {
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("An unexpected error occurred: $e")),
+        SnackBar(content: Text("Error: ${e.toString()}")),
       );
     }
   }
+  
+  /// Deletes the user's account and all associated data.
+  Future<void> _deleteAccount() async {
+     showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
 
-  void _confirmDeleteAccount() {
+    User? user = _auth.currentUser;
+    if (user == null) {
+      Navigator.pop(context);
+      return;
+    }
+
+    try {
+      // Delete from Firestore
+      await _firestore.collection('users').doc(user.uid).delete();
+      
+      // Delete from Storage with robust error handling for non-existent files.
+      try {
+        await _storage.ref().child('profile_images/${user.uid}').delete();
+      } on FirebaseException catch (e) {
+        // If the object doesn't exist, we can safely ignore the error.
+        if (e.code != 'object-not-found') {
+          // Rethrow any other errors (like permission issues).
+          throw e;
+        }
+      }
+
+      // Delete from Firebase Auth
+      await user.delete();
+
+      Navigator.pop(context); // pop loading
+      Navigator.pop(context); // pop delete dialog
+
+      _showStatusDialog(
+        icon: Icons.check_circle,
+        iconColor: primaryGreen,
+        title: "Account Deleted!",
+        buttonText: "Continue",
+        onContinue: () {
+          if (mounted) {
+            // This removes all screens from the stack and pushes the WelcomePage.
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => WelcomePage()), // Navigate to your main entry screen
+              (Route<dynamic> route) => false,
+            );
+          }
+        }
+      );
+
+    } on FirebaseAuthException catch (e) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Deletion failed: ${e.message}. Please re-login and try again.")),
+        );
+    } catch (e) {
+       Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("An unexpected error occurred: $e")),
+        );
+    }
+  }
+
+  // --- Dialogs ---
+
+  /// Shows the confirmation dialog for discarding unsaved changes.
+  void _showDiscardChangesDialog() {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (dialogContext) { // Use a different name to avoid confusion
         return AlertDialog(
-          backgroundColor: const Color(0xFFFEF9E7),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          title: const Text(
-            "Delete your account?",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2E7D32),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          backgroundColor: pageBackground,
+          title: const Center(
+            child: Text(
+              "Discard Changes?",
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
             ),
           ),
           content: const Text(
-            "This action cannot be undone.",
+            "You have unsaved changes.\nAre you sure you want to discard them?",
+            textAlign: TextAlign.center,
             style: TextStyle(color: Colors.black87),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text(
-                "Cancel",
-                style: TextStyle(color: Color(0xFF2E7D32)),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Account deleted successfully."),
+          actions: <Widget>[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                ElevatedButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                   ),
-                );
-              },
-              child: const Text(
-                "Yes, Delete",
-                style: TextStyle(color: Colors.red),
-              ),
+                  child: const Text("Keep Editing", style: TextStyle(color: pureWhite)),
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    // Pop the first dialog
+                    Navigator.of(dialogContext).pop(); 
+                    // Show the second dialog using the page's context
+                    _showStatusDialog(
+                      icon: Icons.highlight_off,
+                      iconColor: deleteRed,
+                      title: "Changes Discarded!",
+                      titleColor: deleteRed,
+                      buttonText: "Continue",
+                      buttonColor: mediumGrey,
+                      onContinue: () {
+                        // This callback is executed when "Continue" is pressed on the second dialog.
+                        // First, revert the state.
+                        _revertChanges();
+                        
+                        // Use a post-frame callback to safely handle navigation after state change.
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                           if (mounted) {
+                            // Pop the status dialog (the context is captured from its own builder).
+                            Navigator.of(context).pop();
+                            // Pop the profile page itself.
+                            Navigator.of(context).pop();
+                           }
+                        });
+                      },
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: deleteRed,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  child: const Text("Discard", style: TextStyle(color: pureWhite)),
+                ),
+              ],
             ),
           ],
+          actionsPadding: const EdgeInsets.only(bottom: 24.0, top: 10.0),
         );
       },
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFFFBE6),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.only(
-                top: 20,
-                left: 16,
-                right: 16,
-                bottom: 10,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+  /// Shows the dialog to confirm account deletion.
+  void _showDeleteAccountDialog() {
+    _deleteConfirmController.clear();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              backgroundColor: pageBackground,
+              title: const Text("Delete Account?", style: TextStyle(fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.arrow_back, color: Color(0xFF2E7D32)),
-                        SizedBox(width: 4),
-                        Text(
-                          'Back',
-                          style: TextStyle(
-                            color: Color(0xFF2E7D32),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  const Center(
-                    child: Text(
-                      "Profile",
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF2E7D32),
-                      ),
-                    ),
+                  const Text("This action is permanent and cannot be undone."),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _deleteConfirmController,
+                    decoration: _inputDecoration('To confirm, type "DELETE"'),
+                    style: const TextStyle(color: inputText),
+                    onChanged: (value) {
+                      setDialogState(() {});
+                    },
                   ),
                 ],
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: mediumGrey,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text("Cancel", style: TextStyle(color: pureWhite)),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _deleteConfirmController.text == "DELETE" ? _deleteAccount : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: _deleteConfirmController.text == "DELETE" ? deleteRed : lightGrey,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text("Delete Permanently", style: TextStyle(color: pureWhite)),
+                  ),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
+  }
+  
+  /// Generic dialog for showing a success message.
+  void _showSuccessDialog(String title, String message) {
+    _showStatusDialog(
+      icon: Icons.check_circle,
+      iconColor: primaryGreen,
+      title: title,
+      message: message,
+      buttonText: "Continue",
+      onContinue: () => Navigator.of(context).pop(),
+    );
+  }
+
+  /// A generic, reusable status dialog that matches the designs.
+  void _showStatusDialog({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    Color? titleColor,
+    String? message,
+    required String buttonText,
+    Color? buttonColor,
+    required VoidCallback onContinue,
+  }) {
+    showDialog(
+      context: context, // Uses the page's context to show the dialog
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          backgroundColor: pageBackground,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 20),
+              Icon(icon, color: iconColor, size: 60),
+              const SizedBox(height: 24),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: titleColor ?? Colors.black87,
+                ),
+              ),
+              if (message != null) ...[
+                const SizedBox(height: 8),
+                Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black87)),
+              ],
+            ],
+          ),
+          actions: [
+            Center(
+              child: ElevatedButton(
+                onPressed: onContinue,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: buttonColor ?? primaryGreen,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 48),
+                ),
+                child: Text(buttonText, style: const TextStyle(color: pureWhite, fontSize: 16)),
+              ),
             ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Form(
-                  key: _formKey,
+          ],
+          actionsPadding: const EdgeInsets.only(bottom: 24.0, top: 16),
+        );
+      },
+    );
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_hasChanges,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        _showDiscardChangesDialog();
+      },
+      child: Scaffold(
+        backgroundColor: pageBackground,
+        appBar: AppBar(
+          title: const Text("Edit Profile"),
+          backgroundColor: primaryGreen,
+          foregroundColor: pureWhite,
+          elevation: 0,
+        ),
+        body: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24.0),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      // --- Profile Picture ---
                       GestureDetector(
                         onTap: _pickImage,
-                        child: CircleAvatar(
-                          radius: 50,
-                          backgroundColor: Colors.grey[300],
-                          backgroundImage: _profileImage != null
-                              ? FileImage(_profileImage!)
-                              : (_profileImageUrl != null
-                                  ? NetworkImage(_profileImageUrl!)
-                                  : null) as ImageProvider<Object>?,
-                          child: _profileImage == null && _profileImageUrl == null
-                              ? const Icon(
-                                  Icons.person,
-                                  size: 60,
-                                  color: Colors.black54,
-                                )
-                              : null,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 63,
+                              backgroundColor: primaryGreen,
+                              child: CircleAvatar(
+                                radius: 60,
+                                backgroundColor: Colors.grey[300],
+                                backgroundImage: _profileImage != null
+                                    ? FileImage(_profileImage!)
+                                    : (_profileImageUrl != null && _profileImageUrl!.isNotEmpty
+                                        ? NetworkImage(_profileImageUrl!)
+                                        : null) as ImageProvider?,
+                                child: _profileImage == null && (_profileImageUrl == null || _profileImageUrl!.isEmpty)
+                                    ? const Icon(Icons.person, size: 70, color: mediumGrey)
+                                    : null,
+                              ),
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(
+                                  color: primaryGreen,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.camera_alt, color: pureWhite, size: 20),
+                              ),
+                            ),
+                          ],
                         ),
+                      ),
+                      const SizedBox(height: 12),
+                      // --- Name and Username ---
+                      Text(
+                        _nameController.text.isNotEmpty ? _nameController.text : "User Name", 
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _usernameController.text.isNotEmpty ? "@${_usernameController.text}" : "@username",
+                        style: const TextStyle(fontSize: 16, color: mediumGrey),
                       ),
                       const SizedBox(height: 10),
-                      const Text(
-                        "Tap to change picture",
-                        style: TextStyle(fontSize: 12, color: Colors.black54),
-                      ),
+                      const Divider(color: mediumGrey),
                       const SizedBox(height: 20),
-                      _buildEditableField("Name", nameController),
-                      _buildEditableField("Username", usernameController),
-                      _buildReadOnlyField("Email", emailController),
-                      _buildReadOnlyPasswordField(
+                      // --- Text Fields ---
+                      _buildTextField("Full Name", _nameController),
+                      _buildTextField("Username", _usernameController),
+                      _buildTextField("Email", _emailController, readOnly: true),
+                      _buildPasswordTextField(
                         "Password",
-                        passwordController,
-                        obscurePassword,
-                        () =>
-                            setState(() => obscurePassword = !obscurePassword),
+                        _passwordController,
+                        _isPasswordVisible,
+                        () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                        readOnly: true,
                       ),
-                      _buildEditablePasswordField(
+                      _buildPasswordTextField(
                         "Change Password",
-                        changePasswordController,
-                        obscureChangePassword,
-                        () => setState(
-                          () => obscureChangePassword = !obscureChangePassword,
-                        ),
+                        _changePasswordController,
+                        _isChangePasswordVisible,
+                        () => setState(() => _isChangePasswordVisible = !_isChangePasswordVisible),
+                        focusNode: _passwordFocusNode,
                       ),
-                      _buildEditablePasswordField(
+                      _buildPasswordValidation(),
+                      _buildPasswordTextField(
                         "Confirm Password",
-                        confirmPasswordController,
-                        obscureConfirmPassword,
-                        () => setState(
-                          () =>
-                              obscureConfirmPassword = !obscureConfirmPassword,
-                        ),
+                        _confirmPasswordController,
+                        _isConfirmPasswordVisible,
+                        () => setState(() => _isConfirmPasswordVisible = !_isConfirmPasswordVisible),
+                        validator: (value) {
+                            if (_changePasswordController.text.isNotEmpty &&
+                                value != _changePasswordController.text) {
+                              return 'Passwords do not match.';
+                            }
+                            return null;
+                          },
                       ),
                       const SizedBox(height: 20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          ElevatedButton(
-                            onPressed: _hasChanges ? _saveChanges : null,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _hasChanges
-                                  ? const Color(0xFF2E7D32)
-                                  : Colors.grey,
-                            ),
-                            child: const Text(
-                              "Save Changes",
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ),
-                          ElevatedButton(
-                            onPressed: _confirmDeleteAccount,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                            ),
-                            child: const Text(
-                              "Yes, Delete",
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ),
-                        ],
+                      // --- Delete Account Button ---
+                      TextButton(
+                        onPressed: _showDeleteAccountDialog,
+                        child: const Text(
+                          "Delete Account",
+                          style: TextStyle(color: deleteRed, fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ),
+              // --- Save Profile Button ---
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSaveButtonEnabled ? _saveProfile : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                    disabledBackgroundColor: lightGrey,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: const Text("Save Profile", style: TextStyle(fontSize: 18, color: pureWhite)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- Widget Builders ---
+  
+  /// Builds the real-time password validation criteria UI.
+  Widget _buildPasswordValidation() {
+    return Visibility(
+      visible: _isPasswordFocused && _changePasswordController.text.isNotEmpty,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 12.0, left: 4, right: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildValidationRow("At least 8 characters", _has8Characters),
+            const SizedBox(height: 4),
+            _buildValidationRow("One uppercase letter", _hasUppercase),
+            const SizedBox(height: 4),
+            _buildValidationRow("One lowercase letter", _hasLowercase),
+            const SizedBox(height: 4),
+            _buildValidationRow("One number", _hasNumber),
+            const SizedBox(height: 4),
+            _buildValidationRow("One special character (!@#\$%^&*)", _hasSpecialCharacter),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildEditableField(String label, TextEditingController controller) {
+  /// Builds a single row for a password validation criterion.
+  Widget _buildValidationRow(String text, bool isValid) {
+    return Row(
+      children: [
+        Icon(
+          isValid ? Icons.check_circle : Icons.error_outline,
+          color: isValid ? primaryGreen : mediumGrey,
+          size: 20,
+        ),
+        const SizedBox(width: 10),
+        Text(
+          text,
+          style: TextStyle(color: isValid ? primaryGreen : mediumGrey, fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  /// Builds a standard text input field.
+  Widget _buildTextField(String label, TextEditingController controller, {bool readOnly = false}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: TextFormField(
         controller: controller,
-        decoration: _inputDecoration(label),
+        readOnly: readOnly,
+        style: const TextStyle(color: inputText),
+        decoration: _inputDecoration(label, readOnly: readOnly),
+        validator: (value) {
+          if (!readOnly && (value == null || value.isEmpty)) {
+            return '$label cannot be empty';
+          }
+          return null;
+        },
       ),
     );
   }
 
-  Widget _buildEditablePasswordField(
+  /// Builds a password text field with a visibility toggle icon.
+  Widget _buildPasswordTextField(
     String label,
     TextEditingController controller,
-    bool obscure,
-    VoidCallback toggle,
-  ) {
+    bool isVisible,
+    VoidCallback onToggleVisibility, {
+    bool readOnly = false,
+    FocusNode? focusNode,
+    String? Function(String?)? validator,
+  }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: TextFormField(
         controller: controller,
-        obscureText: obscure,
-        decoration: _inputDecoration(label).copyWith(
+        obscureText: !isVisible,
+        readOnly: readOnly,
+        focusNode: focusNode,
+        style: const TextStyle(color: inputText),
+        decoration: _inputDecoration(label, readOnly: readOnly).copyWith(
           suffixIcon: IconButton(
-            icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
-            onPressed: toggle,
+            icon: Icon(
+              isVisible ? Icons.visibility : Icons.visibility_off,
+              color: mediumGrey,
+            ),
+            onPressed: onToggleVisibility,
           ),
         ),
+        validator: validator,
       ),
     );
   }
-
-  Widget _buildReadOnlyField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: TextFormField(
-        controller: controller,
-        readOnly: true,
-        decoration: _inputDecoration(label, readOnly: true),
-      ),
-    );
-  }
-
-  Widget _buildReadOnlyPasswordField(
-    String label,
-    TextEditingController controller,
-    bool obscure,
-    VoidCallback toggle,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: TextFormField(
-        controller: controller,
-        readOnly: true,
-        obscureText: obscure,
-        decoration: _inputDecoration(label, readOnly: true).copyWith(
-          suffixIcon: IconButton(
-            icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
-            onPressed: toggle,
-          ),
-        ),
-      ),
-    );
-  }
-
+  
+  /// Creates the base InputDecoration for text fields.
   InputDecoration _inputDecoration(String label, {bool readOnly = false}) {
     return InputDecoration(
       labelText: label,
+      labelStyle: const TextStyle(color: mediumGrey), 
       filled: true,
-      fillColor: readOnly ? Colors.grey[300] : Colors.white,
+      fillColor: readOnly ? Colors.grey[200] : pageBackground, 
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(5),
-        borderSide: const BorderSide(color: Colors.grey),
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: strokeGrey), 
       ),
-      errorStyle: const TextStyle(color: Colors.red, fontSize: 12),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: primaryGreen, width: 2),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: deleteRed.withOpacity(0.7), width: 1.5),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: deleteRed, width: 2),
+      ),
     );
   }
 }
