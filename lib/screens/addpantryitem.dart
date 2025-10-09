@@ -1,465 +1,783 @@
-import 'package:flutter/material.dart';
-import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
-import 'package:shelf_control/models/product_model.dart'; // Import ProductModel
-import 'package:intl/intl.dart';
-import 'dart:io'; // Import dart:io for File
+import 'dart:io';
 
-import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
-import 'package:provider/provider.dart'; // Import provider
-import 'package:image_picker/image_picker.dart'; // Import image_picker
-import 'package:firebase_storage/firebase_storage.dart'; // Import firebase_storage
-import 'package:shelf_control/screens/dashboard_page.dart'; // Import DashboardPage
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:shelf_control/models/pantry_item_model.dart';
+import 'package:shelf_control/models/product_model.dart';
+import 'package:shelf_control/services/firestore_service.dart';
+import 'package:shelf_control/screens/add_pantry_item_wrapper.dart';
 
 class AddPantryItem extends StatefulWidget {
-  const AddPantryItem({super.key});
+  final Function(PantryItemModel) onAddItem;
+  final VoidCallback onBack;
+  const AddPantryItem({
+    super.key,
+    required this.onAddItem,
+    required this.onBack,
+  });
 
   @override
-  State<AddPantryItem> createState() => _AddPantryItemBodyState();
+  State<AddPantryItem> createState() => _AddPantryItemState();
 }
 
-class _AddPantryItemBodyState extends State<AddPantryItem> {
+class _AddPantryItemState extends State<AddPantryItem> {
+  // --- UI Colors from Design ---
   final Color headerGreen = const Color(0xFF2E7D32);
-  final Color softCream = const Color(0xFFFFFBE6);
+  final Color softCream = const Color(0xFFFAF8ED);
+  final Color inputFillColor = const Color(0xFFFDFDFC);
+  final Color inputBorderColor = const Color(0xFFB8B8B8);
+  final Color labelTextColor = const Color(0xFF666666);
+  final Color inputTextColor = const Color(0xFF222222);
+  final Color errorColor = const Color.fromARGB(255, 253, 52, 38);
 
+  // Controllers for all fields
   late TextEditingController _nameCtrl;
-  late TextEditingController _qtyCtrl;
-  late TextEditingController _expCtrl;
-  late TextEditingController _dopCtrl;
-  late TextEditingController _notesCtrl;
-  late TextEditingController _barcodeCtrl;
   late TextEditingController _brandCtrl;
+  late TextEditingController _priceCtrl;
   late TextEditingController _netWeightCtrl;
+  late TextEditingController _expCtrl;
+  late TextEditingController _notesCtrl;
+  late TextEditingController _quantityCtrl;
+  int _quantity = 1;
+
+  final FocusNode _nameFocusNode = FocusNode();
+  final FocusNode _notesFocusNode = FocusNode();
+  final FocusNode _priceFocusNode = FocusNode();
+
+  // Image picker state
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
+  bool _isUploadingImage = false;
 
   String? _selectedCategory;
-  File? _imageFile; // To store the picked image
-  final ImagePicker _picker = ImagePicker(); // Image picker instance
-
-  DateTime? _selectedExpDate; // To store the actual expiration date
-  DateTime? _selectedDopDate; // To store the actual date of purchase
-
   final List<String> _categories = <String>[
-    'Uncategorized',
-    'Beverages',
-    'Canned Goods',
-    'Dairy',
-    'Dry Goods',
-    'Snacks',
-    'Condiments',
-    'Frozen',
-    'Produce',
-    'Other',
+    'Beverages', 'Canned Goods', 'Dairy', 'Dry Goods', 'Snacks',
+    'Condiments', 'Frozen', 'Produce', 'Other',
   ];
+
+  String _selectedUnit = 'lbs';
+  final List<String> _units = ['lbs', 'kg', 'g', 'L', 'mL'];
+
+  bool _isNameInvalid = false;
+  bool _isCategoryInvalid = false;
+  bool _isExpDateInvalid = false;
+  bool _isPriceInvalid = false;
+  String? _netWeightErrorText;
 
   @override
   void initState() {
     super.initState();
-    _selectedDopDate = DateTime.now(); // Initialize with today's date
-    _nameCtrl = TextEditingController(text: '');
-    _qtyCtrl = TextEditingController(text: '1');
-    _expCtrl = TextEditingController(text: '');
-    _dopCtrl = TextEditingController(text: DateFormat('MMMM d, yyyy').format(_selectedDopDate!));
-    _notesCtrl = TextEditingController(text: '');
-    _barcodeCtrl = TextEditingController(text: '');
-    _brandCtrl = TextEditingController(text: '');
-    _netWeightCtrl = TextEditingController(text: '');
-    _selectedCategory = null;
-  }
+    _nameCtrl = TextEditingController();
+    _brandCtrl = TextEditingController();
+    _priceCtrl = TextEditingController(text: '0.00');
+    _netWeightCtrl = TextEditingController();
+    _expCtrl = TextEditingController();
+    _notesCtrl = TextEditingController();
+    _quantityCtrl = TextEditingController(text: _quantity.toString());
 
-  Future<void> _pickImage() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
-    }
-  }
+    _nameCtrl.addListener(() {
+      if (_isNameInvalid && _nameCtrl.text.isNotEmpty) {
+        setState(() => _isNameInvalid = false);
+      } else {
+        setState(() {});
+      }
+    });
 
-  Future<String?> _uploadImage() async {
-    if (_imageFile == null) {
-      return null; // No new image to upload
-    }
-    try {
-      final storageRef = FirebaseStorage.instance.ref().child('pantry_item_images/${DateTime.now().millisecondsSinceEpoch}.jpg');
-      await storageRef.putFile(_imageFile!);
-      return await storageRef.getDownloadURL();
-    } catch (e) {
-      if (!mounted) return null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to upload image: ${e.toString()}')),
-      );
-      return null;
-    }
+    _expCtrl.addListener(() {
+      if (_isExpDateInvalid && _expCtrl.text.isNotEmpty) {
+        setState(() => _isExpDateInvalid = false);
+      }
+    });
+
+    _priceCtrl.addListener(() {
+      final price = double.tryParse(_priceCtrl.text) ?? 0.0;
+      if (_isPriceInvalid && price > 0.0) {
+        setState(() => _isPriceInvalid = false);
+      } else {
+        setState(() {});
+      }
+    });
+
+    _netWeightCtrl.addListener(() {
+      if (_netWeightErrorText != null) {
+        setState(() {
+          _netWeightErrorText = null;
+        });
+      }
+    });
+
+    _notesFocusNode.addListener(_onNotesFocusChange);
+    _priceFocusNode.addListener(_formatPrice);
   }
 
   @override
   void dispose() {
+    _notesFocusNode.removeListener(_onNotesFocusChange);
+    _notesFocusNode.dispose();
+    _priceFocusNode.removeListener(_formatPrice);
+    _priceFocusNode.dispose();
+    _nameFocusNode.dispose();
     _nameCtrl.dispose();
-    _qtyCtrl.dispose();
-    _expCtrl.dispose();
-    _dopCtrl.dispose();
-    _notesCtrl.dispose();
-    _barcodeCtrl.dispose();
     _brandCtrl.dispose();
+    _priceCtrl.dispose();
     _netWeightCtrl.dispose();
+    _expCtrl.dispose();
+    _notesCtrl.dispose();
+    _quantityCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _registerItem(FirestoreService firestoreService) async {
-    if (_nameCtrl.text.isEmpty || _selectedCategory == null || _qtyCtrl.text.isEmpty || _expCtrl.text.isEmpty || _selectedDopDate == null) {
-      if (!mounted) return; // Guard against async gap
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all required fields')),
-      );
-      return;
-    }
+  bool _isFormDirty() {
+    return _nameCtrl.text.isNotEmpty ||
+        _brandCtrl.text.isNotEmpty ||
+        _priceCtrl.text != '0.00' ||
+        _netWeightCtrl.text.isNotEmpty ||
+        _expCtrl.text.isNotEmpty ||
+        _notesCtrl.text.isNotEmpty ||
+        _quantity != 1 ||
+        _selectedCategory != null ||
+        _selectedImage != null;
+  }
 
-    if (firestoreService.selectedHouseholdId == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No household selected. Please select or create a household.')),
-      );
-      return;
-    }
+  Future<Iterable<Product>> _searchProducts(String query) async {
+    final String searchQuery = query.trim();
+    if (searchQuery.isEmpty) return const Iterable<Product>.empty();
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('local_products_ph')
+          .where('productName', isGreaterThanOrEqualTo: searchQuery)
+          .where('productName', isLessThan: '$searchQuery\uf8ff')
+          .limit(5)
+          .get();
 
-    String? imageUrl;
-    if (_imageFile != null) {
-      imageUrl = await _uploadImage();
-      if (imageUrl == null) {
-        return; // Image upload failed
+      return snapshot.docs.map((doc) => Product.fromFirestore(doc));
+    } catch (e) {
+      debugPrint("Error fetching product suggestions: $e");
+      return const Iterable<Product>.empty();
+    }
+  }
+
+  void _parseNetWeight(String netWeight) {
+    if (netWeight.isEmpty) return;
+    final RegExp regex = RegExp(r'(\d+\.?\d*)\s*([a-zA-Z]+)');
+    final Match? match = regex.firstMatch(netWeight);
+
+    if (match != null) {
+      final String? value = match.group(1);
+      final String? unit = match.group(2)?.toLowerCase();
+      if (value != null) _netWeightCtrl.text = value;
+      if (unit != null) {
+        String normalizedUnit = unit;
+        if (unit == 'ml') normalizedUnit = 'mL';
+        else if (unit == 'l') normalizedUnit = 'L';
+        else if (unit == 'g') normalizedUnit = 'g';
+        else if (unit == 'kg') normalizedUnit = 'kg';
+        else if (unit == 'lbs') normalizedUnit = 'lbs';
+        if (_units.contains(normalizedUnit)) _selectedUnit = normalizedUnit;
       }
+    } else {
+      _netWeightCtrl.text = netWeight;
     }
+  }
 
-      final newItem = PantryItemModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        householdId: firestoreService.selectedHouseholdId!, // Use the provided selected household ID
-        name: _nameCtrl.text,
-        category: _selectedCategory!,
-        imageUrl: imageUrl ?? 'https://via.placeholder.com/150', // Use uploaded image or placeholder
-        qty: int.tryParse(_qtyCtrl.text) ?? 1,
-        expiresText: _expCtrl.text,
-        barcode: _barcodeCtrl.text.isEmpty ? null : _barcodeCtrl.text,
-        brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
-        netWeight: _netWeightCtrl.text.isEmpty ? null : _netWeightCtrl.text,
-        expirationDate: _selectedExpDate, // Use the stored DateTime object
-        manufacturedDate: _selectedDopDate, // Use the stored DateTime object
-        status: 'Available', // Set default status to 'Available'
-      );
-      try {
-        await firestoreService.addPantryItem(newItem); // Add item to Firestore
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Item added successfully!')),
-      );
-      // Navigate to the DashboardPage with the Pantry tab selected (index 1)
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)),
-        (Route<dynamic> route) => false, // Remove all routes from the stack
-      );
+  void _onNotesFocusChange() {
+    if (_notesFocusNode.hasFocus) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        Scrollable.ensureVisible(_notesFocusNode.context!,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+            alignment: 0.05);
+      });
+    }
+  }
+
+  void _formatPrice() {
+    if (!_priceFocusNode.hasFocus) {
+      final String currentText = _priceCtrl.text;
+      final double? value = double.tryParse(currentText);
+      _priceCtrl.text = value != null ? value.toStringAsFixed(2) : '0.00';
+    }
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? image = await _picker.pickImage(
+          source: source, maxWidth: 800, maxHeight: 800, imageQuality: 85);
+      if (image != null) setState(() => _selectedImage = File(image.path));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to add item: ${e.toString()}')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Error picking image: $e')));
     }
   }
 
-  Widget label(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF2E2E2E),
-        ),
-      ),
-    );
-  }
-
-  Widget filledField(
-    TextEditingController ctrl, {
-    bool readOnly = false,
-    int maxLines = 1,
-    VoidCallback? onTap,
-    TextInputType keyboardType = TextInputType.text,
-  }) {
-    return TextField(
-      controller: ctrl,
-      readOnly: readOnly,
-      maxLines: maxLines,
-      onTap: onTap,
-      decoration: InputDecoration(
-        isDense: true,
-        filled: true,
-        fillColor: const Color(0xFFE9E9E9),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 10,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide.none,
-        ),
-      ),
-      style: const TextStyle(fontSize: 14),
-      keyboardType: keyboardType,
-    );
-  }
-
-  Widget greenDropdown() {
-    return Container(
-      height: 40,
-      decoration: BoxDecoration(
-        color: headerGreen,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          value: _selectedCategory,
-          icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
-          dropdownColor: Colors.white,
-          hint: const Text(
-            'Select Category',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+  void _showImagePickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                  leading: const Icon(Icons.camera_alt, color: Colors.green),
+                  title: const Text('Take Photo'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _pickImage(ImageSource.camera);
+                  }),
+              ListTile(
+                  leading: const Icon(Icons.photo_library, color: Colors.blue),
+                  title: const Text('Choose from Gallery'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _pickImage(ImageSource.gallery);
+                  }),
+              if (_selectedImage != null)
+                ListTile(
+                    leading: const Icon(Icons.delete, color: Colors.red),
+                    title: const Text('Remove Image'),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      setState(() => _selectedImage = null);
+                    }),
+            ],
           ),
-          items: _categories
-              .map(
-                (c) => DropdownMenuItem(
-                  value: c,
-                  child: Text(
-                    c,
-                    style: const TextStyle(color: Colors.black87, fontSize: 14),
-                  ),
+        );
+      },
+    );
+  }
+
+  Future<String?> _uploadImageToFirebase() async {
+    if (_selectedImage == null) return null;
+    setState(() => _isUploadingImage = true);
+    try {
+      final String fileName = 'pantry_items/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final Reference ref = FirebaseStorage.instance.ref().child(fileName);
+      final TaskSnapshot snapshot = await ref.putFile(_selectedImage!);
+      final String downloadUrl = await snapshot.ref.getDownloadURL();
+      setState(() => _isUploadingImage = false);
+      return downloadUrl;
+    } catch (e) {
+      setState(() => _isUploadingImage = false);
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Error uploading image: $e')));
+      return null;
+    }
+  }
+
+  Future<void> _addItem() async {
+    final price = double.tryParse(_priceCtrl.text) ?? 0.0;
+    setState(() {
+      _isNameInvalid = _nameCtrl.text.isEmpty;
+      _isCategoryInvalid = _selectedCategory == null;
+      _isExpDateInvalid = _expCtrl.text.isEmpty;
+      _isPriceInvalid = price <= 0.0;
+    });
+
+    if (_isNameInvalid || _isCategoryInvalid || _isExpDateInvalid || _isPriceInvalid) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Please fill all required fields marked in red.')));
+      return;
+    }
+
+    String? imageUrl = await _uploadImageToFirebase();
+    if (imageUrl == null && _selectedImage != null) return;
+
+    final newItem = PantryItemModel(
+      id: '',
+      householdId: '',
+      name: _nameCtrl.text,
+      category: _selectedCategory!,
+      price: price,
+      imageUrl: imageUrl,
+      qty: _quantity,
+      expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text),
+      brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
+      // --- MODIFIED LINE ---
+      // Combine the weight and the unit before saving
+      netWeight: _netWeightCtrl.text.trim().isEmpty
+          ? null
+          : '${_netWeightCtrl.text.trim()} $_selectedUnit',
+      notes: _notesCtrl.text.isEmpty ? null : _notesCtrl.text,
+    );
+
+    widget.onAddItem(newItem);
+    if (mounted) _showSuccessDialog();
+  }
+
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle_outline, color: headerGreen, size: 60),
+              const SizedBox(height: 16),
+              Text('Success!', style: TextStyle(
+                  color: headerGreen, fontSize: 24, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+              const SizedBox(height: 8),
+              Text('Pantry item added!', style: TextStyle(
+                  color: inputTextColor, fontSize: 16, fontFamily: 'Inter'), textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                      backgroundColor: headerGreen,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(vertical: 14)),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                    widget.onBack();
+                  },
+                  child: const Text('Continue', style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Inter')),
                 ),
-              )
-              .toList(),
-          onChanged: (val) => setState(() => _selectedCategory = val),
-        ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showCancelConfirmationDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 60),
+              const SizedBox(height: 16),
+              Text('Cancel Registration', style: TextStyle(
+                  color: inputTextColor, fontSize: 22, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+              const SizedBox(height: 8),
+              Text('Are you sure you want to cancel? The details will not be saved.',
+                  style: TextStyle(color: labelTextColor, fontSize: 16, fontFamily: 'Inter'), textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                          backgroundColor: const Color(0xFF9E9E9E),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(vertical: 14)),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: const Text('No', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                          backgroundColor: headerGreen,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(vertical: 14)),
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+                        widget.onBack();
+                      },
+                      child: const Text('Yes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  double? _convertNetWeight(double value, String from, String to) {
+    if (from == to) return value;
+    const weightUnits = ['g', 'kg', 'lbs'];
+    const volumeUnits = ['mL', 'L'];
+    if (!(weightUnits.contains(from) && weightUnits.contains(to)) &&
+        !(volumeUnits.contains(from) && volumeUnits.contains(to))) {
+      return null;
+    }
+    const gPerKg = 1000.0;
+    const gPerLbs = 453.592;
+    const mlPerL = 1000.0;
+    double valueInBaseUnit;
+    switch (from) {
+      case 'kg': valueInBaseUnit = value * gPerKg; break;
+      case 'lbs': valueInBaseUnit = value * gPerLbs; break;
+      case 'L': valueInBaseUnit = value * mlPerL; break;
+      default: valueInBaseUnit = value; break;
+    }
+    switch (to) {
+      case 'kg': return valueInBaseUnit / gPerKg;
+      case 'lbs': return valueInBaseUnit / gPerLbs;
+      case 'L': return valueInBaseUnit / mlPerL;
+      default: return valueInBaseUnit;
+    }
+  }
+
+  void _formatNetWeight() {
+    final currentValue = _netWeightCtrl.text.trim();
+    if (currentValue.isNotEmpty) {
+      final numValue = double.tryParse(currentValue);
+      if (numValue != null) {
+        if (_selectedUnit == 'lbs' || _selectedUnit == 'kg') {
+          if (!currentValue.contains('.')) _netWeightCtrl.text = '$currentValue.0';
+        } else {
+          if (currentValue.endsWith('.0')) _netWeightCtrl.text = currentValue.replaceAll('.0', '');
+        }
+      }
+    }
+  }
+
+  // --- UI WIDGET BUILDERS ---
+
+  Widget textField(TextEditingController ctrl,
+      {required String labelText, String? prefixText, String hintText = '',
+      bool readOnly = false, int maxLines = 1, FocusNode? focusNode,
+      VoidCallback? onTap, void Function(String)? onSubmitted, TextInputType keyboardType = TextInputType.text,
+      List<TextInputFormatter>? inputFormatters, Widget? suffixIcon,
+      String? errorText, BorderSide? borderSide}) {
+    final currentBorderSide = borderSide ?? BorderSide(color: inputBorderColor);
+    return TextField(
+      controller: ctrl, readOnly: readOnly, maxLines: maxLines, focusNode: focusNode,
+      onTap: onTap, onSubmitted: onSubmitted,
+      style: TextStyle(fontFamily: 'Roboto', fontSize: 16, color: inputTextColor),
+      decoration: InputDecoration(
+        labelText: labelText, prefixText: prefixText, hintText: hintText,
+        labelStyle: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w500, fontSize: 14, color: labelTextColor),
+        filled: true, fillColor: inputFillColor, suffixIcon: suffixIcon, errorText: errorText,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: currentBorderSide),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: currentBorderSide),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: currentBorderSide.copyWith(width: 2.0)),
+      ),
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+    );
+  }
+
+  Widget _quantityField() {
+    final borderSide = BorderSide(color: headerGreen, width: 1.5);
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: 'Quantity',
+        labelStyle: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w500, fontSize: 14, color: labelTextColor),
+        filled: true, fillColor: inputFillColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: borderSide),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: borderSide),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: borderSide.copyWith(width: 2.0)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: Icon(Icons.remove, color: headerGreen),
+            onPressed: () {
+              if (_quantity > 1) setState(() {
+                _quantity--;
+                _quantityCtrl.text = _quantity.toString();
+              });
+            },
+          ),
+          SizedBox(
+            width: 40,
+            child: TextField(
+              controller: _quantityCtrl, textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: inputTextColor),
+              decoration: const InputDecoration(border: InputBorder.none, contentPadding: EdgeInsets.zero),
+              onChanged: (value) {
+                final newQuantity = int.tryParse(value);
+                if (newQuantity != null && newQuantity > 0) _quantity = newQuantity;
+              },
+              onTapOutside: (_) {
+                if (_quantityCtrl.text.isEmpty || _quantity == 0) setState(() {
+                  _quantity = 1;
+                  _quantityCtrl.text = '1';
+                });
+              },
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.add, color: headerGreen),
+            onPressed: () => setState(() {
+              _quantity++;
+              _quantityCtrl.text = _quantity.toString();
+            }),
+          ),
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final firestoreService = Provider.of<FirestoreService>(context); // Get the FirestoreService instance
+    final nameBorderSide = _isNameInvalid ? BorderSide(color: errorColor, width: 1.5)
+        : _nameCtrl.text.isNotEmpty ? BorderSide(color: headerGreen, width: 1.5)
+        : BorderSide(color: inputBorderColor);
+    final categoryBorderSide = _isCategoryInvalid ? BorderSide(color: errorColor, width: 1.5)
+        : _selectedCategory != null ? BorderSide(color: headerGreen, width: 1.5)
+        : BorderSide(color: inputBorderColor);
+    final expDateBorderSide = _isExpDateInvalid ? BorderSide(color: errorColor, width: 1.5)
+        : _expCtrl.text.isNotEmpty ? BorderSide(color: headerGreen, width: 1.5)
+        : BorderSide(color: inputBorderColor);
+    final priceValue = double.tryParse(_priceCtrl.text) ?? 0.0;
+    final priceBorderSide = _isPriceInvalid ? BorderSide(color: errorColor, width: 1.5)
+        : priceValue > 0.0 ? BorderSide(color: headerGreen, width: 1.5)
+        : BorderSide(color: inputBorderColor);
 
     return Scaffold(
       backgroundColor: softCream,
-      body: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF2E7D32)),
-                      onPressed: () {
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)), // Navigate back to Dashboard with Pantry tab
-                          (Route<dynamic> route) => false, // Remove all routes from the stack
-                        );
-                      },
+      extendBody: true,
+      appBar: AppBar(
+        backgroundColor: headerGreen, elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          onPressed: () {
+            if (_isFormDirty()) {
+              _showCancelConfirmationDialog();
+            } else {
+              widget.onBack();
+            }
+          },
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: IconButton(
+              icon: _isUploadingImage
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.save, color: Colors.white, size: 28),
+              onPressed: _isUploadingImage ? null : _addItem,
+            ),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+            20, 16, 20, 180 + MediaQuery.of(context).padding.bottom),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Add Pantry Item', style: TextStyle(
+                color: headerGreen, fontWeight: FontWeight.w800, fontSize: 28)),
+            const SizedBox(height: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: _showImagePickerOptions,
+                  child: Container(
+                    width: 100, height: 100,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0E0E0),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: _selectedImage != null ? headerGreen : Colors.grey,
+                          width: 2),
                     ),
-                    const Text(
-                      'Back',
-                      style: TextStyle(
-                        color: Color(0xFF2E7D32),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                'Register Pantry Item',
-                style: TextStyle(
-                  color: headerGreen,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 24,
-                ),
-              ),
-              const SizedBox(height: 24),
-              // Image placeholder
-              Center(
-                child: GestureDetector(
-                  onTap: _pickImage,
-                  child: CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Colors.grey[300],
-                    backgroundImage: _imageFile != null
-                        ? FileImage(_imageFile!) as ImageProvider
-                        : null, // No initial image from item
-                    child: _imageFile == null
-                        ? Icon(
-                            Icons.camera_alt,
-                            color: Colors.grey[600],
-                            size: 50,
-                          )
-                        : null,
+                    child: _selectedImage != null
+                        ? ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(_selectedImage!, fit: BoxFit.cover))
+                        : const Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.camera_alt, color: Colors.grey, size: 30),
+                                SizedBox(height: 4),
+                                Text('Add Photo', style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.w500)),
+                              ],
+                            ),
+                          ),
                   ),
                 ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RawAutocomplete<Product>(
+                        textEditingController: _nameCtrl,
+                        focusNode: _nameFocusNode,
+                        optionsBuilder: (TextEditingValue textEditingValue) => _searchProducts(textEditingValue.text),
+                        onSelected: (Product selection) {
+                          setState(() {
+                            _nameCtrl.text = selection.productName;
+                            _brandCtrl.text = selection.brand ?? '';
+                            if (selection.category != null && _categories.contains(selection.category)) {
+                              _selectedCategory = selection.category;
+                            }
+                            _priceCtrl.text = selection.price?.toStringAsFixed(2) ?? '0.00';
+                            if (selection.netWeight != null) _parseNetWeight(selection.netWeight!);
+                            if (_nameCtrl.text.isNotEmpty) _isNameInvalid = false;
+                            if (_selectedCategory != null) _isCategoryInvalid = false;
+                            final price = double.tryParse(_priceCtrl.text) ?? 0.0;
+                            if (price > 0.0) _isPriceInvalid = false;
+                          });
+                        },
+                        fieldViewBuilder: (context, fieldTextEditingController, fieldFocusNode, onFieldSubmitted) {
+                          return textField(
+                            fieldTextEditingController, labelText: 'Item Name',
+                            focusNode: fieldFocusNode, borderSide: nameBorderSide,
+                          );
+                        },
+                        optionsViewBuilder: (context, onSelected, options) {
+                          return Align(
+                            alignment: Alignment.topLeft,
+                            child: Material(
+                              elevation: 4.0, color: inputFillColor,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: BorderSide(color: inputBorderColor)),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxHeight: 250),
+                                child: ListView.builder(
+                                  padding: const EdgeInsets.all(4.0), shrinkWrap: true,
+                                  itemCount: options.length,
+                                  itemBuilder: (BuildContext context, int index) {
+                                    final Product option = options.elementAt(index);
+                                    return InkWell(
+                                      onTap: () => onSelected(option),
+                                      child: ListTile(
+                                        title: Text(option.productName, style: TextStyle(color: inputTextColor)),
+                                        subtitle: option.brand != null && option.brand!.isNotEmpty
+                                            ? Text(option.brand!, style: TextStyle(color: labelTextColor))
+                                            : null,
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      textField(_brandCtrl, labelText: 'Brand'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            DropdownButtonFormField2<String>(
+              value: _selectedCategory, isExpanded: true,
+              decoration: InputDecoration(
+                labelText: 'Category',
+                labelStyle: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w500, fontSize: 14, color: labelTextColor),
+                filled: true, fillColor: inputFillColor,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: categoryBorderSide),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: categoryBorderSide),
               ),
-              const SizedBox(height: 24),
-              label('Item Name'),
-              Autocomplete<Product>(
-                optionsBuilder: (TextEditingValue textEditingValue) {
-                  if (textEditingValue.text.isEmpty) {
-                    return const Iterable<Product>.empty();
-                  }
-                  return firestoreService.searchProducts(textEditingValue.text).first;
-                },
-                displayStringForOption: (Product option) => option.productName,
-                fieldViewBuilder: (BuildContext context,
-                    TextEditingController fieldTextEditingController,
-                    FocusNode fieldFocusNode,
-                    VoidCallback onFieldSubmitted) {
-                  _nameCtrl = fieldTextEditingController; // Keep _nameCtrl updated
-                  return TextField(
-                    controller: fieldTextEditingController,
-                    focusNode: fieldFocusNode,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      filled: true,
-                      fillColor: const Color(0xFFE9E9E9),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
+              items: _categories.map((c) => DropdownMenuItem<String>(
+                        value: c, child: Text(c, style: TextStyle(fontFamily: 'Roboto', fontSize: 16, color: inputTextColor))))
+                  .toList(),
+              onChanged: (val) => setState(() {
+                _selectedCategory = val;
+                if (val != null) _isCategoryInvalid = false;
+              }),
+              dropdownStyleData: DropdownStyleData(decoration: BoxDecoration(borderRadius: BorderRadius.circular(12))),
+            ),
+            const SizedBox(height: 24),
+            textField(
+              _expCtrl, labelText: 'Date of Expiration', hintText: 'October 9, 2025',
+              readOnly: true, borderSide: expDateBorderSide,
+              onTap: () async {
+                final pickedDate = await showDatePicker(
+                  context: context, initialDate: DateTime.now(),
+                  firstDate: DateTime.now(), lastDate: DateTime(2100),
+                  builder: (context, child) => Theme(
+                    data: Theme.of(context).copyWith(
+                      colorScheme: ColorScheme.light(primary: headerGreen, onPrimary: Colors.white, onSurface: inputTextColor),
+                      textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: headerGreen)),
                     ),
-                    style: const TextStyle(fontSize: 14),
-                  );
-                },
-                onSelected: (Product selection) {
-                  setState(() {
-                    _nameCtrl.text = selection.productName;
-                    _netWeightCtrl.text = selection.netWeight ?? '';
-                    // Optionally set brand if available in Product model
-                    // _brandCtrl.text = selection.brand ?? '';
-                  });
-                },
-              ),
-              const SizedBox(height: 14),
-              label('Barcode (Optional)'),
-              filledField(_barcodeCtrl),
-              const SizedBox(height: 14),
-              label('Brand (Optional)'),
-              filledField(_brandCtrl),
-              const SizedBox(height: 14),
-              label('Item Category'),
-              greenDropdown(),
-              const SizedBox(height: 14),
-              label('Quantity'),
-              filledField(_qtyCtrl, keyboardType: TextInputType.number),
-              const SizedBox(height: 14),
-              label('Net Weight (e.g., "1L", "397g") (Optional)'),
-              filledField(_netWeightCtrl),
-              const SizedBox(height: 14),
-              label('Expiration Date'),
-              filledField(
-                _expCtrl,
-                readOnly: true,
-                onTap: () async {
-                  final pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: _selectedExpDate ?? DateTime.now(),
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (pickedDate != null) {
-                    setState(() {
-                      _selectedExpDate = pickedDate;
-                      _expCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
-                    });
-                  }
-                },
-              ),
-              const SizedBox(height: 14),
-              label('Date of Purchase'),
-              filledField(
-                _dopCtrl,
-                readOnly: true,
-                onTap: () async {
-                  final pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: _selectedDopDate ?? DateTime.now(),
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (pickedDate != null) {
-                    setState(() {
-                      _selectedDopDate = pickedDate;
-                      _dopCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
-                    });
-                  }
-                },
-              ),
-              const SizedBox(height: 14),
-              label('Notes (Optional)'),
-              filledField(_notesCtrl, maxLines: 5),
-              const SizedBox(height: 22),
-              Row(
-                children: [
-                  OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: headerGreen,
-                      side: BorderSide(color: headerGreen, width: 1.2),
-                      backgroundColor: softCream,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      textStyle: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (context) => const DashboardPage(initialIndex: 1)), // Navigate back to Dashboard with Pantry tab
-                        (Route<dynamic> route) => false, // Remove all routes from the stack
-                      );
+                    child: child!,
+                  ),
+                );
+                if (pickedDate != null) {
+                  setState(() => _expCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate));
+                }
+              },
+            ),
+            const SizedBox(height: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: textField(_priceCtrl, labelText: 'Item Price', prefixText: '₱ ',
+                      focusNode: _priceFocusNode,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      borderSide: priceBorderSide)),
+                const SizedBox(width: 12),
+                Expanded(child: _quantityField()),
+              ],
+            ),
+            const SizedBox(height: 24),
+            textField(
+              _netWeightCtrl, labelText: 'Net Weight', onSubmitted: (_) => _formatNetWeight(),
+              errorText: _netWeightErrorText,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+              suffixIcon: Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton2<String>(
+                    value: _selectedUnit,
+                    items: _units.map((String value) => DropdownMenuItem<String>(
+                              value: value,
+                              child: Text(value, style: TextStyle(color: inputTextColor, fontSize: 16))))
+                        .toList(),
+                    onChanged: (String? newValue) {
+                      if (newValue == null || newValue == _selectedUnit) return;
+                      setState(() => _netWeightErrorText = null);
+                      final fromUnit = _selectedUnit;
+                      final toUnit = newValue;
+                      final numValue = double.tryParse(_netWeightCtrl.text.trim());
+                      setState(() => _selectedUnit = toUnit);
+                      if (numValue == null) return;
+                      final convertedValue = _convertNetWeight(numValue.toDouble(), fromUnit, toUnit);
+                      if (convertedValue != null) {
+                        _netWeightCtrl.text = NumberFormat("0.###").format(convertedValue);
+                      } else {
+                        setState(() => _netWeightErrorText = "Cannot convert from $fromUnit to $toUnit.");
+                      }
                     },
-                    child: const Text('Cancel'),
+                    iconStyleData: IconStyleData(icon: Icon(Icons.unfold_more, color: Colors.grey[600], size: 20)),
+                    buttonStyleData: const ButtonStyleData(padding: EdgeInsets.zero, height: 40),
+                    dropdownStyleData: DropdownStyleData(decoration: BoxDecoration(borderRadius: BorderRadius.circular(12))),
                   ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: headerGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 26,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      textStyle: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
-                    onPressed: () => _registerItem(firestoreService),
-                    child: const Text('Register'),
-                  ),
-                ],
+                ),
               ),
-            ],
+            ),
+            const SizedBox(height: 24),
+            textField(_notesCtrl, labelText: 'Notes', hintText: 'No notes for this item.',
+                maxLines: 3, focusNode: _notesFocusNode),
+          ],
+        ),
+      ),
+      bottomNavigationBar: IgnorePointer(
+        child: SizedBox(
+          height: 180 + MediaQuery.of(context).padding.bottom,
+          child: Image.asset(
+            'assets/footer1e27d32-trans.png',
+            width: double.infinity, fit: BoxFit.cover,
           ),
         ),
       ),

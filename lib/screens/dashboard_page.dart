@@ -24,6 +24,7 @@ import 'package:provider/provider.dart'; // Import provider
 import 'package:shelf_control/screens/waste_tracker_page.dart';
 import 'package:shelf_control/screens/mealsuggest.dart';
 import 'package:shelf_control/screens/dietary_preference_page.dart';
+import 'package:shelf_control/screens/add_pantry_item_wrapper.dart';
 
 class DashboardPage extends StatefulWidget {
   final int initialIndex; // Add initialIndex parameter
@@ -248,7 +249,7 @@ class _DashboardPageState extends State<DashboardPage> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const AddPantryItem()),
+                MaterialPageRoute(builder: (context) => const AddPantryItemWrapper()),
               );
             },
           ),

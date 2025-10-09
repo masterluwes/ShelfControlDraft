@@ -24,6 +24,7 @@ class PantryItemModel {
   DateTime? deletedAt; // New field for when the item was deleted
   String? notes; // New field for notes
   String? storageLocation; // New field for storage location
+  final double? price;
 
   PantryItemModel({
     this.id,
@@ -49,6 +50,7 @@ class PantryItemModel {
     this.deletedAt, // Add deletedAt to constructor
     this.notes, // Add notes to constructor
     this.storageLocation, // Add storageLocation to constructor
+    this.price
   });
 
   // Factory constructor to create a PantryItemModel from a Firestore document
@@ -113,37 +115,40 @@ class PantryItemModel {
   // Method to create a copy of the current object with updated fields
   PantryItemModel copyWith({
     String? id,
+    String? householdId,
     String? status,
     int? qty,
     DateTime? consumedAt,
     DateTime? deletedAt,
     String? notes, // Add notes to copyWith
     String? storageLocation, // Add storageLocation to copyWith
+    double? price, 
   }) {
     return PantryItemModel(
-      id: id ?? this.id, // Use provided id or current id
-      householdId: householdId,
-      name: name,
-      category: category,
-      imageUrl: imageUrl,
-      qty: qty ?? this.qty, // Use provided qty or current qty
-      expiresText: expiresText,
-      barcode: barcode,
-      brand: brand,
-      quantityUnit: quantityUnit,
-      nutritionFacts: nutritionFacts,
-      shelfLifeDays: shelfLifeDays,
-      shelfLifeWeeks: shelfLifeWeeks,
-      shelfLifeMonths: shelfLifeMonths,
-      manufacturedDate: manufacturedDate,
-      expirationDate: expirationDate,
-      netWeight: netWeight,
-      selected: selected,
-      status: status ?? this.status, // Use provided status or current status
-      consumedAt: consumedAt ?? this.consumedAt, // Use provided consumedAt or current consumedAt
-      deletedAt: deletedAt ?? this.deletedAt, // Use provided deletedAt or current deletedAt
-      notes: notes ?? this.notes, // Use provided notes or current notes
-      storageLocation: storageLocation ?? this.storageLocation, // Use provided storageLocation or current storageLocation
+      id: id ?? this.id,
+    householdId: householdId ?? this.householdId,  // <-- add this line
+    name: name,
+    category: category,
+    imageUrl: imageUrl,
+    qty: qty ?? this.qty,
+    expiresText: expiresText,
+    barcode: barcode,
+    brand: brand,
+    quantityUnit: quantityUnit,
+    nutritionFacts: nutritionFacts,
+    shelfLifeDays: shelfLifeDays,
+    shelfLifeWeeks: shelfLifeWeeks,
+    shelfLifeMonths: shelfLifeMonths,
+    manufacturedDate: manufacturedDate,
+    expirationDate: expirationDate,
+    netWeight: netWeight,
+    selected: selected,
+    status: status ?? this.status,
+    consumedAt: consumedAt ?? this.consumedAt,
+    deletedAt: deletedAt ?? this.deletedAt,
+    notes: notes ?? this.notes,
+    storageLocation: storageLocation ?? this.storageLocation,
+    price: price ?? this.price, 
     );
   }
 }
