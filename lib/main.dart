@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:shelf_control/screens/create_account_page.dart';
 import 'package:shelf_control/screens/login_page.dart';
 import 'package:shelf_control/screens/guest_page.dart';
+import 'package:shelf_control/screens/splash_screen.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/feature_preview_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -34,18 +35,7 @@ class ShelfControlApp extends StatelessWidget {
       // Use DevicePreview's builder for locale and builder
       locale: DevicePreview.locale(context),
       builder: DevicePreview.appBuilder,
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const CircularProgressIndicator(); // Or a splash screen
-          }
-          if (snapshot.hasData) {
-            return const FeaturePreviewScreen(); // User is logged in
-          }
-          return WelcomePage(); // User is not logged in
-        },
-      ),
+      home: const SplashScreen(),
       routes: {
         '/create-account': (context) => const CreateAccountPage(),
         '/login': (context) => const LoginPage(),
