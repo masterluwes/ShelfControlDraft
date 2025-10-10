@@ -9,7 +9,7 @@ import 'package:provider/provider.dart'; // Import provider
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 
 // ===== Top-level enum =====
-enum GenMode { recommended, budget, healthy }
+enum GenMode { budget, healthy }
 
 class Viewalllist extends StatefulWidget {
   const Viewalllist({super.key});
@@ -348,11 +348,11 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   Future<void> _showGenerateListDialog() async {
     final parentContext = context;
 
-    GenMode mode = GenMode.recommended;
-    double sliderValue = 1500;
-    int numberOfItems = 10;
+    GenMode mode = GenMode.budget;
     const double minBudget = 200;
-    const double maxBudget = 10000;
+    const double maxBudget = 1000; // Adjusted to a more realistic maximum for a single product
+    double sliderValue = maxBudget; // Initialize sliderValue to maxBudget to avoid assertion error
+    int numberOfItems = 10;
     final budgetCtrl = TextEditingController(
       text: sliderValue.toStringAsFixed(0),
     );
@@ -395,17 +395,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _RadioTile<GenMode>(
-                      value: GenMode.recommended,
-                      groupValue: mode,
-                      onChanged: (v) => setLocal(() => mode = v!),
-                      title: 'Most Recommended',
-                      subtitle: 'Curated picks based on popularity.',
-                      icon: Icons.recommend_outlined,
-                      headerGreen: headerGreen,
-                      sep: sep,
-                    ),
-                    if (mode == GenMode.recommended || mode == GenMode.healthy) ...[
+                    if (mode == GenMode.healthy) ...[
                       const SizedBox(height: 12),
                       Align(
                         alignment: Alignment.centerLeft,
@@ -553,14 +543,10 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                   ),
                   onPressed: () async {
                     // === Titles WITHOUT the "Auto:" prefix ===
-                    String title = 'Most Recommended';
-                    IconData icon = Icons.recommend_outlined;
+                    String title = '';
+                    IconData icon = Icons.list_alt_outlined; // Default icon
 
                     switch (mode) {
-                      case GenMode.recommended:
-                        title = 'Most Recommended';
-                        icon = Icons.recommend_outlined;
-                        break;
                       case GenMode.budget:
                         title = 'Budget ${formatPhp(sliderValue)}';
                         icon = Icons.account_balance_wallet_outlined;
@@ -574,9 +560,6 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                     List<ShoppingListItemModel> generatedItems = [];
                     if (_householdId != null) {
                       switch (mode) {
-                        case GenMode.recommended:
-                          generatedItems = await _shoppingListService.generateMostRecommendedList(_householdId!, numberOfItems: numberOfItems);
-                          break;
                         case GenMode.budget:
                           generatedItems = await _shoppingListService.generateBudgetFriendlyList(_householdId!, sliderValue, numberOfItems: numberOfItems);
                           break;

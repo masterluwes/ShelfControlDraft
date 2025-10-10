@@ -7,7 +7,8 @@ class Household {
   List<String> members;
   String joinCode;
   bool isPersonal;
-  DateTime? timestamp; // Add timestamp field
+  DateTime? timestamp;
+  String? activeShoppingListId; // New field for active shopping list
 
   Household({
     required this.id,
@@ -16,7 +17,8 @@ class Household {
     required this.members,
     required this.joinCode,
     this.isPersonal = false,
-    this.timestamp, // Add timestamp to constructor
+    this.timestamp,
+    this.activeShoppingListId, // Add to constructor
   });
 
   factory Household.fromFirestore(DocumentSnapshot doc) {
@@ -28,7 +30,8 @@ class Household {
       members: List<String>.from(data['members'] ?? []),
       joinCode: data['joinCode'] ?? '',
       isPersonal: data['isPersonal'] ?? false,
-      timestamp: (data['timestamp'] as Timestamp?)?.toDate(), // Parse timestamp
+      timestamp: (data['timestamp'] as Timestamp?)?.toDate(),
+      activeShoppingListId: data['activeShoppingListId'], // Parse new field
     );
   }
 
@@ -40,6 +43,7 @@ class Household {
       'joinCode': joinCode,
       'isPersonal': isPersonal,
       'timestamp': FieldValue.serverTimestamp(),
+      'activeShoppingListId': activeShoppingListId, // Add to Firestore map
     };
   }
 }

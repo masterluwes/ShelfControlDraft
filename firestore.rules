@@ -10,12 +10,17 @@ service cloud.firestore {
 
     // Allow read/write for household documents
     match /households/{householdId} {
+      // Helper function to check if the user is a member of the household
+      function isHouseholdMember(hid) {
+        return get(/databases/$(database)/documents/households/$(hid)).data.members.hasAny([request.auth.uid]);
+      }
+
       // Allow any authenticated user to read household documents.
       // This is necessary to allow users to query for households by joinCode.
       // Note: This makes household information, including member lists, readable by any authenticated user.
       allow read: if request.auth.uid != null;
       allow create: if request.auth.uid != null; // Allow any authenticated user to create a household
-      allow update: if request.auth.uid != null && (
+      allow update: if request.auth.uid != null && isHouseholdMember(householdId) && (
         (
           // Allow a user to add themselves to the members list (only 'members' field can change)
           request.resource.data.members.size() == resource.data.members.size() + 1 &&
@@ -29,6 +34,10 @@ service cloud.firestore {
           !request.resource.data.members.hasAny([request.auth.uid]) && // Current user is no longer a member
           resource.data.members.hasAll(request.resource.data.members) && // All other members are still there
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']) // Only members field changed
+        ) ||
+        (
+          // Allow a household member to update the activeShoppingListId
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeShoppingListId'])
         )
       );
       allow delete: if request.auth.uid == resource.data.ownerId; // Only owner can delete
@@ -48,9 +57,18 @@ service cloud.firestore {
 
     // Allow read/write for shopping lists within a household
     match /shoppingLists/{listId} {
+      // Simplified read rule for queries: check if the user is a member of the household associated with the shopping list
       allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
       allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]);
-      allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow update: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+
+      // Rules for shopping list items subcollection
+      match /items/{itemId} {
+        allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(get(/databases/$(database)/documents/shoppingLists/$(listId)).data.householdId)).data.members.hasAny([request.auth.uid]);
+        allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(get(/databases/$(database)/documents/shoppingLists/$(listId)).data.householdId)).data.members.hasAny([request.auth.uid]);
+        allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(get(/databases/$(database)/documents/shoppingLists/$(listId)).data.householdId)).data.members.hasAny([request.auth.uid]);
+      }
     }
 
     // Allow read/write for shopping history items within a household

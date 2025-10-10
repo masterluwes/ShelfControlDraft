@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class ShoppingListItemModel {
   String? id; // Optional: For individual item if stored separately, or just for UI key
   String? productId; // Reference to a product in local_products_ph or a generic product ID
@@ -25,10 +27,11 @@ class ShoppingListItemModel {
     this.nutrition, // Initialize nutrition
   });
 
-  // Factory constructor to create a ShoppingListItemModel from a Firestore map
-  factory ShoppingListItemModel.fromMap(Map<String, dynamic> data) {
+  // Factory constructor to create a ShoppingListItemModel from a Firestore DocumentSnapshot
+  factory ShoppingListItemModel.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return ShoppingListItemModel(
-      id: data['id'],
+      id: doc.id, // Use doc.id for the item's ID
       productId: data['productId'],
       name: data['name'] ?? '',
       brand: data['brand'],
@@ -37,8 +40,25 @@ class ShoppingListItemModel {
       unitPrice: (data['unitPrice'] as num?)?.toDouble() ?? 0.0,
       quantity: data['quantity'] ?? 1,
       isPurchased: data['isPurchased'] ?? false,
-      isBookmarked: data['isBookmarked'] ?? false, // Deserialize isBookmarked
-      nutrition: data['nutrition'], // Deserialize nutrition
+      isBookmarked: data['isBookmarked'] ?? false,
+      nutrition: data['nutrition'],
+    );
+  }
+
+  // Factory constructor to create a ShoppingListItemModel from a map (for local use or array fields)
+  factory ShoppingListItemModel.fromMap(Map<String, dynamic> data) {
+    return ShoppingListItemModel(
+      id: data['id'], // This ID might be null if it's an item within an array field
+      productId: data['productId'],
+      name: data['name'] ?? '',
+      brand: data['brand'],
+      netWeight: data['netWeight'],
+      category: data['category'],
+      unitPrice: (data['unitPrice'] as num?)?.toDouble() ?? 0.0,
+      quantity: data['quantity'] ?? 1,
+      isPurchased: data['isPurchased'] ?? false,
+      isBookmarked: data['isBookmarked'] ?? false,
+      nutrition: data['nutrition'],
     );
   }
 

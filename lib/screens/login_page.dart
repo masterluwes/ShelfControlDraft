@@ -65,7 +65,7 @@ class _LoginPageState extends State<LoginPage> {
       } on FirebaseAuthException catch (e) {
         String errorMessage;
         if (e.code == 'user-not-found' || e.code == 'wrong-password') {
-          errorMessage = 'Invalid email or password.';
+          errorMessage = 'Please check your email and password. The combination you entered is incorrect.';
         } else if (e.code == 'invalid-email') {
           errorMessage = 'The email address is not valid.';
         } else if (e.code == 'user-disabled') {
