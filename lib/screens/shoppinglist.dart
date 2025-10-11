@@ -132,7 +132,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
         netWeight: checkedItem.netWeight,
         status: 'Available',
         nutrition: checkedItem.nutrition, // Pass nutrition from shopping list item
-        addedMethod: 'via Shopping List', // Automatically set addedMethod
       );
 
       if (existingPantryItem != null) {

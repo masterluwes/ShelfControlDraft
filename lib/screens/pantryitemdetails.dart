@@ -141,32 +141,12 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
                           prefixText: '₱ ',
                         ),
                       ),
-                      const SizedBox(width: 16),
+                  const SizedBox(width: 16),
                       Expanded(
                         child: _buildLabeledDetailField(
                           label: 'Net Weight',
                           value: item.netWeight ?? 'Not specified',
                           icon: Icons.shopping_bag_outlined,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildLabeledDetailField(
-                          label: 'Added By',
-                          value: item.addedBy ?? 'Unknown Member',
-                          icon: Icons.person_outline,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildLabeledDetailField(
-                          label: 'Added Method',
-                          value: item.addedMethod ?? 'Manual Input',
-                          icon: Icons.add_circle_outline,
                         ),
                       ),
                     ],

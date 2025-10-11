@@ -10,8 +10,6 @@ class PantryItemModel {
   String? expiresText; // This might be replaced by actual DateTime later
   String? barcode;
   String? quantityUnit; // e.g., "1L", "397g"
-  String? addedBy; // New field for the nickname of the member who added the item
-  String? addedMethod; // New field for how the item was added (e.g., "Shopping List", "Manual", "Scan")
   Map<String, dynamic>? nutritionFacts; // New field for nutrition information
   String? nutrition; // New field for nutrition string
   int? shelfLifeDays;
@@ -39,8 +37,6 @@ class PantryItemModel {
     this.expiresText,
     this.barcode,
     this.quantityUnit,
-    this.addedBy, // Add addedBy to constructor
-    this.addedMethod, // Add addedMethod to constructor
     this.nutritionFacts,
     this.nutrition, // Add nutrition to constructor
     this.shelfLifeDays,
@@ -72,8 +68,6 @@ class PantryItemModel {
       expiresText: data['expiresText'],
       barcode: data['barcode'],
       quantityUnit: data['quantityUnit'],
-      addedBy: data['addedBy'], // Add addedBy to fromFirestore
-      addedMethod: data['addedMethod'], // Add addedMethod to fromFirestore
       nutritionFacts: data['nutritionFacts'] != null ? Map<String, dynamic>.from(data['nutritionFacts']) : null,
       nutrition: data['nutrition'], // Add nutrition to fromFirestore
       shelfLifeDays: data['shelfLifeDays'],
@@ -105,8 +99,6 @@ class PantryItemModel {
       expiresText: data['expiresText'],
       barcode: data['barcode'],
       quantityUnit: data['quantityUnit'],
-      addedBy: data['addedBy'], // Add addedBy to fromMap
-      addedMethod: data['addedMethod'], // Add addedMethod to fromMap
       nutritionFacts: data['nutritionFacts'] != null ? Map<String, dynamic>.from(data['nutritionFacts']) : null,
       nutrition: data['nutrition'], // Add nutrition to fromMap
       shelfLifeDays: data['shelfLifeDays'],
@@ -136,8 +128,6 @@ class PantryItemModel {
       'expiresText': expiresText,
       'barcode': barcode,
       'quantityUnit': quantityUnit,
-      'addedBy': addedBy, // Add addedBy to toFirestore
-      'addedMethod': addedMethod, // Add addedMethod to toFirestore
       'nutritionFacts': nutritionFacts,
       'nutrition': nutrition, // Add nutrition to toFirestore
       'shelfLifeDays': shelfLifeDays,
@@ -169,8 +159,6 @@ class PantryItemModel {
     String? expiresText,
     String? barcode,
     String? quantityUnit,
-    String? addedBy, // Add addedBy to copyWith
-    String? addedMethod, // Add addedMethod to copyWith
     Map<String, dynamic>? nutritionFacts,
     String? nutrition,
     int? shelfLifeDays,
@@ -198,8 +186,6 @@ class PantryItemModel {
       expiresText: expiresText ?? this.expiresText,
       barcode: barcode ?? this.barcode,
       quantityUnit: quantityUnit ?? this.quantityUnit,
-      addedBy: addedBy ?? this.addedBy, // Add addedBy to copyWith
-      addedMethod: addedMethod ?? this.addedMethod, // Add addedMethod to copyWith
       nutritionFacts: nutritionFacts ?? this.nutritionFacts,
       nutrition: nutrition ?? this.nutrition,
       shelfLifeDays: shelfLifeDays ?? this.shelfLifeDays,

@@ -281,8 +281,6 @@ class _EditPantryItemState extends State<EditPantryItem> {
       price: double.tryParse(_priceCtrl.text) ?? 0.0,
       imageUrl: finalImageUrl,
       qty: _quantity,
-      addedBy: widget.item.addedBy,
-      addedMethod: widget.item.addedMethod,
       netWeight: _netWeightCtrl.text.trim().isEmpty ? null : '${_netWeightCtrl.text.trim()} $_selectedUnit',
       notes: _notesCtrl.text.isEmpty ? null : _notesCtrl.text,
       expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text),

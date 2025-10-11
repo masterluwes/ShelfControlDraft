@@ -299,10 +299,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       }
       if (_query.isNotEmpty) {
         final q = _query.toLowerCase();
-        final hit = it.name.toLowerCase().contains(q) ||
-            it.category.toLowerCase().contains(q) ||
-            (it.addedBy?.toLowerCase().contains(q) ?? false); // Changed from brand
-        if (!hit) return false;
+        if (!(it.name.toLowerCase().contains(q) || it.category.toLowerCase().contains(q))) {
+          return false;
+        }
       }
       return true;
     }).toList();
@@ -772,7 +771,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 4),
-                    Text(item.addedBy ?? 'Unknown Member', // Changed from brand
+                    Text('Unknown Member', // Changed from brand
                         style: const TextStyle(
                             fontSize: 11, color: Color(0xFF6F6F6F))),
                     const SizedBox(height: 2),

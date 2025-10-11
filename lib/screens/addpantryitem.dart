@@ -475,8 +475,6 @@ class _AddPantryItemState extends State<AddPantryItem> {
       qty: _quantity,
       expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text),
       manufacturedDate: _selectedDopDate,
-      addedBy: FirebaseAuth.instance.currentUser?.displayName,
-      addedMethod: 'Manual Input',
       netWeight: _netWeightCtrl.text.trim().isEmpty
           ? null
           : '${_netWeightCtrl.text.trim()} $_selectedUnit',
@@ -801,7 +799,6 @@ class _AddPantryItemState extends State<AddPantryItem> {
                         onSelected: (Product selection) {
                           setState(() {
                             _nameCtrl.text = selection.productName;
-                            // _addedByController.text = selection.brand ?? ''; // Removed brand assignment
                             if (selection.category != null && _categories.contains(selection.category)) {
                               _selectedCategory = selection.category;
                             } else {

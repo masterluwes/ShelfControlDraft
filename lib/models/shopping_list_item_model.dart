@@ -23,8 +23,8 @@ class ShoppingListItemModel {
     required this.unitPrice,
     required this.quantity,
     this.isPurchased = false,
-    this.isBookmarked = false, // Initialize isBookmarked
-    this.nutrition, // Initialize nutrition
+    this.isBookmarked = false,
+    this.nutrition,
   });
 
   // Factory constructor to create a ShoppingListItemModel from a Firestore DocumentSnapshot

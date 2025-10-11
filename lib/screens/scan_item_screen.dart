@@ -134,7 +134,6 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         qty: 1,
         barcode: barcode,
         quantityUnit: product['quantity'],
-        addedMethod: 'by Scanning', // Set addedMethod here
         nutritionFacts: product['nutriments'] is Map ? Map<String, dynamic>.from(product['nutriments']) : null,
         // Re-adding shelf-life and date fields
         shelfLifeDays: null, // Will be set by user in sheet
