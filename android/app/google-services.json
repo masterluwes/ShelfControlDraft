@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "821259364563",
+    "project_id": "shelfcontrol-8f5ab",
+    "storage_bucket": "shelfcontrol-8f5ab.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:821259364563:android:cafb8514b4fca833e90c26",
+        "android_client_info": {
+          "package_name": "com.example.shelfcontrol"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDyf3S8E98oGJZEsuLgIAb4TEfXGzCJvpE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
