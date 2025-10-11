@@ -13,6 +13,7 @@ import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 import 'dart:convert'; // For JSON encoding/decoding
 // import 'package:fuzzywuzzy/fuzzywuzzy.dart'; // Removed fuzzywuzzy
+import 'package:shelf_control/models/meal_history_model.dart';
 
 class FirestoreService extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -133,7 +134,8 @@ class FirestoreService extends ChangeNotifier {
   // Save guest pantry items to local storage
   Future<void> saveGuestPantryItems(List<PantryItemModel> items) async {
     final prefs = await SharedPreferences.getInstance();
-    final String encodedData = json.encode(items.map((item) => item.toFirestore()).toList());
+    final String encodedData =
+        json.encode(items.map((item) => item.toFirestore()).toList());
     await prefs.setString(_guestPantryKey, encodedData);
   }
 
@@ -145,13 +147,16 @@ class FirestoreService extends ChangeNotifier {
       return [];
     }
     final List<dynamic> decodedData = json.decode(encodedData);
-    return decodedData.map((data) => PantryItemModel.fromFirestore(data)).toList();
+    return decodedData
+        .map((data) => PantryItemModel.fromFirestore(data))
+        .toList();
   }
 
   // Save guest shopping lists to local storage
   Future<void> saveGuestShoppingLists(List<ShoppingListModel> lists) async {
     final prefs = await SharedPreferences.getInstance();
-    final String encodedData = json.encode(lists.map((list) => list.toFirestore()).toList());
+    final String encodedData =
+        json.encode(lists.map((list) => list.toFirestore()).toList());
     await prefs.setString(_guestShoppingListKey, encodedData);
   }
 
@@ -163,7 +168,9 @@ class FirestoreService extends ChangeNotifier {
       return [];
     }
     final List<dynamic> decodedData = json.decode(encodedData);
-    return decodedData.map((data) => ShoppingListModel.fromFirestore(data)).toList();
+    return decodedData
+        .map((data) => ShoppingListModel.fromFirestore(data))
+        .toList();
   }
 
   // Clear all guest data from local storage
@@ -246,31 +253,44 @@ class FirestoreService extends ChangeNotifier {
   // Delete a household and all associated data
   Future<void> deleteHousehold(String householdId) async {
     // 1. Delete all pantry items for the household
-    final pantryItemsQuery = await _db.collection('pantryItems').where('householdId', isEqualTo: householdId).get();
+    final pantryItemsQuery = await _db
+        .collection('pantryItems')
+        .where('householdId', isEqualTo: householdId)
+        .get();
     for (final doc in pantryItemsQuery.docs) {
       await doc.reference.delete();
     }
 
     // 2. Delete all shopping lists for the household
-    final shoppingListsQuery = await _db.collection('shoppingLists').where('householdId', isEqualTo: householdId).get();
+    final shoppingListsQuery = await _db
+        .collection('shoppingLists')
+        .where('householdId', isEqualTo: householdId)
+        .get();
     for (final doc in shoppingListsQuery.docs) {
       await doc.reference.delete();
     }
 
     // 3. Delete all shopping history items for the household
-    final shoppingHistoryQuery = await _db.collection('shoppingHistory').where('householdId', isEqualTo: householdId).get();
+    final shoppingHistoryQuery = await _db
+        .collection('shoppingHistory')
+        .where('householdId', isEqualTo: householdId)
+        .get();
     for (final doc in shoppingHistoryQuery.docs) {
       await doc.reference.delete();
     }
 
     // 4. Remove the householdId from all member users' householdIds array
-    final usersQuery = await _db.collection('users').where('householdIds', arrayContains: householdId).get();
+    final usersQuery = await _db
+        .collection('users')
+        .where('householdIds', arrayContains: householdId)
+        .get();
     for (final userDoc in usersQuery.docs) {
       await userDoc.reference.update({
         'householdIds': FieldValue.arrayRemove([householdId]),
       });
       // If the deleted household was the user's personal household, clear personalHouseholdId
-      if (userDoc.data().containsKey('personalHouseholdId') && userDoc.data()['personalHouseholdId'] == householdId) {
+      if (userDoc.data().containsKey('personalHouseholdId') &&
+          userDoc.data()['personalHouseholdId'] == householdId) {
         await userDoc.reference.update({
           'personalHouseholdId': FieldValue.delete(),
         });
@@ -334,7 +354,8 @@ class FirestoreService extends ChangeNotifier {
   // --- Notification Settings Methods ---
 
   // Save notification settings for a user
-  Future<void> saveNotificationSettings(String userId, Map<String, dynamic> settings) async {
+  Future<void> saveNotificationSettings(
+      String userId, Map<String, dynamic> settings) async {
     await _db.collection('users').doc(userId).update({
       'notificationSettings': settings,
     });
@@ -343,7 +364,9 @@ class FirestoreService extends ChangeNotifier {
   // Get notification settings for a user
   Future<Map<String, dynamic>?> getNotificationSettings(String userId) async {
     final doc = await _db.collection('users').doc(userId).get();
-    if (doc.exists && doc.data() != null && doc.data()!.containsKey('notificationSettings')) {
+    if (doc.exists &&
+        doc.data() != null &&
+        doc.data()!.containsKey('notificationSettings')) {
       return Map<String, dynamic>.from(doc.data()!['notificationSettings']);
     }
     return null; // Or return default settings if preferred
@@ -352,8 +375,11 @@ class FirestoreService extends ChangeNotifier {
   // Get a stream of notification settings for a user
   Stream<Map<String, dynamic>?> getNotificationSettingsStream(String userId) {
     return _db.collection('users').doc(userId).snapshots().map((userDoc) {
-      if (userDoc.exists && userDoc.data() != null && userDoc.data()!.containsKey('notificationSettings')) {
-        return Map<String, dynamic>.from(userDoc.data()!['notificationSettings']);
+      if (userDoc.exists &&
+          userDoc.data() != null &&
+          userDoc.data()!.containsKey('notificationSettings')) {
+        return Map<String, dynamic>.from(
+            userDoc.data()!['notificationSettings']);
       }
       return null;
     });
@@ -610,9 +636,12 @@ class FirestoreService extends ChangeNotifier {
 
   // Update a user's FCM token
   Future<void> updateUserFCMToken(String userId, String token) async {
-    await _db.collection('users').doc(userId).set({
-      'fcmToken': token,
-    }, SetOptions(merge: true)); // Use merge to avoid overwriting other user data
+    await _db.collection('users').doc(userId).set(
+        {
+          'fcmToken': token,
+        },
+        SetOptions(
+            merge: true)); // Use merge to avoid overwriting other user data
   }
 
   // Leave a household
@@ -642,17 +671,17 @@ class FirestoreService extends ChangeNotifier {
   }
 
   Future<void> markAsWasted(PantryItemModel item) async {
-  if (selectedHouseholdId == null || item.id == null) {
-    throw Exception("No household selected or item ID is missing.");
+    if (selectedHouseholdId == null || item.id == null) {
+      throw Exception("No household selected or item ID is missing.");
+    }
+    final updated = item.copyWith(
+      status: 'wasted',
+      wastedAt: DateTime.now(),
+    );
+    await _pantryCol(selectedHouseholdId!)
+        .doc(item.id)
+        .update(updated.toFirestore());
   }
-  final updated = item.copyWith(
-    status: 'wasted',
-    wastedAt: DateTime.now(),
-  );
-  await _pantryCol(selectedHouseholdId!)
-      .doc(item.id)
-      .update(updated.toFirestore());
-}
 
   // Search for products in the local_products_ph collection
   Stream<List<Product>> searchProducts(String query) {
@@ -677,7 +706,10 @@ class FirestoreService extends ChangeNotifier {
   }
 
   // Get frequently consumed items for a household
-  Future<List<Map<String, dynamic>>> getFrequentlyConsumedItems(String householdId, {int limit = 5, int days = 30}) async {
+  Future<List<Map<String, dynamic>>> getFrequentlyConsumedItems(
+      String householdId,
+      {int limit = 5,
+      int days = 30}) async {
     final thirtyDaysAgo = DateTime.now().subtract(Duration(days: days));
 
     final querySnapshot = await _db
@@ -688,24 +720,30 @@ class FirestoreService extends ChangeNotifier {
         .get();
 
     final Map<String, int> consumptionCounts = {};
-    final Map<String, PantryItemModel> latestPantryItems = {}; // To get current pantry item details
+    final Map<String, PantryItemModel> latestPantryItems =
+        {}; // To get current pantry item details
 
     for (final doc in querySnapshot.docs) {
       final historyItem = ShoppingHistoryItemModel.fromFirestore(doc);
       final productName = historyItem.productName;
-      consumptionCounts[productName] = (consumptionCounts[productName] ?? 0) + historyItem.quantity;
+      consumptionCounts[productName] =
+          (consumptionCounts[productName] ?? 0) + historyItem.quantity;
 
       // Try to get the latest pantry item for this product name
       // This is a simplified approach; a more robust solution might involve tracking item IDs in history
-      final pantryItemQuery = await _db.collection('pantryItems')
+      final pantryItemQuery = await _db
+          .collection('pantryItems')
           .where('householdId', isEqualTo: householdId)
           .where('name', isEqualTo: productName)
-          .orderBy('timestamp', descending: true) // Assuming 'timestamp' is when it was added/updated
+          .orderBy('timestamp',
+              descending:
+                  true) // Assuming 'timestamp' is when it was added/updated
           .limit(1)
           .get();
 
       if (pantryItemQuery.docs.isNotEmpty) {
-        latestPantryItems[productName] = PantryItemModel.fromFirestore(pantryItemQuery.docs.first);
+        latestPantryItems[productName] =
+            PantryItemModel.fromFirestore(pantryItemQuery.docs.first);
       }
     }
 
@@ -713,17 +751,20 @@ class FirestoreService extends ChangeNotifier {
         .map((entry) => {
               'productName': entry.key,
               'totalConsumed': entry.value,
-              'pantryItem': latestPantryItems[entry.key]?.toFirestore(), // Include pantry item details if found
+              'pantryItem': latestPantryItems[entry.key]
+                  ?.toFirestore(), // Include pantry item details if found
             })
         .toList();
 
-    sortedItems.sort((a, b) => b['totalConsumed'].compareTo(a['totalConsumed']));
+    sortedItems
+        .sort((a, b) => b['totalConsumed'].compareTo(a['totalConsumed']));
 
     return sortedItems.take(limit).toList();
   }
 
   // --- Batch Consumption Method ---
-  Future<void> batchConsumePantryItems(String householdId, Map<String, int> itemsToConsume) async {
+  Future<void> batchConsumePantryItems(
+      String householdId, Map<String, int> itemsToConsume) async {
     final batch = _db.batch();
 
     for (final entry in itemsToConsume.entries) {
@@ -744,7 +785,11 @@ class FirestoreService extends ChangeNotifier {
         // Determine productId from local_products_ph if barcode is available
         String? productId;
         if (item.barcode != null && item.barcode!.isNotEmpty) {
-          final productQuery = await _db.collection('local_products_ph').where('barcode', isEqualTo: item.barcode).limit(1).get();
+          final productQuery = await _db
+              .collection('local_products_ph')
+              .where('barcode', isEqualTo: item.barcode)
+              .limit(1)
+              .get();
           if (productQuery.docs.isNotEmpty) {
             productId = productQuery.docs.first.id;
           }
@@ -760,7 +805,8 @@ class FirestoreService extends ChangeNotifier {
           purchaseDate: DateTime.now(),
           actionType: 'Consumed',
         );
-        batch.set(_db.collection('shoppingHistory').doc(), historyItem.toFirestore());
+        batch.set(
+            _db.collection('shoppingHistory').doc(), historyItem.toFirestore());
       }
     }
     await batch.commit();
@@ -778,7 +824,9 @@ class FirestoreService extends ChangeNotifier {
           .collection('appNotifications')
           .where('userId', isEqualTo: notification.userId) // Filter by userId
           .where('type', isEqualTo: 'pantry_summary')
-          .where('householdId', isEqualTo: notification.householdId) // Use householdId for summary notifications
+          .where('householdId',
+              isEqualTo: notification
+                  .householdId) // Use householdId for summary notifications
           .limit(1)
           .get();
     } else {
@@ -791,7 +839,6 @@ class FirestoreService extends ChangeNotifier {
           .limit(1)
           .get();
     }
-
 
     if (querySnapshot.docs.isNotEmpty) {
       // Update existing notification
@@ -821,7 +868,8 @@ class FirestoreService extends ChangeNotifier {
   }
 
   // Mark a specific notification as read
-  Future<void> markNotificationAsRead(String userId, String notificationId) async {
+  Future<void> markNotificationAsRead(
+      String userId, String notificationId) async {
     await _db.collection('appNotifications').doc(notificationId).update({
       'isRead': true,
     });
@@ -837,4 +885,72 @@ class FirestoreService extends ChangeNotifier {
         .map((snapshot) => snapshot.docs.length);
   }
 
+  Future<void> addMealHistory(MealHistory history) async {
+    if (selectedHouseholdId == null) {
+      throw Exception("No household selected.");
+    }
+    await _db.collection('mealHistory').add(history.toFirestore());
+  }
+
+  // Normalize like in your meal planner
+  String _norm(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9 ]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  /// Deduct 1 qty per matched ingredient name from `pantries/{hid}/pantryItems`.
+  /// Matches by "contains" on normalized names. If qty goes to 0, delete doc.
+  Future<void> consumePantryForRecipe({
+    required String householdId,
+    required List<Map<String, String>> ingredients,
+  }) async {
+    final col =
+        _db.collection('pantries').doc(householdId).collection('pantryItems');
+
+    // Load current pantry
+    final snap = await col.get();
+    final pantry = <String, QueryDocumentSnapshot>{};
+    for (final d in snap.docs) {
+      final data = d.data() as Map<String, dynamic>;
+      final name = _norm((data['name'] ?? '').toString());
+      if (name.isEmpty) continue;
+      pantry[name] = d;
+    }
+
+    // Build normalized ingredient wants
+    final wants = <String>[];
+    for (final ing in ingredients) {
+      final want = _norm(ing['name'] ?? '');
+      if (want.isNotEmpty) wants.add(want);
+    }
+
+    // For each wanted ingredient, find a pantry key that contains it
+    // and deduct 1
+    final batch = _db.batch();
+    for (final want in wants) {
+      String? hitKey;
+      pantry.keys.forEach((k) {
+        if (k.contains(want) || want.contains(k)) {
+          hitKey ??= k;
+        }
+      });
+      if (hitKey == null) continue;
+
+      final doc = pantry[hitKey]!;
+      final data = doc.data() as Map<String, dynamic>;
+      final qty = (data['qty'] ?? data['quantity'] ?? 0) is int
+          ? (data['qty'] ?? data['quantity'] ?? 0) as int
+          : int.tryParse((data['qty'] ?? data['quantity'] ?? '0').toString()) ??
+              0;
+
+      if (qty > 1) {
+        batch.update(doc.reference, {'qty': qty - 1});
+      } else {
+        batch.delete(doc.reference);
+      }
+    }
+
+    await batch.commit();
+  }
 }

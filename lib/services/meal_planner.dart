@@ -2,11 +2,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PantryItem {
-  final String name;         // normalized lower-case
-  final int qty;             // quantity available
-  final DateTime? expiryAt;  // nullable
-  final bool consumed;       // default false
-  final bool nearExpiry;     // computed
+  final String name; // normalized lower-case
+  final int qty; // quantity available
+  final DateTime? expiryAt; // nullable
+  final bool consumed; // default false
+  final bool nearExpiry; // computed
 
   PantryItem({
     required this.name,
@@ -20,12 +20,13 @@ class PantryItem {
 class RecipeSuggestion {
   final String name;
   final String imageUrl;
-  final String servingSize;      // string for UI
-  final String calories;         // e.g. "520 kcal"
-  final String time;             // e.g. "25 minutes"
+  final String servingSize; // string for UI
+  final String calories; // e.g. "520 kcal"
+  final String time; // e.g. "25 minutes"
   final String description;
   final List<Map<String, String>> ingredients; // [{name, amount}]
   final List<String> directions;
+  final String difficulty; // e.g. "Easy", "Moderate", "Hard"
 
   RecipeSuggestion({
     required this.name,
@@ -36,6 +37,7 @@ class RecipeSuggestion {
     required this.description,
     required this.ingredients,
     required this.directions,
+    required this.difficulty,
   });
 }
 
@@ -47,21 +49,45 @@ class MealPlanner {
 
   // Staples ignored when counting "missing"
   static const Set<String> _staples = {
-    'salt','pepper','oil','olive oil','sugar','soy sauce','vinegar',
-    'garlic powder','onion powder','chili flakes','water'
+    'salt',
+    'pepper',
+    'oil',
+    'olive oil',
+    'sugar',
+    'soy sauce',
+    'vinegar',
+    'garlic powder',
+    'onion powder',
+    'chili flakes',
+    'water'
   };
 
   // Items we consider "not pantry-only" (won’t block, but counted as missing)
   static const Set<String> _blocklistFreshOrFrozen = {
-    'chicken','pork','beef','fish fillet','egg','fresh tomato','spinach','lettuce',
-    'carrot','onion fresh','garlic fresh','milk','butter','cheese fresh'
+    'chicken',
+    'pork',
+    'beef',
+    'fish fillet',
+    'egg',
+    'fresh tomato',
+    'spinach',
+    'lettuce',
+    'carrot',
+    'onion fresh',
+    'garlic fresh',
+    'milk',
+    'butter',
+    'cheese fresh'
   };
 
   // Simple name normalization
-  static String _norm(String s) =>
-      s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]+'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  static String _norm(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9 ]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
-  static bool _matchHas(Map<String,int> pantryIndex, String want) {
+  static bool _matchHas(Map<String, int> pantryIndex, String want) {
     // contains-style match: if any pantry key contains the want fragment
     for (final k in pantryIndex.keys) {
       if (k.contains(want)) return true;
@@ -71,7 +97,8 @@ class MealPlanner {
 
   /// Build PantryItem list from Firestore docs (defensive: supports 'qty' or 'quantity';
   /// 'expiryAt' or 'expirationDate'; Timestamp or ISO string).
-  static List<PantryItem> fromSnapshot(QuerySnapshot snap, {int nearExpiryDays = defaultNearExpiryDays}) {
+  static List<PantryItem> fromSnapshot(QuerySnapshot snap,
+      {int nearExpiryDays = defaultNearExpiryDays}) {
     final now = DateTime.now();
     final items = <PantryItem>[];
     for (final d in snap.docs) {
@@ -82,9 +109,11 @@ class MealPlanner {
       final name = _norm(rawName);
       final qty = (data['qty'] ?? data['quantity'] ?? 0) is int
           ? (data['qty'] ?? data['quantity'] ?? 0) as int
-          : int.tryParse((data['qty'] ?? data['quantity'] ?? '0').toString()) ?? 0;
+          : int.tryParse((data['qty'] ?? data['quantity'] ?? '0').toString()) ??
+              0;
 
-      final consumed = (data['consumed'] ?? false) == true || (data['status'] == 'Deleted');
+      final consumed =
+          (data['consumed'] ?? false) == true || (data['status'] == 'Deleted');
 
       DateTime? expiryAt;
       final ex = data['expiryAt'] ?? data['expirationDate'];
@@ -97,7 +126,8 @@ class MealPlanner {
       final expired = expiryAt != null && expiryAt.isBefore(now);
       if (consumed || expired || qty <= 0) continue;
 
-      final near = expiryAt != null && expiryAt.isBefore(now.add(Duration(days: nearExpiryDays)));
+      final near = expiryAt != null &&
+          expiryAt.isBefore(now.add(Duration(days: nearExpiryDays)));
       items.add(PantryItem(
         name: name,
         qty: qty,
@@ -116,9 +146,16 @@ class MealPlanner {
     _Rule(
       id: 'tuna_pasta',
       title: 'Tuna Pantry Pasta',
-      imageUrl: 'https://images.unsplash.com/photo-1523986371872-9d3ba2e2f642?q=80&w=1200',
+      imageUrl:
+          'https://images.unsplash.com/photo-1523986371872-9d3ba2e2f642?q=80&w=1200',
       required: {'pasta', 'tuna'}, // canned tuna matched via "tuna"
-      optional: {'olive oil','oil','garlic powder','soy sauce','chili flakes'},
+      optional: {
+        'olive oil',
+        'oil',
+        'garlic powder',
+        'soy sauce',
+        'chili flakes'
+      },
       baseTimeMin: 20,
       baseKcalPerServing: 520,
       servings: 2,
@@ -129,14 +166,15 @@ class MealPlanner {
         'Add a splash of pasta water and toss pasta in the pan.',
         'Season to taste and serve hot.',
       ],
-      aliases: {'canned tuna':'tuna'},
+      aliases: {'canned tuna': 'tuna'},
     ),
     _Rule(
       id: 'sardines_pasta',
       title: 'Sardines Aglio e Olio',
-      imageUrl: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?q=80&w=1200',
-      required: {'pasta','sardines'},
-      optional: {'olive oil','oil','garlic powder','chili flakes'},
+      imageUrl:
+          'https://images.unsplash.com/photo-1512058564366-18510be2db19?q=80&w=1200',
+      required: {'pasta', 'sardines'},
+      optional: {'olive oil', 'oil', 'garlic powder', 'chili flakes'},
       baseTimeMin: 18,
       baseKcalPerServing: 500,
       servings: 2,
@@ -147,14 +185,21 @@ class MealPlanner {
         'Fold in sardines, add pasta and a bit of pasta water.',
         'Toss to coat and serve.',
       ],
-      aliases: {'canned sardines':'sardines'},
+      aliases: {'canned sardines': 'sardines'},
     ),
     _Rule(
       id: 'fried_rice',
       title: 'Pantry Fried Rice',
-      imageUrl: 'https://images.unsplash.com/photo-1598866594230-a7c12756260c?q=80&w=1200',
+      imageUrl:
+          'https://images.unsplash.com/photo-1598866594230-a7c12756260c?q=80&w=1200',
       required: {'rice', 'soy sauce'},
-      optional: {'corned beef','tuna','sardines','garlic powder','onion powder'},
+      optional: {
+        'corned beef',
+        'tuna',
+        'sardines',
+        'garlic powder',
+        'onion powder'
+      },
       baseTimeMin: 15,
       baseKcalPerServing: 480,
       servings: 2,
@@ -165,14 +210,15 @@ class MealPlanner {
         'Add rice and soy sauce, stir-fry until heated through.',
         'Adjust seasoning and serve.',
       ],
-      aliases: {'canned corned beef':'corned beef'},
+      aliases: {'canned corned beef': 'corned beef'},
     ),
     _Rule(
       id: 'rice_beans',
       title: 'Rice & Beans Bowl',
-      imageUrl: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?q=80&w=1200',
-      required: {'rice','beans'}, // canned beans matched by "beans"
-      optional: {'soy sauce','chili flakes','garlic powder','oil'},
+      imageUrl:
+          'https://images.unsplash.com/photo-1568605114967-8130f3a36994?q=80&w=1200',
+      required: {'rice', 'beans'}, // canned beans matched by "beans"
+      optional: {'soy sauce', 'chili flakes', 'garlic powder', 'oil'},
       baseTimeMin: 20,
       baseKcalPerServing: 520,
       servings: 2,
@@ -182,14 +228,19 @@ class MealPlanner {
         'Stir through cooked rice.',
         'Finish with soy sauce or chili flakes to taste.',
       ],
-      aliases: {'canned beans':'beans','kidney beans':'beans','baked beans':'beans'},
+      aliases: {
+        'canned beans': 'beans',
+        'kidney beans': 'beans',
+        'baked beans': 'beans'
+      },
     ),
     _Rule(
       id: 'garlic_oil_pasta',
       title: 'Garlic Oil Pasta (Pantry)',
-      imageUrl: 'https://images.unsplash.com/photo-1526318472351-c75fcf070305?q=80&w=1200',
-      required: {'pasta','oil'},
-      optional: {'garlic powder','chili flakes','soy sauce'},
+      imageUrl:
+          'https://images.unsplash.com/photo-1526318472351-c75fcf070305?q=80&w=1200',
+      required: {'pasta', 'oil'},
+      optional: {'garlic powder', 'chili flakes', 'soy sauce'},
       baseTimeMin: 12,
       baseKcalPerServing: 480,
       servings: 2,
@@ -204,9 +255,17 @@ class MealPlanner {
     _Rule(
       id: 'noodles_upgrade',
       title: 'Upgraded Instant Noodles',
-      imageUrl: 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=1200',
+      imageUrl:
+          'https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=1200',
       required: {'instant noodles'},
-      optional: {'corned beef','tuna','sardines','soy sauce','garlic powder','chili flakes'},
+      optional: {
+        'corned beef',
+        'tuna',
+        'sardines',
+        'soy sauce',
+        'garlic powder',
+        'chili flakes'
+      },
       baseTimeMin: 8,
       baseKcalPerServing: 430,
       servings: 1,
@@ -216,26 +275,27 @@ class MealPlanner {
         'Stir in canned add-ins and seasonings.',
         'Serve hot.',
       ],
-      aliases: {'ramen':'instant noodles'},
+      aliases: {'ramen': 'instant noodles'},
     ),
   ];
 
   // --- Difficulty Evaluator ---
-/// Returns a difficulty level based on ingredient count, time, or missing items
-String _computeDifficulty({
-  required int ingredientCount,
-  required int steps,
-  required int minutes,
-  int missingCount = 0,
-}) {
-  if (minutes <= 20 && ingredientCount <= 5 && missingCount == 0) {
-    return 'Easy';
-  } else if (minutes <= 45 && ingredientCount <= 8) {
-    return 'Moderate';
-  } else {
-    return 'Hard';
+  /// Returns a difficulty level based on ingredient count, time, or missing items
+  // Put this inside class MealPlanner (above/below generate)
+  static String _computeDifficulty({
+    required int ingredientCount,
+    required int steps,
+    required int minutes,
+    int missingCount = 0,
+  }) {
+    if (minutes <= 20 && ingredientCount <= 5 && missingCount == 0) {
+      return 'Easy';
+    } else if (minutes <= 45 && ingredientCount <= 8) {
+      return 'Moderate';
+    } else {
+      return 'Hard';
+    }
   }
-}
 
   /// Generate suggestions from pantry items (pure local rules).
   static List<RecipeSuggestion> generate({
@@ -245,15 +305,16 @@ String _computeDifficulty({
     int maxResults = defaultMaxResults,
   }) {
     // Build a lookup: normalized name -> qty
-    final pantryIndex = <String,int>{};
+    final pantryIndex = <String, int>{};
     for (final p in pantry) {
       pantryIndex[p.name] = (pantryIndex[p.name] ?? 0) + p.qty;
     }
 
     // compute near-expiry hits for ranking
-    final nearMap = { for (final p in pantry) p.name : p.nearExpiry };
+    final nearMap = {for (final p in pantry) p.name: p.nearExpiry};
 
-    final results = <({RecipeSuggestion s, int nearHits, int missing, int time})>[];
+    final results =
+        <({RecipeSuggestion s, int nearHits, int missing, int time})>[];
 
     for (final rule in _rules) {
       // Expand required with aliases
@@ -298,13 +359,46 @@ String _computeDifficulty({
       if (missing > maxMissing) continue;
 
       // Build ingredients list from required+optional that we actually have
-      final ing = <Map<String,String>>[];
+      final ing = <Map<String, String>>[];
       for (final r in required) {
         ing.add({'name': r, 'amount': ''});
       }
       for (final o in rule.optional) {
         if (have(o)) ing.add({'name': _norm(o), 'amount': ''});
       }
+
+      String _computeDifficulty({
+        required int ingredientCount,
+        required int steps,
+        required int minutes,
+        int missingCount = 0,
+      }) {
+        if (minutes <= 20 && ingredientCount <= 5 && missingCount == 0) {
+          return 'Easy';
+        } else if (minutes <= 45 && ingredientCount <= 8) {
+          return 'Moderate';
+        } else {
+          return 'Hard';
+        }
+      }
+
+      // If your code tracks “missing” as a list, use its length.
+// If it’s already an int, this will use it as-is.
+      final int missingCount =
+          (missing is int) ? missing : (missing as List).length;
+
+// Make sure these values are ints; parse if you store strings.
+      final int minutes = rule.baseTimeMin;
+      final int ingredientCount = ing.length;
+      final int steps = rule.steps.length;
+
+// NOW compute difficulty
+      final String difficulty = _computeDifficulty(
+        ingredientCount: ingredientCount,
+        steps: steps,
+        minutes: minutes,
+        missingCount: missingCount,
+      );
 
       final s = RecipeSuggestion(
         name: rule.title,
@@ -315,9 +409,11 @@ String _computeDifficulty({
         description: rule.descriptionTmpl,
         ingredients: ing,
         directions: List<String>.from(rule.steps),
+        difficulty: difficulty, // <-- REQUIRED
       );
 
-      results.add((s: s, nearHits: nearHits, missing: missing, time: rule.baseTimeMin));
+      results.add(
+          (s: s, nearHits: nearHits, missing: missing, time: rule.baseTimeMin));
     }
 
     // Rank: (1) more near-expiry used, (2) fewer missing, (3) shorter time
@@ -344,7 +440,7 @@ class _Rule {
   final int servings;
   final String descriptionTmpl;
   final List<String> steps;
-  final Map<String,String> aliases; // 'canned tuna' -> 'tuna'
+  final Map<String, String> aliases; // 'canned tuna' -> 'tuna'
 
   _Rule({
     required this.id,

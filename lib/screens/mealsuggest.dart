@@ -6,6 +6,7 @@ import 'package:shelf_control/services/meal_planner.dart';
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import Provider
 
+
 // ===== CONFIG =====
 const double kMinCoverageToShow = 0.5; // 50% pantry coverage
 const List<String> kStaples = [
@@ -27,6 +28,7 @@ class Recipe {
   final String description;
   final List<Map<String, String>> ingredients;
   final List<String> directions;
+  final String difficulty;
 
   const Recipe({
     required this.name,
@@ -37,6 +39,7 @@ class Recipe {
     required this.description,
     required this.ingredients,
     required this.directions,
+    this.difficulty = 'Easy',
   });
 
   factory Recipe.fromFirestore(DocumentSnapshot doc) {
@@ -111,7 +114,6 @@ class Recipe {
     );
   }
 }
-
 
 // --- Main Widget (same UI as yours, but dynamic) ---
 class MealSuggest extends StatefulWidget {
@@ -196,7 +198,8 @@ class _MealSuggestState extends State<MealSuggest> {
     // Streams
     final pantryStream = _firestoreService.selectedHouseholdId == null
         ? FirebaseFirestore.instance
-            .collection('non_existent_pantry_items') // Query a collection that will always be empty
+            .collection(
+                'non_existent_pantry_items') // Query a collection that will always be empty
             .snapshots()
         : FirebaseFirestore.instance
             .collection('pantries')
@@ -246,64 +249,66 @@ class _MealSuggestState extends State<MealSuggest> {
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-  stream: pantryStream,
-  builder: (context, pantrySnap) {
-    if (pantrySnap.connectionState == ConnectionState.waiting) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (pantrySnap.hasError) {
-      return Center(child: Text('Error loading pantry: ${pantrySnap.error}'));
-    }
-    if (!pantrySnap.hasData) {
-      return const Center(child: Text('No pantry data.'));
-    }
+        stream: pantryStream,
+        builder: (context, pantrySnap) {
+          if (pantrySnap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (pantrySnap.hasError) {
+            return Center(
+                child: Text('Error loading pantry: ${pantrySnap.error}'));
+          }
+          if (!pantrySnap.hasData) {
+            return const Center(child: Text('No pantry data.'));
+          }
 
-    // 1) Build pantry items from Firestore snapshot (filters expired/consumed inside)
-    final pantryItems = MealPlanner.fromSnapshot(pantrySnap.data!);
+          // 1) Build pantry items from Firestore snapshot (filters expired/consumed inside)
+          final pantryItems = MealPlanner.fromSnapshot(pantrySnap.data!);
 
-    // 2) Generate suggestions from pantry (near-expiry prioritized, <=2 missing)
-    final suggestions = MealPlanner.generate(
-      pantry: pantryItems,
-      nearExpiryDays: 5,
-      maxMissing: 2,
-      maxResults: 12,
-    );
+          // 2) Generate suggestions from pantry (near-expiry prioritized, <=2 missing)
+          final suggestions = MealPlanner.generate(
+            pantry: pantryItems,
+            nearExpiryDays: 5,
+            maxMissing: 2,
+            maxResults: 12,
+          );
 
-    // 3) Map to your existing Recipe model (string fields)
-    final suggested = suggestions.map((s) => Recipe(
-      name: s.name,
-      imageUrl: s.imageUrl,
-      servingSize: s.servingSize,
-      calories: s.calories,
-      time: s.time,
-      description: s.description,
-      ingredients: s.ingredients,
-      directions: s.directions,
-    )).toList();
+          // 3) Map to your existing Recipe model (string fields)
+          final suggested = suggestions
+              .map((s) => Recipe(
+                    name: s.name,
+                    imageUrl: s.imageUrl,
+                    servingSize: s.servingSize,
+                    calories: s.calories,
+                    time: s.time,
+                    description: s.description,
+                    ingredients: s.ingredients,
+                    directions: s.directions,
+                    difficulty: s.difficulty, // ✅ dynamically assigned
+                  ))
+              .toList();
 
-    // 4) Build the UI (same layout you already use)
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            _buildNoteBanner(),
-            const SizedBox(height: 20),
-            if (suggested.isEmpty)
-              const Text('No suggestions yet. Add more pantry items!')
-            else
-              ...suggested.map((r) => _buildMealCard(context: context, recipe: r)),
-          ],
-        ),
+          // 4) Build the UI (same layout you already use)
+          return SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  _buildNoteBanner(),
+                  const SizedBox(height: 20),
+                  if (suggested.isEmpty)
+                    const Text('No suggestions yet. Add more pantry items!')
+                  else
+                    ...suggested.map(
+                        (r) => _buildMealCard(context: context, recipe: r)),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
-  },
-),
-    );
-    
   }
-
-  
 
   Widget _buildNoteBanner() {
     return Container(

@@ -3,6 +3,9 @@
 import 'package:flutter/material.dart';
 import 'package:shelf_control/screens/mealsuggest.dart'; // To access the Recipe model
 import 'package:shelf_control/screens/mealhistory.dart'; // Import the MealHistoryPage
+import 'package:provider/provider.dart';
+import 'package:shelf_control/services/firestore_service.dart';
+import 'package:shelf_control/models/meal_history_model.dart';
 
 // --- List of common ingredients that can be ignored for the "Done Cooking" button ---
 const List<String> optionalIngredients = [
@@ -46,8 +49,8 @@ class _CookingViewPageState extends State<CookingViewPage>
 
   bool _areAllRequiredIngredientsDone() {
     for (int i = 0; i < widget.recipe.ingredients.length; i++) {
-      final ingredientName = widget.recipe.ingredients[i]['name']!
-          .toLowerCase();
+      final ingredientName =
+          widget.recipe.ingredients[i]['name']!.toLowerCase();
       final isOptional = optionalIngredients.contains(ingredientName);
       final isChecked = _checkedIngredients[i];
 
@@ -291,13 +294,50 @@ class _CookingViewPageState extends State<CookingViewPage>
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        onPressed: isDone
-            ? () {
-                setState(() {
-                  _isConfirming = true;
-                });
-              }
-            : null,
+        onPressed: () async {
+          // Access Firestore service
+          final fs = context.read<FirestoreService>();
+          final householdId = fs.selectedHouseholdId!;
+
+          // Parse numeric parts safely
+          final int mins = int.tryParse(
+                  widget.recipe.time.replaceAll(RegExp(r'[^0-9]'), '')) ??
+              0;
+          final int servings = int.tryParse(widget.recipe.servingSize
+                  .replaceAll(RegExp(r'[^0-9]'), '')) ??
+              1;
+
+          // Build meal history record
+          final history = MealHistory(
+            householdId: householdId,
+            recipeName: widget.recipe.name,
+            difficulty: widget.recipe.difficulty,
+            servings: servings,
+            calories: widget.recipe.calories,
+            durationMinutes: mins,
+            cookedAt: DateTime.now(),
+            ingredients: widget.recipe.ingredients,
+          );
+
+          // Save to Firestore
+          await fs.addMealHistory(history);
+
+          await fs.consumePantryForRecipe(
+            householdId: householdId,
+            ingredients: widget.recipe.ingredients,
+          );
+
+          // (Optional) deduct pantry items if you’ve added consume logic
+          // await fs.consumePantryForRecipe(householdId: householdId, ingredients: widget.recipe.ingredients);
+
+          // Notify and exit
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Meal saved to history ✅')),
+            );
+            Navigator.of(context).pop();
+          }
+        },
         child: const Text(
           'Done Cooking',
           style: TextStyle(
