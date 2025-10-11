@@ -29,7 +29,6 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
 
   // Controllers for editable fields in the bottom sheet
   final TextEditingController _productNameController = TextEditingController();
-  final TextEditingController _brandController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
   final TextEditingController _netWeightController = TextEditingController(); // New controller for net weight
   String _selectedCategory = 'Uncategorized'; // Default category
@@ -84,7 +83,6 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
   @override
   void dispose() {
     _productNameController.dispose();
-    _brandController.dispose();
     _quantityController.dispose();
     _netWeightController.dispose(); // Dispose net weight controller
     _shelfLifeController.dispose(); // Dispose shelf life controller
@@ -135,8 +133,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         imageUrl: product['image_front_url'],
         qty: 1,
         barcode: barcode,
-        brand: product['brands'] ?? 'Unknown Brand',
         quantityUnit: product['quantity'],
+        addedMethod: 'by Scanning', // Set addedMethod here
         nutritionFacts: product['nutriments'] is Map ? Map<String, dynamic>.from(product['nutriments']) : null,
         // Re-adding shelf-life and date fields
         shelfLifeDays: null, // Will be set by user in sheet
@@ -178,7 +176,6 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     if (index < 0 || index >= _scannedItems.length) return;
     final item = _scannedItems[index];
     _productNameController.text = item.name;
-    _brandController.text = item.brand ?? '';
     _quantityController.text = item.qty.toString();
     _netWeightController.text = item.netWeight ?? ''; // Update net weight controller
     _selectedCategory = item.category;
@@ -223,7 +220,6 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
 
   void _clearCurrentItemControllers() {
     _productNameController.clear();
-    _brandController.clear();
     _quantityController.clear();
     _netWeightController.clear();
     _shelfLifeController.clear();
@@ -448,17 +444,6 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                           ),
                                         ),
                                         onChanged: (value) => _scannedItems[_currentItemIndex].name = value,
-                                      ),
-                                      const SizedBox(height: 10),
-                                      TextFormField(
-                                        controller: _brandController,
-                                        decoration: InputDecoration(
-                                          labelText: 'Brand',
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                        ),
-                                        onChanged: (value) => _scannedItems[_currentItemIndex].brand = value,
                                       ),
                                       const SizedBox(height: 10),
                                       TextFormField(

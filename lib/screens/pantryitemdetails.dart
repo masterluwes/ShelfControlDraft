@@ -120,10 +120,6 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
                                     color: inputTextColor,
                                     fontWeight: FontWeight.bold,
                                     fontSize: 24)),
-                            const SizedBox(height: 2),
-                            Text(item.brand ?? 'No Brand',
-                                style: TextStyle(
-                                    color: labelTextColor, fontSize: 16)),
                             const SizedBox(height: 4),
                             Text('Category: ${item.category}',
                                 style: TextStyle(
@@ -134,7 +130,7 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  _buildStatusCard(daysUntilExpiry, item.expirationDate),
+                  _buildStatusCard(item.expirationDate),
                   const SizedBox(height: 24),
                   Row(
                     children: [
@@ -155,6 +151,26 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildLabeledDetailField(
+                          label: 'Added By',
+                          value: item.addedBy ?? 'Unknown Member',
+                          icon: Icons.person_outline,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildLabeledDetailField(
+                          label: 'Added Method',
+                          value: item.addedMethod ?? 'Manual Input',
+                          icon: Icons.add_circle_outline,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 32),
                   Text('Tips and Information',
                       style: TextStyle(
@@ -171,6 +187,14 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
                       icon: Icons.inventory_2_outlined,
                       title: 'Proper Storage',
                       subtitle: 'Learn how to store ${item.name}.'),
+                  if (item.nutrition != null && item.nutrition!.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _buildTipsTile(
+                      icon: Icons.food_bank_outlined, // Using a generic food icon as nutrition_outlined is not available
+                      title: 'Nutrition Information',
+                      subtitle: item.nutrition!,
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   _buildLabeledDetailField(
                       label: 'Notes',
@@ -193,17 +217,24 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
 
   // --- WIDGET BUILDERS ---
 
-  Widget _buildStatusCard(int days, DateTime? date) {
+  Widget _buildStatusCard(DateTime? date) {
     String expiresText = 'No expiry date';
+    int daysUntilExpiry = -999;
+
     if (date != null) {
-      if (days < 0) {
-        expiresText = 'Expired ${days.abs()} days ago';
-      } else if (days == 0) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final expiryDay = DateTime(date.year, date.month, date.day);
+      daysUntilExpiry = expiryDay.difference(today).inDays;
+
+      if (daysUntilExpiry < 0) {
+        expiresText = 'Expired ${daysUntilExpiry.abs()} days ago';
+      } else if (daysUntilExpiry == 0) {
         expiresText = 'Expires today';
-      } else if (days == 1) {
+      } else if (daysUntilExpiry == 1) {
         expiresText = 'Expires tomorrow';
       } else {
-        expiresText = 'Expires in $days days';
+        expiresText = 'Expires in $daysUntilExpiry days';
       }
     }
 
@@ -212,17 +243,17 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
     Color textColor = headerGreen;
     IconData iconData = Icons.check_circle;
 
-    if (days <= 0) {
+    if (daysUntilExpiry <= 0) {
       cardColor = const Color(0xFFFFEBEE); 
       borderColor = const Color(0xFFFF3030); 
       textColor = const Color(0xFFD32F2F);   
       iconData = Icons.error;
-    } else if (days <= 7) {
+    } else if (daysUntilExpiry <= 7) {
       cardColor = Colors.orange.shade100;
       borderColor = Colors.orange.shade800;
       textColor = Colors.orange.shade900;
       iconData = Icons.warning_amber;
-    } else if (days <= 14) {
+    } else if (daysUntilExpiry <= 14) {
       cardColor = Colors.yellow.shade100;
       borderColor = Colors.yellow.shade800;
       textColor = Colors.yellow.shade900;

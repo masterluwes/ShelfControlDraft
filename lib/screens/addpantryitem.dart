@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -44,7 +45,6 @@ class _AddPantryItemState extends State<AddPantryItem> {
 
   // Controllers for all fields
   late TextEditingController _nameCtrl;
-  late TextEditingController _brandCtrl;
   late TextEditingController _priceCtrl;
   late TextEditingController _netWeightCtrl;
   late TextEditingController _expCtrl;
@@ -153,7 +153,6 @@ class _AddPantryItemState extends State<AddPantryItem> {
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController();
-    _brandCtrl = TextEditingController();
     _priceCtrl = TextEditingController(text: '0.00');
     _netWeightCtrl = TextEditingController();
     _expCtrl = TextEditingController();
@@ -213,7 +212,6 @@ class _AddPantryItemState extends State<AddPantryItem> {
     _priceFocusNode.dispose();
     _nameFocusNode.dispose();
     _nameCtrl.dispose();
-    _brandCtrl.dispose();
     _priceCtrl.dispose();
     _netWeightCtrl.dispose();
     _expCtrl.dispose();
@@ -312,7 +310,6 @@ class _AddPantryItemState extends State<AddPantryItem> {
 
   bool _isFormDirty() {
     return _nameCtrl.text.isNotEmpty ||
-        _brandCtrl.text.isNotEmpty ||
         _priceCtrl.text != '0.00' ||
         _netWeightCtrl.text.isNotEmpty ||
         _expCtrl.text.isNotEmpty ||
@@ -478,7 +475,8 @@ class _AddPantryItemState extends State<AddPantryItem> {
       qty: _quantity,
       expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text),
       manufacturedDate: _selectedDopDate,
-      brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
+      addedBy: FirebaseAuth.instance.currentUser?.displayName,
+      addedMethod: 'Manual Input',
       netWeight: _netWeightCtrl.text.trim().isEmpty
           ? null
           : '${_netWeightCtrl.text.trim()} $_selectedUnit',
@@ -803,7 +801,7 @@ class _AddPantryItemState extends State<AddPantryItem> {
                         onSelected: (Product selection) {
                           setState(() {
                             _nameCtrl.text = selection.productName;
-                            _brandCtrl.text = selection.brand ?? '';
+                            // _addedByController.text = selection.brand ?? ''; // Removed brand assignment
                             if (selection.category != null && _categories.contains(selection.category)) {
                               _selectedCategory = selection.category;
                             } else {
@@ -864,8 +862,6 @@ class _AddPantryItemState extends State<AddPantryItem> {
                           );
                         },
                       ),
-                      const SizedBox(height: 14),
-                      textField(_brandCtrl, labelText: 'Brand'),
                     ],
                   ),
                 ),

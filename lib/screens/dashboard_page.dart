@@ -438,7 +438,9 @@ class _DashboardHomeState extends State<DashboardHome> {
                       Household? selectedHousehold = households.firstWhereOrNull((h) => h.id == firestoreService.selectedHouseholdId);
                       if (selectedHousehold == null && households.isNotEmpty) {
                         selectedHousehold = households.firstWhere((h) => h.isPersonal, orElse: () => households.first);
-                        firestoreService.selectedHouseholdId = selectedHousehold.id;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          firestoreService.selectedHouseholdId = selectedHousehold!.id;
+                        });
                       }
                       return Container(
                         height: 36,
@@ -469,12 +471,16 @@ class _DashboardHomeState extends State<DashboardHome> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                if (!widget.isGuest && firestoreService.selectedHouseholdId != null)
+                if (!widget.isGuest && firestoreService.selectedHouseholdId != null) ...[
                   StreamBuilder<List<PantryItemModel>>(
                     stream: firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
+                      }
+                      if (snapshot.hasError) {
+                        // Handle the error, e.g., display a message
+                        return Text('Error loading pantry items: ${snapshot.error}');
                       }
                       final items = snapshot.data ?? [];
                       if (items.isEmpty) {
@@ -482,7 +488,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                       }
                       return _buildDataDashboard(items);
                     },
-                  )
+                  ),
+                ]
                 else if (widget.isGuest)
                   FutureBuilder<List<PantryItemModel>>(
                     future: firestoreService.loadGuestPantryItems(),

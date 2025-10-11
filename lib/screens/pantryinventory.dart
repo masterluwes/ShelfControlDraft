@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:numberpicker/numberpicker.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:shelf_control/models/pantry_item_model.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:shelf_control/screens/pantryitemdetails.dart';
@@ -300,7 +301,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         final q = _query.toLowerCase();
         final hit = it.name.toLowerCase().contains(q) ||
             it.category.toLowerCase().contains(q) ||
-            (it.brand?.toLowerCase().contains(q) ?? false);
+            (it.addedBy?.toLowerCase().contains(q) ?? false); // Changed from brand
         if (!hit) return false;
       }
       return true;
@@ -717,8 +718,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               }
             });
           } else {
-            // Navigate to item details/edit screen in view mode
-            _navigateToEditItem(item);
+            // Navigate to item details screen in view mode
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PantryItemDetails(item: item),
+              ),
+            );
           }
         },
         child: Padding(
@@ -766,7 +772,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 4),
-                    Text('• ${item.category}',
+                    Text(item.addedBy ?? 'Unknown Member', // Changed from brand
                         style: const TextStyle(
                             fontSize: 11, color: Color(0xFF6F6F6F))),
                     const SizedBox(height: 2),
@@ -784,44 +790,17 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      PopupMenuButton<String>(
-                        onSelected: (value) async {
-                          if (value == 'waste') {
-                            await firestoreService.markAsWasted(item);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Item marked as wasted')),
-                              );
-                            }
-                          } else if (value == 'consume') {
-                            await _showQuantityPickerDialog(
-                                item); // your existing consume flow
-                          } else if (value == 'delete') {
-                            await _deletePantryItem(item, firestoreService);
-                          }
-                        },
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(
-                              value: 'consume',
-                              child: Text('Mark as Consumed')),
-                          PopupMenuItem(
-                              value: 'waste', child: Text('Mark as Wasted')),
-                          PopupMenuItem(value: 'delete', child: Text('Delete')),
-                        ],
-                      ),
+                      // Quantity controls
                       IconButton(
                         icon: const Icon(Icons.remove_circle_outline, size: 20),
-                        onPressed: () =>
-                            _updateItemQuantity(item, item.qty - 1),
+                        onPressed: () => _updateItemQuantity(item, item.qty - 1),
                       ),
                       Text('${item.qty}',
                           style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.bold)),
                       IconButton(
                         icon: const Icon(Icons.add_circle_outline, size: 20),
-                        onPressed: () =>
-                            _updateItemQuantity(item, item.qty + 1),
+                        onPressed: () => _updateItemQuantity(item, item.qty + 1),
                       ),
                     ],
                   ),
@@ -835,35 +814,88 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  // Widget for dismissible rows (delete/edit)
+  // Mark as wasted
+  Future<void> _markAsWasted(PantryItemModel item, FirestoreService firestoreService) async {
+    if (item.id != null) {
+      if (widget.isGuest) {
+        List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
+        int itemIndex = currentGuestPantry.indexWhere((element) => element.id == item.id);
+        if (itemIndex != -1) {
+          PantryItemModel updatedItem = item.copyWith(status: 'Wasted', wastedAt: DateTime.now());
+          currentGuestPantry[itemIndex] = updatedItem;
+          await firestoreService.saveGuestPantryItems(currentGuestPantry);
+        }
+      } else {
+        await firestoreService.markAsWasted(item);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Marked "${item.name}" as wasted'),
+        ),
+      );
+    }
+  }
+
+  // Widget for dismissible rows (delete/edit/consume/waste)
   Widget _dismissibleRow(List<PantryItemModel> view, int idx, FirestoreService firestoreService) {
     final item = view[idx];
-    return Dismissible(
+    final ItemStatus currentStatus = _getItemStatus(item);
+    final bool isExpired = currentStatus == ItemStatus.expired;
+
+    return Slidable(
       key: ValueKey(item.id),
-      direction:
-          _inSelectMode ? DismissDirection.none : DismissDirection.horizontal,
-      background: Container(
-        color: Colors.red.shade700,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        alignment: Alignment.centerLeft,
-        child: const Icon(Icons.delete, color: Colors.white, size: 28),
+      groupTag: 'pantry_items',
+      enabled: !_inSelectMode, // Disable slidable in multi-select mode
+      startActionPane: ActionPane(
+        motion: const DrawerMotion(),
+        extentRatio: 0.25, // For 'Consume'
+        children: [
+          SlidableAction(
+            onPressed: (_) async {
+              if (item.qty > 1) {
+                await _showQuantityPickerDialog(item);
+              } else {
+                await _updateItemStatus(item, 'Consumed', consumedQuantity: 1);
+              }
+            },
+            backgroundColor: isExpired ? Colors.grey : Colors.green.shade700,
+            foregroundColor: Colors.white,
+            icon: Icons.restaurant_menu,
+            label: 'Consume',
+            flex: 1,
+            // Disable consume if expired
+            // enabled: !isExpired,
+          ),
+        ],
       ),
-      secondaryBackground: Container(
-        color: Colors.green.shade700,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        alignment: Alignment.centerRight,
-        child: const Icon(Icons.edit, color: Colors.white, size: 28),
+      endActionPane: ActionPane(
+        motion: const DrawerMotion(),
+        extentRatio: 0.50, // For 'Edit' and 'Delete'
+        children: [
+          SlidableAction(
+            onPressed: (_) => _navigateToEditItem(item),
+            backgroundColor: headerGreen,
+            foregroundColor: Colors.white,
+            icon: Icons.edit,
+            label: 'Edit',
+          ),
+          SlidableAction(
+            onPressed: (_) async {
+              if (isExpired) {
+                await _markAsWasted(item, firestoreService);
+              } else {
+                await _deletePantryItem(item, firestoreService);
+              }
+            },
+            backgroundColor: isExpired ? Colors.orange.shade700 : Colors.red.shade700,
+            foregroundColor: Colors.white,
+            icon: isExpired ? Icons.delete_sweep : Icons.delete_outline,
+            label: isExpired ? 'Wasted' : 'Delete',
+          ),
+        ],
       ),
-      confirmDismiss: (direction) async {
-        if (direction == DismissDirection.startToEnd) {
-          await _deletePantryItem(item, firestoreService);
-          return true;
-        } else {
-          // Swipe left to edit
-          await _navigateToEditItem(item);
-          return false; // Do not dismiss the item, as the stream will rebuild it
-        }
-      },
       child: _rowTile(item, idx),
     );
   }

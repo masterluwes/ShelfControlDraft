@@ -9,23 +9,23 @@ android {
     namespace = "com.example.shelfcontrol"
 
     // Let Flutter control these to avoid version mismatches
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    compileSdk = 36
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
         isCoreLibraryDesugaringEnabled = true // Enable core library desugaring
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "11"
     }
 
     defaultConfig {
         applicationId = "com.example.shelfcontrol"
 
         // KTS syntax: use assignments, not minSdkVersion(...)
-        minSdk = flutter.minSdkVersion
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
 
         versionCode = flutter.versionCode
@@ -52,5 +52,5 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.0.0")) // Updated BOM version
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-messaging")
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4") // Add this line
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4") // Add this line
 }

@@ -3,10 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shelf_control/screens/recipedetails.dart';
 import 'package:shelf_control/screens/mealhistory.dart';
 import 'package:shelf_control/services/meal_planner.dart';
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:provider/provider.dart'; // Import Provider
 
 // ===== CONFIG =====
-const String kHouseholdId =
-    'demo_household'; // TODO: replace with your real household/user scope
 const double kMinCoverageToShow = 0.5; // 50% pantry coverage
 const List<String> kStaples = [
   'water',
@@ -123,6 +123,13 @@ class MealSuggest extends StatefulWidget {
 
 class _MealSuggestState extends State<MealSuggest> {
   bool _refreshing = false;
+  late FirestoreService _firestoreService; // Declare FirestoreService
+
+  @override
+  void initState() {
+    super.initState();
+    _firestoreService = Provider.of<FirestoreService>(context, listen: false);
+  }
 
   // Normalization helpers
   String _norm(String s) => s
@@ -187,11 +194,15 @@ class _MealSuggestState extends State<MealSuggest> {
     const Color greenAccent = Color(0xFF2E7D32);
 
     // Streams
-    final pantryStream = FirebaseFirestore.instance
-        .collection('pantries')
-        .doc(kHouseholdId)
-        .collection('pantryItems')
-        .snapshots();
+    final pantryStream = _firestoreService.selectedHouseholdId == null
+        ? FirebaseFirestore.instance
+            .collection('non_existent_pantry_items') // Query a collection that will always be empty
+            .snapshots()
+        : FirebaseFirestore.instance
+            .collection('pantries')
+            .doc(_firestoreService.selectedHouseholdId!)
+            .collection('pantryItems')
+            .snapshots();
 
     return Scaffold(
       backgroundColor: pageBg,

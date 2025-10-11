@@ -34,7 +34,6 @@ class _EditPantryItemState extends State<EditPantryItem> {
 
   // --- State ---
   late TextEditingController _nameCtrl;
-  late TextEditingController _brandCtrl;
   late TextEditingController _priceCtrl;
   late TextEditingController _netWeightCtrl;
   late TextEditingController _expCtrl;
@@ -104,7 +103,6 @@ class _EditPantryItemState extends State<EditPantryItem> {
 
   void _initializeStateFromItem() {
     _nameCtrl = TextEditingController(text: widget.item.name);
-    _brandCtrl = TextEditingController(text: widget.item.brand ?? '');
     _priceCtrl = TextEditingController(text: widget.item.price?.toStringAsFixed(2) ?? '0.00');
     _netWeightCtrl = TextEditingController();
     _parseNetWeight(widget.item.netWeight ?? '');
@@ -125,7 +123,6 @@ class _EditPantryItemState extends State<EditPantryItem> {
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _brandCtrl.dispose();
     _priceCtrl.dispose();
     _netWeightCtrl.dispose();
     _expCtrl.dispose();
@@ -284,7 +281,8 @@ class _EditPantryItemState extends State<EditPantryItem> {
       price: double.tryParse(_priceCtrl.text) ?? 0.0,
       imageUrl: finalImageUrl,
       qty: _quantity,
-      brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
+      addedBy: widget.item.addedBy,
+      addedMethod: widget.item.addedMethod,
       netWeight: _netWeightCtrl.text.trim().isEmpty ? null : '${_netWeightCtrl.text.trim()} $_selectedUnit',
       notes: _notesCtrl.text.isEmpty ? null : _notesCtrl.text,
       expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text),
@@ -609,8 +607,6 @@ class _EditPantryItemState extends State<EditPantryItem> {
                           }
                         });
                       }),
-                      const SizedBox(height: 14),
-                      textField(_brandCtrl, labelText: 'Brand'),
                     ],
                   ),
                 ),

@@ -92,7 +92,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
 
     // 1. Optimize duplicate checks in pantry using a single query
     final List<String> itemNames = checkedItems.map((item) => item.name).toList();
-    final List<String> itemBrands = checkedItems.map((item) => item.brand ?? '').toList();
     final List<String> itemNetWeights = checkedItems.map((item) => item.netWeight ?? '').toList();
 
     // Firestore `whereIn` has a limit of 10, so we might need to batch these queries if `checkedItems` is large.
@@ -113,12 +112,12 @@ class _ShoppinglistState extends State<Shoppinglist> {
     for (var doc in existingPantryItemsSnapshot.docs) {
       final pantryItem = PantryItemModel.fromFirestore(doc);
       // Create a unique key for comparison (name, brand, netWeight)
-      final key = '${pantryItem.name}_${pantryItem.brand ?? ''}_${pantryItem.netWeight ?? ''}';
+      final key = '${pantryItem.name}_${pantryItem.netWeight ?? ''}';
       existingPantryItemsMap[key] = pantryItem;
     }
 
     for (final checkedItem in checkedItems) {
-      final itemKey = '${checkedItem.name}_${checkedItem.brand ?? ''}_${checkedItem.netWeight ?? ''}';
+      final itemKey = '${checkedItem.name}_${checkedItem.netWeight ?? ''}';
       final existingPantryItem = existingPantryItemsMap[itemKey];
 
       PantryItemModel pantryItem = PantryItemModel(
@@ -130,9 +129,10 @@ class _ShoppinglistState extends State<Shoppinglist> {
         quantityUnit: checkedItem.netWeight ?? 'pc', // Default unit, changed 'unit' to 'quantityUnit'
         expirationDate: null, // User can set this later
         barcode: null, // If available, could be added
-        brand: checkedItem.brand,
         netWeight: checkedItem.netWeight,
         status: 'Available',
+        nutrition: checkedItem.nutrition, // Pass nutrition from shopping list item
+        addedMethod: 'via Shopping List', // Automatically set addedMethod
       );
 
       if (existingPantryItem != null) {
@@ -390,7 +390,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
       setState(() {
         _suggestions = generatedSuggestions.map((item) => _Suggestion(
           name: item.name,
-          brand: item.brand,
           sizeText: item.netWeight,
           note: 'Suggested',
           category: item.category ?? 'Other',
@@ -543,7 +542,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
     for (final it in items) {
       final checked = it.isPurchased ? 'x' : ' ';
       final sub = [
-        if ((it.brand ?? '').trim().isNotEmpty) it.brand!.trim(),
         if ((it.netWeight ?? '').trim().isNotEmpty) it.netWeight!.trim(),
       ].join(' · ');
       final name = sub.isEmpty ? it.name : '${it.name} ($sub)';
@@ -760,7 +758,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
 
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController();
-    final brandCtrl = TextEditingController();
     final sizeCtrl = TextEditingController();
     final unitPriceCtrl = TextEditingController(text: '0.00');
     final nutritionCtrl = TextEditingController();
@@ -840,12 +837,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        TextFormField(
-                          controller: brandCtrl,
-                          decoration: deco(),
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 12),
                         Text(
                           'Size / Weight (e.g., 150g, 1L) – optional',
                           style: TextStyle(
@@ -999,7 +990,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                 final existingItemIndex = items.indexWhere(
                                   (item) =>
                                       item.name.toLowerCase() == nameCtrl.text.trim().toLowerCase() &&
-                                      (item.brand?.toLowerCase() ?? '') == (brandCtrl.text.trim().toLowerCase()) &&
                                       (item.netWeight?.toLowerCase() ?? '') == (sizeCtrl.text.trim().toLowerCase()),
                                 );
 
@@ -1028,7 +1018,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                   final newItem = ShoppingListItemModel(
                                     id: widget.isGuest ? _uuid.v4() : null, // Generate ID for guest items
                                     name: nameCtrl.text.trim(),
-                                    brand: brandCtrl.text.trim().isEmpty ? null : brandCtrl.text.trim(),
                                     netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
                                     category: selectedCategory!,
                                     unitPrice: double.parse(unitPriceCtrl.text.trim()),
@@ -1117,7 +1106,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
     final firestoreService = Provider.of<FirestoreService>(context, listen: false); // Get instance here
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController(text: item.name);
-    final brandCtrl = TextEditingController(text: item.brand ?? '');
     final sizeCtrl = TextEditingController(text: item.netWeight ?? '');
     final nutritionCtrl = TextEditingController(text: item.nutrition ?? '');
     String? selectedCategory = item.category;
@@ -1206,12 +1194,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        TextFormField(
-                          controller: brandCtrl,
-                          decoration: deco(),
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 12),
                         Text(
                           'Size / Weight (optional)',
                           style: TextStyle(
@@ -1335,7 +1317,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
 
                                 final updatedItem = item.copyWith(
                                   name: nameCtrl.text.trim(),
-                                  brand: brandCtrl.text.trim().isEmpty ? null : brandCtrl.text.trim(),
                                   netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
                                   category: selectedCategory!,
                                   nutrition: nutritionCtrl.text.trim().isEmpty ? null : nutritionCtrl.text.trim(),
@@ -1499,10 +1480,11 @@ class _ShoppinglistState extends State<Shoppinglist> {
                   ),
                   const SizedBox(width: 10),
                   if (items.any((item) => item.isPurchased)) ...[
-                    _GreenPillButton(
-                      label: 'Add Checked to Pantry',
-                      color: headerGreen,
-                      onTap: () async {
+                    // Add Checked to Pantry Icon
+                    IconButton(
+                      tooltip: 'Add Checked to Pantry',
+                      icon: Icon(Icons.inventory_2_outlined, color: headerGreen, size: 28),
+                      onPressed: () async {
                         await _addCheckedItemsToPantry();
                       },
                     ),
@@ -1608,7 +1590,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
                           final newItem = ShoppingListItemModel(
                             id: null, // Let the service generate the ID
                             name: addedSuggestion.name,
-                            brand: addedSuggestion.brand,
                             netWeight: addedSuggestion.sizeText,
                             category: addedSuggestion.category,
                             unitPrice: 0, // Default price
@@ -1621,7 +1602,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
                             final existingItemIndex = items.indexWhere(
                               (item) =>
                                   item.name.toLowerCase() == addedSuggestion.name.toLowerCase() &&
-                                  (item.brand?.toLowerCase() ?? '') == (addedSuggestion.brand?.toLowerCase() ?? '') &&
                                   (item.netWeight?.toLowerCase() ?? '') == (addedSuggestion.sizeText?.toLowerCase() ?? ''),
                             );
 
@@ -1883,7 +1863,6 @@ IconData iconForCategory(String category) {
 // ======================= Suggestion types/UI =======================
 class _Suggestion {
   final String name;
-  final String? brand;
   final String? sizeText;
   final String note;
   final String category;
@@ -1893,7 +1872,6 @@ class _Suggestion {
     required this.name,
     required this.note,
     required this.category,
-    this.brand,
     this.sizeText,
     this.nutrition, 
   });
@@ -1917,12 +1895,9 @@ class _SuggestionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     String? subline;
-    final b = (suggestion.brand ?? '').trim();
     final s = (suggestion.sizeText ?? '').trim();
-    if (b.isNotEmpty || s.isNotEmpty) {
-      subline = (b.isNotEmpty && s.isNotEmpty)
-          ? '$b · $s'
-          : (b.isNotEmpty ? b : s);
+    if (s.isNotEmpty) {
+      subline = s;
     }
 
     return Container(
@@ -2038,15 +2013,10 @@ class _ShoppingRow extends StatelessWidget {
     final grey = Colors.grey[700];
     final bool selected = item.isPurchased;
 
-    // Compose the "brand · size" subline
+    // Compose the "size" subline
     String? subline;
-    if ((item.brand != null && item.brand!.trim().isNotEmpty) ||
-        (item.netWeight != null && item.netWeight!.trim().isNotEmpty)) {
-      final b = (item.brand ?? '').trim();
-      final s = (item.netWeight ?? '').trim();
-      subline = (b.isNotEmpty && s.isNotEmpty)
-          ? '$b · $s'
-          : (b.isNotEmpty ? b : s);
+    if (item.netWeight != null && item.netWeight!.trim().isNotEmpty) {
+      subline = item.netWeight!.trim();
     }
 
     return Row(

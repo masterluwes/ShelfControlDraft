@@ -11,7 +11,6 @@ class ShoppingListService {
 
   // Helper to get a reference to the collections
   CollectionReference get _shoppingLists => _firestore.collection('shoppingLists');
-  CollectionReference get _pantryItems => _firestore.collection('pantryItems'); // Corrected collection name
   CollectionReference get _shoppingHistory => _firestore.collection('shoppingHistory');
   CollectionReference get _localProducts => _firestore.collection('local_products_ph');
 
@@ -99,7 +98,7 @@ class ShoppingListService {
     List<ShoppingListItemModel> suggestions = [];
 
     // Get pantry items
-    Query pantryQuery = _pantryItems.where('householdId', isEqualTo: householdId);
+    Query pantryQuery = _firestore.collection('pantries').doc(householdId).collection('pantryItems');
     if (lastPantryDocument != null) {
       pantryQuery = pantryQuery.startAfterDocument(lastPantryDocument);
     }
@@ -129,7 +128,7 @@ class ShoppingListService {
         suggestions.add(ShoppingListItemModel(
           id: _firestore.collection('temp').doc().id, // Assign unique ID
           name: item.name,
-          brand: item.brand,
+          // brand: item.brand, // Removed as PantryItemModel does not have a brand field
           netWeight: item.netWeight,
           category: item.category,
           unitPrice: 0, // Will need to fetch price
@@ -154,6 +153,7 @@ class ShoppingListService {
         suggestions.add(ShoppingListItemModel(
           id: _firestore.collection('temp').doc().id, // Assign unique ID
           name: item.productName,
+          // brand: item.brand, // Removed as ShoppingHistoryItemModel does not have a brand field
           category: item.category,
           unitPrice: 0, // Will need to fetch price
           quantity: 1,
