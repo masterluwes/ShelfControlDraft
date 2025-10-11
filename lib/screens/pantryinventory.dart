@@ -309,16 +309,22 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         final statusA = _getItemStatus(a);
         final statusB = _getItemStatus(b);
 
-        if (statusA == ItemStatus.expired && statusB != ItemStatus.expired)
+        if (statusA == ItemStatus.expired && statusB != ItemStatus.expired) {
           return -1;
-        if (statusA != ItemStatus.expired && statusB == ItemStatus.expired)
+        }
+        if (statusA != ItemStatus.expired && statusB == ItemStatus.expired) {
           return 1;
+        }
         if (statusA == ItemStatus.atRisk &&
             statusB != ItemStatus.atRisk &&
-            statusB != ItemStatus.expired) return -1;
+            statusB != ItemStatus.expired) {
+          return -1;
+        }
         if (statusA != ItemStatus.atRisk &&
             statusB == ItemStatus.atRisk &&
-            statusA != ItemStatus.expired) return 1;
+            statusA != ItemStatus.expired) {
+          return 1;
+        }
       }
 
       switch (sortBy) {
@@ -769,8 +775,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 4),
-                    Text('Unknown Member', // Changed from brand
-                        style: const TextStyle(
+                    const Text('Unknown Member', // Changed from brand
+                        style: TextStyle(
                             fontSize: 11, color: Color(0xFF6F6F6F))),
                     const SizedBox(height: 2),
                     Text(_getExpiresText(item),

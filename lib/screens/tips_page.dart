@@ -508,12 +508,12 @@ class _TipsPageState extends State<TipsPage> {
   @override
   Widget build(BuildContext context) {
     // Temporary demo alert so you can see the layout now:
-    if (_loadingWeather)
-      Padding(
+    if (_loadingWeather) {
+      const Padding(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: LinearProgressIndicator(minHeight: 3),
       );
-    else if (_alert != null)
+    } else if (_alert != null)
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

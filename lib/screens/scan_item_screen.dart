@@ -469,7 +469,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                       ),
                                       const SizedBox(height: 10),
                                       DropdownButtonFormField<String>(
-                                        value: _selectedCategory,
+                                        initialValue: _selectedCategory,
                                         decoration: InputDecoration(
                                           labelText: 'Category',
                                           border: OutlineInputBorder(

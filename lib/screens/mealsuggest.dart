@@ -43,9 +43,9 @@ class Recipe {
     final data = doc.data() as Map<String, dynamic>? ?? {};
 
     // — helpers —
-    String _asString(dynamic v) => v == null ? '' : v.toString();
+    String asString(dynamic v) => v == null ? '' : v.toString();
 
-    List<Map<String, String>> _parseIngredients(dynamic raw) {
+    List<Map<String, String>> parseIngredients(dynamic raw) {
       final out = <Map<String, String>>[];
 
       if (raw is List) {
@@ -82,7 +82,7 @@ class Recipe {
       return out;
     }
 
-    List<String> _parseDirections(dynamic raw) {
+    List<String> parseDirections(dynamic raw) {
       if (raw is List) {
         return raw.map((e) => e.toString()).toList();
       } else if (raw is String) {
@@ -96,16 +96,16 @@ class Recipe {
       return const [];
     }
 
-    final ingredients = _parseIngredients(data['ingredients']);
-    final directions = _parseDirections(data['directions']);
+    final ingredients = parseIngredients(data['ingredients']);
+    final directions = parseDirections(data['directions']);
 
     return Recipe(
-      name: _asString(data['name']),
-      imageUrl: _asString(data['imageUrl']),
-      servingSize: _asString(data['servingSize']),
-      calories: _asString(data['calories']),
-      time: _asString(data['time']),
-      description: _asString(data['description']),
+      name: asString(data['name']),
+      imageUrl: asString(data['imageUrl']),
+      servingSize: asString(data['servingSize']),
+      calories: asString(data['calories']),
+      time: asString(data['time']),
+      description: asString(data['description']),
       ingredients: ingredients,
       directions: directions,
     );

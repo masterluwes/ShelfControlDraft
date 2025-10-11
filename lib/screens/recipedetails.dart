@@ -271,9 +271,9 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          buildInfoColumn('Serving Size', '${recipe.servingSize}'),
+          buildInfoColumn('Serving Size', recipe.servingSize),
           buildInfoColumn('Difficulty', 'Easy'),
-          buildInfoColumn('Estimated Calorie', '${recipe.calories}'),
+          buildInfoColumn('Estimated Calorie', recipe.calories),
         ],
       ),
     );
