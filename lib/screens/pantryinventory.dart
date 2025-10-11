@@ -545,11 +545,11 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   }
 
   // Helper function to navigate to the edit screen and handle the result for the banner
-  Future<void> _navigateToEditItem(PantryItemModel item, {bool isViewing = false}) async {
+  Future<void> _navigateToEditItem(PantryItemModel item) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => EditPantryItem(item: item, isViewing: isViewing),
+        builder: (context) => EditPantryItem(item: item),
       ),
     );
 
@@ -582,14 +582,32 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   }
 
   // Helper function to navigate to the add item screen and handle the result for the banner
+  void _handleAddItem(PantryItemModel item) async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    if (widget.isGuest) {
+      List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
+      // Assign a temporary ID for guest items if not already present
+      PantryItemModel itemWithId = item.copyWith(id: item.id?.isEmpty ?? true ? DateTime.now().millisecondsSinceEpoch.toString() : item.id!);
+      currentGuestPantry.add(itemWithId);
+      await firestoreService.saveGuestPantryItems(currentGuestPantry);
+    } else {
+      await firestoreService.addPantryItem(item);
+    }
+  }
+
   Future<void> _navigateToAddItem() async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => AddPantryItem(isGuest: widget.isGuest),
+        builder: (context) => AddPantryItem(
+          isGuest: widget.isGuest,
+          onAddItem: _handleAddItem,
+          onBack: () => Navigator.of(context).pop(),
+          householdId: firestoreService.selectedHouseholdId != null ? firestoreService.selectedHouseholdId! : '',
+        ),
       ),
     );
-
     if (result is Map<String, dynamic>) {
       final status = result['status'] as String?;
       final itemName = result['itemName'] as String?;
@@ -700,7 +718,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             });
           } else {
             // Navigate to item details/edit screen in view mode
-            _navigateToEditItem(item, isViewing: true);
+            _navigateToEditItem(item);
           }
         },
         child: Padding(
@@ -734,6 +752,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) => const Icon(Icons.image),
                 ),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

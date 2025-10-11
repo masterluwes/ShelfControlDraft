@@ -25,6 +25,7 @@ class AddPantryItemWrapper extends StatelessWidget {
     return AddPantryItem(
       onAddItem: handleAddItem,
       onBack: handleBack,
+      householdId: firestoreService.selectedHouseholdId ?? '',
     );
   }
 }

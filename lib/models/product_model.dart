@@ -4,6 +4,7 @@ class Product {
   final String? id; // Firestore document ID
   final String productName;
   final String? category;
+  final String? brand; // Added brand field
   final String? netWeight;
   final double? price;
   final String? nutriScore;
@@ -14,6 +15,7 @@ class Product {
     this.id,
     required this.productName,
     this.category,
+    this.brand, // Added brand to constructor
     this.netWeight,
     this.price,
     this.nutriScore,
@@ -27,6 +29,7 @@ class Product {
       id: doc.id,
       productName: data['productName'] ?? '',
       category: data['category'],
+      brand: data['brand'], // Added brand to fromFirestore
       netWeight: data['netWeight'],
       price: (data['price'] as num?)?.toDouble(),
       nutriScore: data['nutriScore'],
@@ -39,6 +42,7 @@ class Product {
     return {
       'productName': productName,
       'category': category,
+      'brand': brand, // Added brand to toFirestore
       'netWeight': netWeight,
       'price': price,
       'nutriScore': nutriScore,
@@ -52,6 +56,7 @@ class Product {
     String? id,
     String? productName,
     String? category,
+    String? brand, // Added brand to copyWith
     String? netWeight,
     double? price,
     String? nutriScore,
@@ -62,6 +67,7 @@ class Product {
       id: id ?? this.id,
       productName: productName ?? this.productName,
       category: category ?? this.category,
+      brand: brand ?? this.brand, // Used provided brand or current brand
       netWeight: netWeight ?? this.netWeight,
       price: price ?? this.price,
       nutriScore: nutriScore ?? this.nutriScore,

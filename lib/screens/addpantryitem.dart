@@ -301,8 +301,9 @@ class _AddPantryItemState extends State<AddPantryItem> {
       }
 
       if (shelfLife != null) {
+        final int actualShelfLife = shelfLife;
         setState(() {
-          _selectedExpDate = _selectedDopDate!.add(Duration(days: shelfLife));
+          _selectedExpDate = _selectedDopDate!.add(Duration(days: actualShelfLife));
           _expCtrl.text = DateFormat('MMMM d, yyyy').format(_selectedExpDate!);
         });
       }
@@ -626,13 +627,13 @@ class _AddPantryItemState extends State<AddPantryItem> {
   Widget textField(TextEditingController ctrl,
       {required String labelText, String? prefixText, String hintText = '',
       bool readOnly = false, int maxLines = 1, FocusNode? focusNode,
-      VoidCallback? onTap, void Function(String)? onSubmitted, TextInputType keyboardType = TextInputType.text,
+      VoidCallback? onTap, void Function(String)? onSubmitted, void Function(String)? onChanged, TextInputType keyboardType = TextInputType.text,
       List<TextInputFormatter>? inputFormatters, Widget? suffixIcon,
       String? errorText, BorderSide? borderSide}) {
     final currentBorderSide = borderSide ?? BorderSide(color: inputBorderColor);
     return TextField(
       controller: ctrl, readOnly: readOnly, maxLines: maxLines, focusNode: focusNode,
-      onTap: onTap, onSubmitted: onSubmitted,
+      onTap: onTap, onSubmitted: onSubmitted, onChanged: onChanged,
       style: TextStyle(fontFamily: 'Roboto', fontSize: 16, color: inputTextColor),
       decoration: InputDecoration(
         labelText: labelText, prefixText: prefixText, hintText: hintText,
