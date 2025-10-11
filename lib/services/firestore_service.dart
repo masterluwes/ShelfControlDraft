@@ -78,6 +78,9 @@ class FirestoreService extends ChangeNotifier {
         userDoc.data()!['personalHouseholdId'] != null) {
       selectedHouseholdId = userDoc.data()![
           'personalHouseholdId']; // Use the setter to update and notify
+    } else if (_auth.currentUser?.isAnonymous ?? false) {
+      // For anonymous users, set a default guest household ID
+      selectedHouseholdId = 'guest_household';
     }
   }
 

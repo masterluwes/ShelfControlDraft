@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shelf_control/screens/login_page.dart';
 import 'package:shelf_control/screens/guest_page.dart';
+import 'package:shelf_control/screens/create_account_page.dart'; // Added import
+import 'package:firebase_auth/firebase_auth.dart'; // Added import
  
 class WelcomePage extends StatefulWidget {
   const WelcomePage({super.key});
@@ -91,12 +93,33 @@ class _WelcomePageState extends State<WelcomePage> {
                   onPressed: () {
                     Navigator.pushReplacement(
                       context,
+                      MaterialPageRoute(builder: (context) => const CreateAccountPage()),
+                    );
+                  },
+                  child: const Text(
+                    'Create Account',
+                    style: TextStyle(
+                      color: Color(0xFF2E7D32), // Forest Green
+                      decoration: TextDecoration.underline,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
                       MaterialPageRoute(builder: (context) => const GuestPage()),
                     );
                   },
                   child: const Text(
-                    'Create account / Continue as a guest',
-                    style: TextStyle(color: Color(0xFF4E9E52)),
+                    'Continue as Guest',
+                    style: TextStyle(
+                      color: Color(0xFF2E7D32), // Forest Green
+                      decoration: TextDecoration.underline,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
               ],

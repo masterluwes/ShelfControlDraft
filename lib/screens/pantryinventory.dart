@@ -108,8 +108,6 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   }
 
   Future<void> _checkAndGenerateNotifications() async {
-    if (widget.isGuest) return; // Don't generate notifications for guests
-
     final prefs = await SharedPreferences.getInstance();
     final lastCheckString = prefs.getString(_lastNotificationCheckKey);
     DateTime? lastCheck;

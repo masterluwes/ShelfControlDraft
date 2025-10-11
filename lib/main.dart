@@ -25,9 +25,6 @@ void main() async {
   final NotificationService notificationService = NotificationService();
   await notificationService.initialize();
 
-  if (FirebaseAuth.instance.currentUser == null) {
-    await FirebaseAuth.instance.signInAnonymously();
-  }
 
   runApp(
     ChangeNotifierProvider(
@@ -50,7 +47,7 @@ class ShelfControlApp extends StatelessWidget {
         // Removed incorrect SnackBarThemeData margin property.
         // SnackBar positioning will be handled directly in each SnackBar instance.
       ),
-      home: const SplashScreen(), // Prioritize SplashScreen as per user's preference for other branch's UI
+      home: const AuthWrapper(), // Set AuthWrapper as the initial home to handle authentication flow
       routes: {
         '/create-account': (context) => const CreateAccountPage(),
         '/login': (context) => const LoginPage(),

@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:shelf_control/screens/create_account_page.dart';
-import 'package:shelf_control/screens/privacy_overview_screen.dart';
 import 'package:shelf_control/screens/dashboard_page.dart';
+import 'package:shelf_control/screens/privacy_policy_screen.dart'; // Import Privacy Policy screen
+import 'package:shelf_control/screens/terms_and_conditions_screen.dart'; // Import Terms and Conditions screen
+import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
 
-class GuestPage extends StatelessWidget {
+class GuestPage extends StatefulWidget {
   const GuestPage({super.key});
+
+  @override
+  State<GuestPage> createState() => _GuestPageState();
+}
+
+class _GuestPageState extends State<GuestPage> {
+  bool _agreedToPrivacyPolicy = false;
+  bool _agreedToTermsAndConditions = false;
 
   @override
   Widget build(BuildContext context) {
@@ -45,17 +55,108 @@ class GuestPage extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(height: 40),
+              const SizedBox(height: 20),
+              // Privacy Policy Checkbox
+              Row(
+                children: [
+                  Checkbox(
+                    value: _agreedToPrivacyPolicy,
+                    onChanged: (bool? newValue) {
+                      setState(() {
+                        _agreedToPrivacyPolicy = newValue ?? false;
+                      });
+                    },
+                    activeColor: const Color(0xFF2E7D32),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()),
+                        );
+                        if (result == true) {
+                          setState(() {
+                            _agreedToPrivacyPolicy = true;
+                          });
+                        }
+                      },
+                      child: const Text.rich(
+                        TextSpan(
+                          text: 'I agree to the ',
+                          style: TextStyle(fontSize: 14, color: Colors.black87),
+                          children: [
+                            TextSpan(
+                              text: 'Privacy Policy',
+                              style: TextStyle(
+                                color: Color(0xFF2E7D32),
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // Terms and Conditions Checkbox
+              Row(
+                children: [
+                  Checkbox(
+                    value: _agreedToTermsAndConditions,
+                    onChanged: (bool? newValue) {
+                      setState(() {
+                        _agreedToTermsAndConditions = newValue ?? false;
+                      });
+                    },
+                    activeColor: const Color(0xFF2E7D32),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen()),
+                        );
+                        if (result == true) {
+                          setState(() {
+                            _agreedToTermsAndConditions = true;
+                          });
+                        }
+                      },
+                      child: const Text.rich(
+                        TextSpan(
+                          text: 'I agree to the ',
+                          style: TextStyle(fontSize: 14, color: Colors.black87),
+                          children: [
+                            TextSpan(
+                              text: 'Terms and Conditions',
+                              style: TextStyle(
+                                color: Color(0xFF2E7D32),
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
               Center(
                 child: ElevatedButton(
-                  onPressed: () {
-                    // Navigate to a guest-specific dashboard or a modified dashboard
-                    // that uses local storage. For now, let's assume a new GuestDashboardPage.
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => const DashboardPage(isGuest: true)),
-                    );
-                  },
+                  onPressed: (_agreedToPrivacyPolicy && _agreedToTermsAndConditions)
+                      ? () async {
+                          await FirebaseAuth.instance.signInAnonymously();
+                          if (!mounted) return;
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(builder: (context) => const DashboardPage(isGuest: true)),
+                          );
+                        }
+                      : null, // Disable button if not agreed
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2E7D32),
                     minimumSize: const Size(double.infinity, 48),

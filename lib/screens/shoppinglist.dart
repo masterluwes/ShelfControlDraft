@@ -56,6 +56,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
 
   // Listener for FirestoreService changes
   late VoidCallback? _firestoreServiceListener;
+  late FirestoreService _firestoreService; // Declare FirestoreService instance
 
   final List<String> _categories = const [
     'Bakery',
@@ -267,18 +268,19 @@ class _ShoppinglistState extends State<Shoppinglist> {
   @override
   void initState() {
     super.initState();
+    _firestoreService = Provider.of<FirestoreService>(context, listen: false); // Initialize here
     _firestoreServiceListener = () {
-      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      if (!widget.isGuest && _householdId != firestoreService.selectedHouseholdId) {
+      if (!mounted) return;
+      if (!widget.isGuest && _householdId != _firestoreService.selectedHouseholdId) {
         setState(() {
-          _householdId = firestoreService.selectedHouseholdId;
+          _householdId = _firestoreService.selectedHouseholdId;
         });
         _fetchShoppingData();
       }
     };
 
     // Add the listener
-    Provider.of<FirestoreService>(context, listen: false).addListener(_firestoreServiceListener!);
+    _firestoreService.addListener(_firestoreServiceListener!);
 
     // Initial fetch
     _fetchShoppingData();
@@ -288,7 +290,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
   void dispose() {
     if (_firestoreServiceListener != null) {
       // Ensure not to listen when removing the listener in dispose
-      Provider.of<FirestoreService>(context, listen: false).removeListener(_firestoreServiceListener!);
+      _firestoreService.removeListener(_firestoreServiceListener!); // Use the stored instance
     }
     super.dispose();
   }
