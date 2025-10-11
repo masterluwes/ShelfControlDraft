@@ -1,63 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
-import 'package:numberpicker/numberpicker.dart'; // Import numberpicker
-import 'package:shelf_control/models/pantry_item_model.dart'; // Import the new model
-import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
-import 'package:shelf_control/screens/editpantryitem.dart'; // Import EditPantryItem
-import 'package:provider/provider.dart'; // Import provider
-import 'package:shelf_control/widgets/consume_quantity_bottom_sheet.dart'; // Import the new bottom sheet
-import 'package:shelf_control/models/app_notification_model.dart'; // Import AppNotificationModel
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Timestamp
-import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
-import 'package:shelf_control/screens/addpantryitem.dart'; // Import AddPantryItem
+import 'package:numberpicker/numberpicker.dart';
+import 'package:shelf_control/models/pantry_item_model.dart';
+import 'package:shelf_control/services/firestore_service.dart';
+import 'package:shelf_control/screens/pantryitemdetails.dart';
+import 'package:shelf_control/screens/editpantryitem.dart';
+import 'package:provider/provider.dart';
+import 'package:shelf_control/widgets/consume_quantity_bottom_sheet.dart';
+import 'package:shelf_control/models/app_notification_model.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shelf_control/screens/addpantryitem.dart';
 
 class Pantryinventory extends StatefulWidget {
-  final bool isGuest; // New parameter to indicate guest mode
+  final bool isGuest;
   const Pantryinventory({super.key, this.isGuest = false});
 
   @override
   State<Pantryinventory> createState() => _PantryInventoryBodyState();
 }
 
-// Define ItemStatus enum with the new 'consumed' and 'deleted' status
 enum ItemStatus { active, atRisk, available, consumed, expired }
 
 class _PantryInventoryBodyState extends State<Pantryinventory> {
-  // Palette to match your UI
+  // Palette
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
   final Color rowAlt = const Color(0xFFF7EFD3);
   final Color sep = const Color(0xFFE9E1C7);
 
-  // Search state (search replaces the pills row)
+  // State
   bool isSearching = false;
   final TextEditingController _searchCtrl = TextEditingController();
   String _query = '';
+  String sortBy = 'Expiry';
+  String filterBy = 'All Items';
+  final Set<String> _selectedItemIds = {};
+  List<PantryItemModel> _items = [];
 
-  // Filters & Sorting
+  bool _inMultiSelectMode = false;
+  Map<String, dynamic>? _notificationSettings;
+  static const String _lastNotificationCheckKey = 'lastNotificationCheck';
+  static const Duration _notificationCheckInterval = Duration(hours: 24);
+
+  // Options
   final List<String> _sortOptions = const [
     'Category',
     'Name',
     'Quantity',
-    'Expiry',
+    'Expiry'
   ];
   final List<String> _filterOptions = const [
     'All Items',
     'Active',
     'At risk',
     'Available',
-    'Expired',
+    'Expired'
   ];
-  String sortBy = 'Expiry';
-  String filterBy = 'All Items';
-
-  List<PantryItemModel> _items = [];
-  final Set<String> _selectedItemIds = {}; // To store IDs of selected items
-  bool _inMultiSelectMode = false; // New state variable for multi-select mode
-  Map<String, dynamic>? _notificationSettings; // To store user's notification settings
-  static const String _lastNotificationCheckKey = 'lastNotificationCheck';
-  static const Duration _notificationCheckInterval = Duration(hours: 24); // Check once every 24 hours
-
 
   @override
   void initState() {
@@ -78,11 +77,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   }
 
   // Determine if selection mode is active
-  bool get _inSelectMode => _inMultiSelectMode; // Use the new state variable
+  bool get _inSelectMode => _inMultiSelectMode;
 
-  // Helper to determine item status based on expiration date and stored status
   ItemStatus _getItemStatus(PantryItemModel item) {
-    // If the item is already consumed or deleted, return its status directly
     if (item.status == 'Consumed') return ItemStatus.consumed;
 
     if (item.expirationDate == null) {
@@ -91,7 +88,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final expirationDay = DateTime(item.expirationDate!.year, item.expirationDate!.month, item.expirationDate!.day);
+    final expirationDay = DateTime(item.expirationDate!.year,
+        item.expirationDate!.month, item.expirationDate!.day);
     final difference = expirationDay.difference(today).inDays;
 
     // Default to 7 days for "at risk" status in the UI, independent of notification settings
@@ -99,7 +97,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
     ItemStatus status;
     if (difference < 0) {
-      status = ItemStatus.expired; // Mark as 'Expired'
+      status = ItemStatus.expired;
     } else if (difference <= defaultAtRiskDays) { 
       status = ItemStatus.atRisk;
     } else {
@@ -181,14 +179,14 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     await prefs.setString(_lastNotificationCheckKey, DateTime.now().toIso8601String());
   }
 
-  // Helper to get the expiration text
   String _getExpiresText(PantryItemModel item) {
     if (item.expirationDate == null) {
       return 'No expiry date';
     }
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final expirationDay = DateTime(item.expirationDate!.year, item.expirationDate!.month, item.expirationDate!.day);
+    final expirationDay = DateTime(item.expirationDate!.year,
+        item.expirationDate!.month, item.expirationDate!.day);
     final difference = expirationDay.difference(today).inDays;
 
     if (difference == 0) {
@@ -202,7 +200,6 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     }
   }
 
-  // ---------- Actions ----------
   void _toggleSearch() {
     setState(() {
       isSearching = !isSearching;
@@ -213,10 +210,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     });
   }
 
-  void _onQueryChanged(String v) => setState(() => _query = v.trim());
-
-  // Delete pantry item
-  Future<void> _deletePantryItem(PantryItemModel item, FirestoreService firestoreService) async {
+  Future<void> _deletePantryItem(
+      PantryItemModel item, FirestoreService firestoreService) async {
     if (item.id != null) {
       if (widget.isGuest) {
         List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
@@ -226,7 +221,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         await firestoreService.deletePantryItem(item.id!);
       }
       if (!mounted) return;
-      // No snackbar, just delete and let the stream rebuild the UI
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Deleted "${item.name}"'),
+          action: SnackBarAction(label: 'Undo', onPressed: () {}),
+        ),
+      );
     }
   }
 
@@ -270,15 +271,12 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   }
 
 
-
   // ---------- Filtering & Sorting ----------
   List<PantryItemModel> _filteredAndSorted() {
     List<PantryItemModel> list = _items.where((it) {
-      // Do not show deleted items in the pantry inventory
       if (it.status == 'Deleted') return false;
 
       final status = _getItemStatus(it);
-      // Apply filter based on selected filterBy option
       switch (filterBy) {
         case 'Active':
           if (status != ItemStatus.active) return false;
@@ -295,14 +293,12 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         case 'Expired':
           if (status != ItemStatus.expired) return false;
           break;
-        default: // 'All Items'
+        default:
           break;
       }
-      // Apply search query if active
       if (_query.isNotEmpty) {
         final q = _query.toLowerCase();
-        final hit =
-            it.name.toLowerCase().contains(q) ||
+        final hit = it.name.toLowerCase().contains(q) ||
             it.category.toLowerCase().contains(q) ||
             (it.brand?.toLowerCase().contains(q) ?? false);
         if (!hit) return false;
@@ -310,41 +306,32 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       return true;
     }).toList();
 
-    // Custom sorting: At risk first, then by user's preference
     list.sort((a, b) {
-      // Apply special sorting for 'Expiry' only when sortBy is 'Expiry'
       if (sortBy == 'Expiry') {
         final statusA = _getItemStatus(a);
         final statusB = _getItemStatus(b);
 
-        // Prioritize 'Expired' items
-        if (statusA == ItemStatus.expired && statusB != ItemStatus.expired) {
+        if (statusA == ItemStatus.expired && statusB != ItemStatus.expired)
           return -1;
-        }
-        if (statusA != ItemStatus.expired && statusB == ItemStatus.expired) {
+        if (statusA != ItemStatus.expired && statusB == ItemStatus.expired)
           return 1;
-        }
-
-        // Then prioritize 'At risk' items
-        if (statusA == ItemStatus.atRisk && statusB != ItemStatus.atRisk && statusB != ItemStatus.expired) {
-          return -1;
-        }
-        if (statusA != ItemStatus.atRisk && statusB == ItemStatus.atRisk && statusA != ItemStatus.expired) {
-          return 1;
-        }
+        if (statusA == ItemStatus.atRisk &&
+            statusB != ItemStatus.atRisk &&
+            statusB != ItemStatus.expired) return -1;
+        if (statusA != ItemStatus.atRisk &&
+            statusB == ItemStatus.atRisk &&
+            statusA != ItemStatus.expired) return 1;
       }
 
-      // Apply secondary sort based on selected sortBy option
       switch (sortBy) {
         case 'Name':
           return a.name.toLowerCase().compareTo(b.name.toLowerCase());
         case 'Quantity':
           return b.qty.compareTo(a.qty);
         case 'Expiry':
-          // Handle null expiration dates by placing them at the end
           if (a.expirationDate == null && b.expirationDate == null) return 0;
-          if (a.expirationDate == null) return 1; // Nulls last
-          if (b.expirationDate == null) return -1; // Nulls last
+          if (a.expirationDate == null) return 1;
+          if (b.expirationDate == null) return -1;
           return a.expirationDate!.compareTo(b.expirationDate!);
         case 'Category':
         default:
@@ -486,38 +473,38 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     }
   }
 
-  // Dialog to pick quantity for consumption
   Future<void> _showQuantityPickerDialog(PantryItemModel item) async {
-    int? selectedQuantity = item.qty; // Default to consuming all
-
+    int? selectedQuantity = item.qty;
     await showDialog<int>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          backgroundColor: softCream, // Apply softCream background
-          title: Text(
-            'Consume ${item.name}',
-            style: TextStyle(color: headerGreen, fontWeight: FontWeight.bold), // Apply headerGreen to title
-          ),
+          backgroundColor: softCream,
+          title: Text('Consume ${item.name}',
+              style:
+                  TextStyle(color: headerGreen, fontWeight: FontWeight.bold)),
           content: StatefulBuilder(
             builder: (BuildContext context, StateSetter setState) {
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Available: ${item.qty}', style: const TextStyle(color: Colors.grey)), // Apply grey to available text
+                  Text('Available: ${item.qty}',
+                      style: const TextStyle(color: Colors.grey)),
                   NumberPicker(
                     value: selectedQuantity!,
                     minValue: 0,
                     maxValue: item.qty,
-                    onChanged: (value) {
-                      setState(() => selectedQuantity = value);
-                    },
-                    textStyle: const TextStyle(fontSize: 14, color: Colors.black54),
-                    selectedTextStyle: TextStyle(fontSize: 18, color: headerGreen, fontWeight: FontWeight.bold), // Apply headerGreen
+                    onChanged: (value) =>
+                        setState(() => selectedQuantity = value),
+                    textStyle:
+                        const TextStyle(fontSize: 14, color: Colors.black54),
+                    selectedTextStyle: TextStyle(
+                        fontSize: 18,
+                        color: headerGreen,
+                        fontWeight: FontWeight.bold),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: sep), // Apply sep for border
-                    ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: sep)),
                   ),
                 ],
               );
@@ -525,267 +512,36 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           ),
           actions: <Widget>[
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              style: TextButton.styleFrom(foregroundColor: headerGreen), // Apply headerGreen to Cancel button
+              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(foregroundColor: headerGreen),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop(selectedQuantity);
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: headerGreen), // Apply headerGreen to Consume button
-              child: const Text('Consume', style: TextStyle(color: Colors.white)),
+              onPressed: () => Navigator.of(context).pop(selectedQuantity),
+              style: ElevatedButton.styleFrom(backgroundColor: headerGreen),
+              child:
+                  const Text('Consume', style: TextStyle(color: Colors.white)),
             ),
           ],
         );
       },
     ).then((quantity) async {
       if (quantity != null && quantity > 0) {
-        // Explicitly set newStatus to 'Consumed' when consuming via the dialog
         await _updateItemStatus(item, 'Consumed', consumedQuantity: quantity);
       }
     });
   }
 
-  // Widget for dropdown pills (Sort by, Filter)
-  Widget _dropdownPill({
-    required String label,
-    required String value,
-    required List<String> items,
-    required void Function(String?) onChanged,
-    double? width, // Optional width parameter
-  }) {
-    return Container(
-      width: width, // Apply optional width
-      decoration: BoxDecoration(
-        color: const Color(0xFFE9E1C7),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 4), // Reduced horizontal padding
-      margin: const EdgeInsets.only(right: 8),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton2<String>(
-          value: value,
-          customButton: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), // Reduced horizontal padding
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '$label: ',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF20451F),
-                    fontSize: 13, // Reduced font size
-                  ),
-                ),
-                Flexible( // Use Flexible to prevent text overflow
-                  child: Text(
-                    value,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF20451F),
-                      fontSize: 13, // Reduced font size
-                    ),
-                    overflow: TextOverflow.ellipsis, // Add ellipsis for long text
-                  ),
-                ),
-                const SizedBox(width: 4), // Reduced spacing
-                const Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  size: 18, // Reduced icon size
-                  color: Color(0xFF20451F),
-                ),
-              ],
-            ),
-          ),
-          items: items
-              .map(
-                (e) => DropdownMenuItem<String>(
-                  value: e,
-                  child: Text(
-                    e,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13), // Reduced font size
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
-          dropdownStyleData: DropdownStyleData(
-            padding: EdgeInsets.zero,
-            maxHeight: 240,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          menuItemStyleData: const MenuItemStyleData(
-            height: 36, // Reduced item height
-            padding: EdgeInsets.symmetric(horizontal: 10), // Reduced padding
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Selection mode top bar
-  Widget _selectionModeTopBar(FirestoreService firestoreService) {
-    return Container(
-      color: headerGreen,
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.cancel_rounded, color: Colors.white), // Changed icon to cancel
-            onPressed: () {
-              setState(() {
-                _selectedItemIds.clear();
-                _inMultiSelectMode = false; // Exit multi-select mode
-              });
-            },
-          ),
-          Text(
-            '${_selectedItemIds.length} Items Selected', // Updated text
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const Spacer(),
-          IconButton(
-            tooltip: 'Consume Selected', // Changed tooltip
-            icon: const Icon(Icons.restaurant_menu, color: Colors.white),
-            onPressed: () async {
-              await _consumeSelectedItems(firestoreService); // Use new consume method
-            },
-          ),
-          IconButton(
-            tooltip: 'Delete Selected',
-            icon: const Icon(Icons.delete, color: Colors.white),
-            onPressed: () async {
-              for (String itemId in _selectedItemIds) {
-                final item = _items.firstWhere((element) => element.id == itemId);
-                await _deletePantryItem(item, firestoreService);
-              }
-              setState(() {
-                _selectedItemIds.clear();
-                _inMultiSelectMode = false; // Exit multi-select mode
-              });
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Title widget
-  Widget _bigTitle() {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(12, 12, 12, 6),
-      child: Text(
-        'Pantry Inventory',
-        style: TextStyle(
-          color: Color(0xFF20451F),
-          fontSize: 24,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-
-  // Controls row (Sort by, Filter, Search)
-  Widget _controlsRow() {
-    if (isSearching) {
-      // Search input field
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-        child: SizedBox(
-          height: 44,
-          child: TextField(
-            controller: _searchCtrl,
-            onChanged: _onQueryChanged,
-            autofocus: true,
-            decoration: InputDecoration(
-              hintText: 'Search items or categories...',
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 12,
-              ),
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () {
-                  _searchCtrl.clear();
-                  _onQueryChanged('');
-                  _toggleSearch();
-                },
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: sep),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: sep),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFF2E7D32)),
-              ),
-            ),
-          ),
-        ),
-      );
+  Future<void> _updateItemQuantity(
+      PantryItemModel item, int newQuantity) async {
+    final firestoreService =
+        Provider.of<FirestoreService>(context, listen: false);
+    if (newQuantity <= 0) {
+      await _showQuantityPickerDialog(item);
+    } else {
+      PantryItemModel updatedItem = item.copyWith(qty: newQuantity);
+      await firestoreService.updatePantryItem(updatedItem);
     }
-
-    // Pills for sorting and filtering
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 8, 10),
-      child: Row(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(
-                children: [
-                  _dropdownPill(
-                    label: 'Sort by',
-                    value: sortBy,
-                    items: _sortOptions,
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => sortBy = v);
-                    },
-                    width: 120, // Set a fixed width for Sort by
-                  ),
-                  _dropdownPill(
-                    label: 'Filter',
-                    value: filterBy,
-                    items: _filterOptions,
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => filterBy = v);
-                    },
-                    width: 120, // Set a fixed width for Filter
-                  ),
-                ],
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Search',
-            onPressed: _toggleSearch,
-            icon: const Icon(Icons.search, color: Color(0xFF20451F)),
-          ),
-        ],
-      ),
-    );
   }
 
   // Helper function to navigate to the edit screen and handle the result for the banner
@@ -862,14 +618,70 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     }
   }
 
-  // Widget for each row in the inventory list
+  // Widget for the dropdown pills
+  Widget _dropdownPill(
+      {required String label,
+      required String value,
+      required List<String> items,
+      required void Function(String?) onChanged}) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton2<String>(
+          value: value,
+          customButton: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+                color: sep, borderRadius: BorderRadius.circular(24)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('$label: ',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF20451F),
+                        fontSize: 13)),
+                Text(value,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF20451F),
+                        fontSize: 13)),
+                const SizedBox(width: 4),
+                const Icon(Icons.keyboard_arrow_down_rounded,
+                    size: 18, color: Color(0xFF20451F)),
+              ],
+            ),
+          ),
+          items: items
+              .map((e) => DropdownMenuItem<String>(
+                  value: e,
+                  child: Text(e,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13))))
+              .toList(),
+          onChanged: onChanged,
+          dropdownStyleData: DropdownStyleData(
+            padding: EdgeInsets.zero,
+            maxHeight: 240,
+            decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(12)),
+          ),
+          menuItemStyleData: const MenuItemStyleData(
+              height: 36, padding: EdgeInsets.symmetric(horizontal: 10)),
+        ),
+      ),
+    );
+  }
+
   Widget _rowTile(PantryItemModel item, int visualIndex) {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+
     return Material(
       color: visualIndex.isEven ? Colors.white : rowAlt,
       child: InkWell(
         onLongPress: () {
           setState(() {
-            _inMultiSelectMode = true; // Enter multi-select mode
+            _inMultiSelectMode = true;
             if (_selectedItemIds.contains(item.id)) {
               _selectedItemIds.remove(item.id);
             } else {
@@ -878,7 +690,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           });
         },
         onTap: () {
-          if (_inMultiSelectMode) { // Check _inMultiSelectMode
+          if (_inMultiSelectMode) {
             setState(() {
               if (_selectedItemIds.contains(item.id)) {
                 _selectedItemIds.remove(item.id);
@@ -896,7 +708,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           child: Row(
             children: [
               // Checkbox for selection mode (only visible in multi-select mode)
-              if (_inMultiSelectMode) // Conditionally show checkbox
+              if (_inMultiSelectMode)
                 Checkbox(
                   value: _selectedItemIds.contains(item.id),
                   onChanged: (v) {
@@ -920,74 +732,77 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                   width: 44,
                   height: 44,
                   fit: BoxFit.cover,
-                  errorBuilder: (error, stackTrace, hint) => const Icon(Icons.image),
+                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.image),
                 ),
-              ),
               const SizedBox(width: 12),
-              // Item details
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      item.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF20451F),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    Text(item.name,
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF20451F)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 4),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '• ${item.category}',
-                          style: const TextStyle(
+                    Text('• ${item.category}',
+                        style: const TextStyle(
+                            fontSize: 11, color: Color(0xFF6F6F6F))),
+                    const SizedBox(height: 2),
+                    Text(_getExpiresText(item),
+                        style: const TextStyle(
                             fontSize: 11,
                             color: Color(0xFF6F6F6F),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _getExpiresText(item), // Removed "Expires in:"
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF6F6F6F),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
+                            fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
               const SizedBox(width: 12),
-              // Quantity control and status chip
               Column(
                 children: [
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.remove_circle_outline, size: 20),
-                        onPressed: () {
-                          if (item.qty > 1) {
-                            _updateItemQuantity(item, item.qty - 1);
-                          } else {
-                            _showQuantityPickerDialog(item); // Prompt to consume if quantity is 1
+                      PopupMenuButton<String>(
+                        onSelected: (value) async {
+                          if (value == 'waste') {
+                            await firestoreService.markAsWasted(item);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('Item marked as wasted')),
+                              );
+                            }
+                          } else if (value == 'consume') {
+                            await _showQuantityPickerDialog(
+                                item); // your existing consume flow
+                          } else if (value == 'delete') {
+                            await _deletePantryItem(item, firestoreService);
                           }
                         },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                              value: 'consume',
+                              child: Text('Mark as Consumed')),
+                          PopupMenuItem(
+                              value: 'waste', child: Text('Mark as Wasted')),
+                          PopupMenuItem(value: 'delete', child: Text('Delete')),
+                        ],
                       ),
-Text(
-  '${item.qty}',
-  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-),
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline, size: 20),
+                        onPressed: () =>
+                            _updateItemQuantity(item, item.qty - 1),
+                      ),
+                      Text('${item.qty}',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold)),
                       IconButton(
                         icon: const Icon(Icons.add_circle_outline, size: 20),
-                        onPressed: () => _updateItemQuantity(item, item.qty + 1),
+                        onPressed: () =>
+                            _updateItemQuantity(item, item.qty + 1),
                       ),
                     ],
                   ),
@@ -1001,33 +816,13 @@ Text(
     );
   }
 
-  // Update item quantity
-  Future<void> _updateItemQuantity(PantryItemModel item, int newQuantity) async {
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    if (newQuantity <= 0) {
-      // If quantity becomes 0 or less, prompt to consume
-      await _showQuantityPickerDialog(item);
-    } else {
-      PantryItemModel updatedItem = item.copyWith(qty: newQuantity);
-      if (widget.isGuest) {
-        List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
-        int itemIndex = currentGuestPantry.indexWhere((element) => element.id == item.id);
-        if (itemIndex != -1) {
-          currentGuestPantry[itemIndex] = updatedItem;
-          await firestoreService.saveGuestPantryItems(currentGuestPantry);
-        }
-      } else {
-        await firestoreService.updatePantryItem(updatedItem);
-      }
-    }
-  }
-
   // Widget for dismissible rows (delete/edit)
   Widget _dismissibleRow(List<PantryItemModel> view, int idx, FirestoreService firestoreService) {
     final item = view[idx];
     return Dismissible(
       key: ValueKey(item.id),
-      direction: DismissDirection.horizontal,
+      direction:
+          _inSelectMode ? DismissDirection.none : DismissDirection.horizontal,
       background: Container(
         color: Colors.red.shade700,
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1042,9 +837,8 @@ Text(
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          // Swipe right to delete
           await _deletePantryItem(item, firestoreService);
-          return true; // Remove item from the visible list
+          return true;
         } else {
           // Swipe left to edit
           await _navigateToEditItem(item);
@@ -1086,7 +880,7 @@ Text(
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_inMultiSelectMode) // Use _inMultiSelectMode here
+                if (_inMultiSelectMode)
                   _selectionModeTopBar(firestoreService)
                 else ...[
                   _bigTitle(),
@@ -1104,6 +898,140 @@ Text(
             );
           },
         ),
+      ),
+    );
+  }
+
+  // ---------- WIDGETS ----------
+
+  Widget _selectionModeTopBar(FirestoreService firestoreService) {
+    return Container(
+      color: headerGreen,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.cancel_rounded, color: Colors.white), // Changed icon to cancel
+            onPressed: () {
+              setState(() {
+                _selectedItemIds.clear();
+                _inMultiSelectMode = false; // Exit multi-select mode
+              });
+            },
+          ),
+          Text(
+            '${_selectedItemIds.length} Items Selected', // Updated text
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const Spacer(),
+          IconButton(
+            tooltip: 'Consume Selected', // Changed tooltip
+            icon: const Icon(Icons.restaurant_menu, color: Colors.white),
+            onPressed: () async {
+              await _consumeSelectedItems(firestoreService); // Use new consume method
+            },
+          ),
+          IconButton(
+            tooltip: 'Delete Selected',
+            icon: const Icon(Icons.delete, color: Colors.white),
+            onPressed: () async {
+              for (String itemId in _selectedItemIds) {
+                final item =
+                    _items.firstWhere((element) => element.id == itemId);
+                await _deletePantryItem(item, firestoreService);
+              }
+              setState(() {
+                _selectedItemIds.clear();
+                _inMultiSelectMode = false; // Exit multi-select mode
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bigTitle() {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(12, 12, 12, 6),
+      child: Text('Pantry Inventory',
+          style: TextStyle(
+              color: Color(0xFF20451F),
+              fontSize: 24,
+              fontWeight: FontWeight.w900)),
+    );
+  }
+
+  Widget _controlsRow() {
+    if (isSearching) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+        child: SizedBox(
+          height: 44,
+          child: TextField(
+            controller: _searchCtrl,
+            onChanged: (v) => setState(() => _query = v.trim()),
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: 'Search items or categories...',
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _toggleSearch,
+              ),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: sep)),
+              enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: sep)),
+              focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: headerGreen)),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 8, 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: [
+                  _dropdownPill(
+                      label: 'Sort by',
+                      value: sortBy,
+                      items: _sortOptions,
+                      onChanged: (v) => setState(() => sortBy = v!)),
+                  _dropdownPill(
+                      label: 'Filter',
+                      value: filterBy,
+                      items: _filterOptions,
+                      onChanged: (v) => setState(() => filterBy = v!)),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Search',
+            onPressed: _toggleSearch,
+            icon: const Icon(Icons.search, color: Color(0xFF20451F)),
+          ),
+        ],
       ),
     );
   }

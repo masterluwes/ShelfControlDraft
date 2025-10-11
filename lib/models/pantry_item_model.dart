@@ -21,9 +21,11 @@ class PantryItemModel {
   bool selected; // New field for selection in UI
   String status; // New field for item status (e.g., "Available", "Active", "At Risk", "Consumed")
   DateTime? consumedAt; // New field for when the item was consumed
+  DateTime? wastedAt; // New field for when the item was wasted
   DateTime? deletedAt; // New field for when the item was deleted
   String? notes; // New field for notes
   String? storageLocation; // New field for storage location
+  final double? price;
 
   PantryItemModel({
     this.id,
@@ -46,14 +48,16 @@ class PantryItemModel {
     this.selected = false, // Default to false
     this.status = 'Available', // Default status to "Available"
     this.consumedAt, // Add consumedAt to constructor
+    this.wastedAt, // Add wastedAt to constructor
     this.deletedAt, // Add deletedAt to constructor
     this.notes, // Add notes to constructor
     this.storageLocation, // Add storageLocation to constructor
+    this.price
   });
 
   // Factory constructor to create a PantryItemModel from a Firestore document
   factory PantryItemModel.fromFirestore(DocumentSnapshot doc) {
-    Map data = doc.data() as Map<String, dynamic>;
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return PantryItemModel(
       id: doc.id,
       householdId: data['householdId'] ?? '', // Add householdId to fromFirestore
@@ -65,7 +69,7 @@ class PantryItemModel {
       barcode: data['barcode'],
       brand: data['brand'],
       quantityUnit: data['quantityUnit'],
-      nutritionFacts: data['nutritionFacts'] is Map ? Map<String, dynamic>.from(data['nutritionFacts']) : null,
+      nutritionFacts: data['nutritionFacts'] != null ? Map<String, dynamic>.from(data['nutritionFacts']) : null,
       shelfLifeDays: data['shelfLifeDays'],
       shelfLifeWeeks: data['shelfLifeWeeks'],
       shelfLifeMonths: data['shelfLifeMonths'],
@@ -75,9 +79,11 @@ class PantryItemModel {
       selected: data['selected'] ?? false, // Add selected to fromFirestore
       status: data['status'] ?? 'Available', // Add status to fromFirestore
       consumedAt: (data['consumedAt'] as Timestamp?)?.toDate(), // Add consumedAt to fromFirestore
+      wastedAt: (data['wastedAt'] as Timestamp?)?.toDate(), // Add wastedAt to fromFirestore
       deletedAt: (data['deletedAt'] as Timestamp?)?.toDate(), // Add deletedAt to fromFirestore
       notes: data['notes'], // Add notes to fromFirestore
       storageLocation: data['storageLocation'], // Add storageLocation to fromFirestore
+      price: (data['price'] as num?)?.toDouble(),
     );
   }
 
@@ -94,7 +100,7 @@ class PantryItemModel {
       barcode: data['barcode'],
       brand: data['brand'],
       quantityUnit: data['quantityUnit'],
-      nutritionFacts: data['nutritionFacts'] is Map ? Map<String, dynamic>.from(data['nutritionFacts']) : null,
+      nutritionFacts: data['nutritionFacts'] != null ? Map<String, dynamic>.from(data['nutritionFacts']) : null,
       shelfLifeDays: data['shelfLifeDays'],
       shelfLifeWeeks: data['shelfLifeWeeks'],
       shelfLifeMonths: data['shelfLifeMonths'],
@@ -107,6 +113,7 @@ class PantryItemModel {
       deletedAt: (data['deletedAt'] is Timestamp) ? (data['deletedAt'] as Timestamp).toDate() : (data['deletedAt'] is String ? DateTime.tryParse(data['deletedAt']) : null),
       notes: data['notes'],
       storageLocation: data['storageLocation'],
+      price: (data['price'] as num?)?.toDouble(),
     );
   }
 
@@ -132,9 +139,11 @@ class PantryItemModel {
       'selected': selected, // Add selected to toFirestore
       'status': status, // Add status to toFirestore
       'consumedAt': consumedAt != null ? Timestamp.fromDate(consumedAt!) : null, // Add consumedAt to toFirestore
+      'wastedAt': wastedAt != null ? Timestamp.fromDate(wastedAt!) : null, // Add wastedAt to toFirestore
       'deletedAt': deletedAt != null ? Timestamp.fromDate(deletedAt!) : null, // Add deletedAt to toFirestore
       'notes': notes, // Add notes to toFirestore
       'storageLocation': storageLocation, // Add storageLocation to toFirestore
+      'price': price,
       'timestamp': FieldValue.serverTimestamp(), // Add a timestamp for creation
     };
   }
@@ -142,38 +151,57 @@ class PantryItemModel {
   // Method to create a copy of the current object with updated fields
   PantryItemModel copyWith({
     String? id,
-    String? householdId, // Add householdId to copyWith
-    String? status,
+    String? householdId,
+    String? name,
+    String? category,
+    String? imageUrl,
     int? qty,
+    String? expiresText,
+    String? barcode,
+    String? brand,
+    String? quantityUnit,
+    Map<String, dynamic>? nutritionFacts,
+    int? shelfLifeDays,
+    int? shelfLifeWeeks,
+    int? shelfLifeMonths,
+    DateTime? manufacturedDate,
+    DateTime? expirationDate,
+    String? netWeight,
+    bool? selected,
+    String? status,
     DateTime? consumedAt,
+    DateTime? wastedAt,
     DateTime? deletedAt,
-    String? notes, // Add notes to copyWith
-    String? storageLocation, // Add storageLocation to copyWith
+    String? notes,
+    String? storageLocation,
+    double? price,
   }) {
     return PantryItemModel(
-      id: id ?? this.id, // Use provided id or current id
-      householdId: householdId ?? this.householdId, // Use provided householdId or current householdId
-      name: name,
-      category: category,
-      imageUrl: imageUrl,
-      qty: qty ?? this.qty, // Use provided qty or current qty
-      expiresText: expiresText,
-      barcode: barcode,
-      brand: brand,
-      quantityUnit: quantityUnit,
-      nutritionFacts: nutritionFacts,
-      shelfLifeDays: shelfLifeDays,
-      shelfLifeWeeks: shelfLifeWeeks,
-      shelfLifeMonths: shelfLifeMonths,
-      manufacturedDate: manufacturedDate,
-      expirationDate: expirationDate,
-      netWeight: netWeight,
-      selected: selected,
-      status: status ?? this.status, // Use provided status or current status
-      consumedAt: consumedAt ?? this.consumedAt, // Use provided consumedAt or current consumedAt
-      deletedAt: deletedAt ?? this.deletedAt, // Use provided deletedAt or current deletedAt
-      notes: notes ?? this.notes, // Use provided notes or current notes
-      storageLocation: storageLocation ?? this.storageLocation, // Use provided storageLocation or current storageLocation
+      id: id ?? this.id,
+      householdId: householdId ?? this.householdId,
+      name: name ?? this.name,
+      category: category ?? this.category,
+      imageUrl: imageUrl ?? this.imageUrl,
+      qty: qty ?? this.qty,
+      expiresText: expiresText ?? this.expiresText,
+      barcode: barcode ?? this.barcode,
+      brand: brand ?? this.brand,
+      quantityUnit: quantityUnit ?? this.quantityUnit,
+      nutritionFacts: nutritionFacts ?? this.nutritionFacts,
+      shelfLifeDays: shelfLifeDays ?? this.shelfLifeDays,
+      shelfLifeWeeks: shelfLifeWeeks ?? this.shelfLifeWeeks,
+      shelfLifeMonths: shelfLifeMonths ?? this.shelfLifeMonths,
+      manufacturedDate: manufacturedDate ?? this.manufacturedDate,
+      expirationDate: expirationDate ?? this.expirationDate,
+      netWeight: netWeight ?? this.netWeight,
+      selected: selected ?? this.selected,
+      status: status ?? this.status,
+      consumedAt: consumedAt ?? this.consumedAt,
+      wastedAt: wastedAt ?? this.wastedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      notes: notes ?? this.notes,
+      storageLocation: storageLocation ?? this.storageLocation,
+      price: price ?? this.price,
     );
   }
 }

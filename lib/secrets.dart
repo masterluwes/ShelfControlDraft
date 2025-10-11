@@ -1,0 +1,1 @@
+const String weatherApiKey = 'c144b836959544d6ab874935252909';

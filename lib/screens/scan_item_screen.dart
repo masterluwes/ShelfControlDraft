@@ -273,8 +273,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
 
           // Overlay
           ColorFiltered(
-            colorFilter: ColorFilter.mode(
-              const Color.fromARGB(128, 0, 0, 0),
+            colorFilter: const ColorFilter.mode(
+              Color.fromARGB(128, 0, 0, 0),
               BlendMode.srcOut,
             ),
             child: Stack(
@@ -485,7 +485,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                       ),
                                       const SizedBox(height: 10),
                                       DropdownButtonFormField<String>(
-                                        value: _selectedCategory,
+                                        initialValue: _selectedCategory,
                                         decoration: InputDecoration(
                                           labelText: 'Category',
                                           border: OutlineInputBorder(

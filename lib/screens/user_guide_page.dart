@@ -100,9 +100,9 @@ class _UserGuidePageState extends State<UserGuidePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(child: Text('User Guide', style: titleStyle)),
+                    const Center(child: Text('User Guide', style: titleStyle)),
                     const SizedBox(height: 4),
-                    Center(
+                    const Center(
                       child: Text(
                         'Last Updated September 2025',
                         style: dateStyle,
@@ -364,9 +364,9 @@ class _GettingStartedCard extends StatelessWidget {
           title: 'Continue as Guest',
           // use bodyWidget so we can italicize specific feature names
           bodyWidget: RichText(
-            text: TextSpan(
+            text: const TextSpan(
               style: bodyStyle,
-              children: const [
+              children: [
                 TextSpan(
                   text:
                       'Explore the app without signing up. Note that your data won’t be saved or synced, and several features like the ',

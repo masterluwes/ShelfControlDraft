@@ -78,7 +78,7 @@ class PrivacyOverviewScreen extends StatelessWidget {
                 onPressed: () {
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => PrivacyPolicyScreen(fromGuestFlow: true)),
+                    MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen(fromGuestFlow: true)),
                   );
                 },
                 child: const Text('Continue'),

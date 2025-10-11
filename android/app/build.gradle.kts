@@ -8,8 +8,9 @@ plugins {
 android {
     namespace = "com.example.shelfcontrol"
 
-    compileSdk = 36   
-    ndkVersion = "27.0.12077973"  
+    // Let Flutter control these to avoid version mismatches
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -23,8 +24,9 @@ android {
     defaultConfig {
         applicationId = "com.example.shelfcontrol"
 
-        minSdk = 23
-        targetSdk = 35
+        // KTS syntax: use assignments, not minSdkVersion(...)
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
 
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -32,6 +34,7 @@ android {
 
     buildTypes {
         release {
+            // use your real signing config for release builds later
             signingConfig = signingConfigs.getByName("debug")
             // Enable code shrinking, obfuscation, and optimization.
             isMinifyEnabled = true

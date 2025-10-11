@@ -3,6 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart'; // Added for Firebase App Check
 import 'package:shelf_control/screens/create_account_page.dart';
 import 'package:shelf_control/screens/login_page.dart';
+import 'package:shelf_control/screens/guest_page.dart';
+import 'package:shelf_control/screens/splash_screen.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/feature_preview_screen.dart';
 import 'package:shelf_control/screens/dashboard_page.dart';
@@ -10,6 +12,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:provider/provider.dart';
 import 'package:shelf_control/services/notification_service.dart'; // Import the new service
+import 'package:shelf_control/screens/household_page.dart'; // Import HouseholdSetupPage
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +24,10 @@ void main() async {
   // Initialize NotificationService
   final NotificationService notificationService = NotificationService();
   await notificationService.initialize();
+
+  if (FirebaseAuth.instance.currentUser == null) {
+    await FirebaseAuth.instance.signInAnonymously();
+  }
 
   runApp(
     ChangeNotifierProvider(
@@ -43,13 +50,15 @@ class ShelfControlApp extends StatelessWidget {
         // Removed incorrect SnackBarThemeData margin property.
         // SnackBar positioning will be handled directly in each SnackBar instance.
       ),
-      home: const AuthWrapper(),
+      home: const SplashScreen(), // Prioritize SplashScreen as per user's preference for other branch's UI
       routes: {
         '/create-account': (context) => const CreateAccountPage(),
         '/login': (context) => const LoginPage(),
         '/guest': (context) => const DashboardPage(isGuest: true),
         '/feature-preview': (context) => const FeaturePreviewScreen(),
         '/dashboard': (context) => const DashboardPage(),
+        '/welcome': (context) => const WelcomePage(), // Add welcome route
+        '/auth-wrapper': (context) => const AuthWrapper(), // Add AuthWrapper route
       },
     );
   }
@@ -66,7 +75,7 @@ class AuthWrapper extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.active) {
           final User? user = snapshot.data;
           if (user == null) {
-            return WelcomePage();
+            return const WelcomePage();
           }
           return const HouseholdSetupPage();
         }
@@ -112,7 +121,7 @@ class _HouseholdSetupPageState extends State<HouseholdSetupPage> {
         if (snapshot.connectionState == ConnectionState.done) {
           if (snapshot.hasError) {
             // Handle error, maybe log it and show an error page or go to login
-            return WelcomePage();
+            return const WelcomePage();
           }
           return const DashboardPage();
         }

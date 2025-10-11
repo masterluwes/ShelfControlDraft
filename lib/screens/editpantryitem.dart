@@ -1,221 +1,224 @@
 import 'package:flutter/material.dart';
-import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
-import 'package:shelf_control/models/product_model.dart'; // Import ProductModel
-
+import 'package:flutter/services.dart';
+import 'package:shelf_control/models/pantry_item_model.dart';
+import 'package:shelf_control/models/product_model.dart'; 
 import 'package:intl/intl.dart';
-import 'dart:io'; // Import dart:io for File
-import 'dart:async'; // Import for Timer
-
-import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
-import 'package:provider/provider.dart'; // Import provider
-import 'package:image_picker/image_picker.dart'; // Import image_picker
-import 'package:firebase_storage/firebase_storage.dart'; // Import firebase_storage
-import 'package:shelf_control/screens/recipe_suggestions_page.dart'; // Import RecipeSuggestionsPage
+import 'dart:io';
+import 'dart:async';
+import 'package:shelf_control/services/firestore_service.dart';
+import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
+import 'package:shelf_control/screens/recipe_suggestions_page.dart';
 
 class EditPantryItem extends StatefulWidget {
   final PantryItemModel item;
-  final bool isViewing; // New parameter
 
-  const EditPantryItem({super.key, required this.item, this.isViewing = false});
+  const EditPantryItem({super.key, required this.item});
 
   @override
-  State<EditPantryItem> createState() => _EditPantryItemBodyState();
+  State<EditPantryItem> createState() => _EditPantryItemState();
 }
 
-class _EditPantryItemBodyState extends State<EditPantryItem> {
-  // Colors consistent with your app
+class _EditPantryItemState extends State<EditPantryItem> {
+  // --- UI Colors ---
   final Color headerGreen = const Color(0xFF2E7D32);
-  final Color softCream = const Color(0xFFFFFBE6);
+  final Color softCream = const Color(0xFFFAF8ED);
+  final Color inputFillColor = const Color(0xFFFDFDFC);
+  final Color inputBorderColor = const Color(0xFFB8B8B8);
+  final Color labelTextColor = const Color(0xFF666666);
+  final Color inputTextColor = const Color(0xFF222222);
+  final Color errorColor = const Color.fromARGB(255, 253, 52, 38);
+  final Color deleteButtonRed = const Color(0xFFF44336);
 
-  // Controllers / state
+  // --- State ---
   late TextEditingController _nameCtrl;
-  late TextEditingController _qtyCtrl;
-  late TextEditingController _expCtrl;
-  late TextEditingController _dopCtrl;
-  late TextEditingController _notesCtrl;
-  late TextEditingController _barcodeCtrl;
   late TextEditingController _brandCtrl;
-  late TextEditingController _quantityUnitCtrl;
+  late TextEditingController _priceCtrl;
   late TextEditingController _netWeightCtrl;
+  late TextEditingController _expCtrl;
+  late TextEditingController _notesCtrl;
+  late TextEditingController _quantityCtrl;
+  late int _quantity;
 
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
+  bool _isUploadingImage = false;
+  String? _imageUrlFromItem;
   String? _selectedCategory;
-  File? _imageFile; // To store the picked image
-  final ImagePicker _picker = ImagePicker(); // Image picker instance
+
+  // --- Net Weight State ---
+  String _selectedUnit = 'g'; // Default unit
+  final List<String> _units = ['lbs', 'kg', 'g', 'L', 'mL'];
+  String? _netWeightErrorText;
+
+  bool _isNameInvalid = false;
+  bool _isCategoryInvalid = false;
+  bool _isExpDateInvalid = false;
 
   Timer? _debounce; // For autocomplete debouncing
 
   final List<String> _categories = <String>[
-    'Beverages',
-    'Canned Goods',
-    'Condiments',
-    'Dairy',
-    'Dry Goods',
-    'Snacks',
-    'Other',
+    'Beverages', 'Canned Goods', 'Dairy', 'Dry Goods', 'Snacks',
+    'Condiments', 'Frozen', 'Produce', 'Other',
   ];
 
   // Define default shelf lives for categories in days based on research
-  // These are general defaults; specific items will override in _updateExpirationDateFromCategory
   final Map<String, int> _categoryShelfLives = {
-    'Beverages': 270, // 9 months (general, UHT milk/juice longer, fresh juice shorter)
-    'Canned Goods': 730, // 2 years
-    'Condiments': 365, // 12 months (unopened)
-    'Dairy': 14, // 2 weeks (for refrigerated items like milk, yogurt)
-    'Dry Goods': 547, // 18 months (rice, pasta, flour)
-    'Snacks': 180, // 6 months
-    'Other': 180, // 6 months
+    'Beverages': 270,
+    'Canned Goods': 730,
+    'Condiments': 365,
+    'Dairy': 14,
+    'Dry Goods': 547,
+    'Snacks': 180,
+    'Frozen': 365,
+    'Produce': 7,
+    'Other': 180,
   };
 
   // More granular shelf lives for specific subcategories/keywords
   final Map<String, Map<String, int>> _subcategoryShelfLives = {
     'Dairy': {
-      'fresh milk': 7,
-      'powdered milk': 270, // 9 months
-      'cheese': 60, // 2 months (hard cheese, softer cheese shorter)
-      'yogurt': 21, // 3 weeks
-      'butter': 90, // 3 months
-      'eggs': 30, // 1 month
+      'fresh milk': 7, 'powdered milk': 270, 'cheese': 60, 'yogurt': 21, 'butter': 90, 'eggs': 30,
     },
     'Beverages': {
-      'fresh juice': 7,
-      'uht milk': 270, // 9 months
-      'coffee': 365, // 12 months (unopened)
-      'tea': 730, // 2 years
-      'soda': 180, // 6 months
-      'water': 730, // 2 years
+      'fresh juice': 7, 'uht milk': 270, 'coffee': 365, 'tea': 730, 'soda': 180, 'water': 730,
     },
     'Condiments': {
-      'vinegar': 730, // 2 years
-      'soy sauce': 365, // 1 year
-      'ketchup': 365, // 1 year
-      'mustard': 365, // 1 year
-      'dressing': 180, // 6 months
-      'spices': 730, // 2 years
-      'powder': 730, // 2 years
-      'salt': 1825, // 5 years
-      // 'sugar': 1825, // Moved to Dry Goods
+      'vinegar': 730, 'soy sauce': 365, 'ketchup': 365, 'mustard': 365, 'dressing': 180, 'spices': 730, 'powder': 730, 'salt': 1825,
     },
     'Dry Goods': {
-      'rice': 730, // 2 years
-      'pasta': 730, // 2 years
-      'flour': 180, // 6 months
-      'cereal': 180, // 6 months
-      'oil': 365, // 1 year
-      'beans': 730, // 2 years (dried)
-      'sugar': 1825, // 5 years (moved from Condiments)
+      'rice': 730, 'pasta': 730, 'flour': 180, 'cereal': 180, 'oil': 365, 'beans': 730, 'sugar': 1825,
     },
     'Snacks': {
-      'chips': 90, // 3 months
-      'crackers': 180, // 6 months
-      'cookies': 180, // 6 months
-      'chocolates': 270, // 9 months
-      'biscuits': 180, // 6 months (from Bakery)
-      'packed fudge bars': 180, // 6 months (from Bakery)
-      'mamon': 7, // 1 week (from Bakery)
-      'donut': 3, // 3 days (from Bakery)
-      'pandesal': 7, // 1 week (from Bakery)
-      'ensaymada': 7, // 1 week (from Bakery)
+      'chips': 90, 'crackers': 180, 'cookies': 180, 'chocolates': 270, 'biscuits': 180, 'packed fudge bars': 180, 'mamon': 7, 'donut': 3, 'pandesal': 7, 'ensaymada': 7,
     }
   };
 
   @override
   void initState() {
     super.initState();
+    _initializeStateFromItem();
+  }
+
+  void _initializeStateFromItem() {
     _nameCtrl = TextEditingController(text: widget.item.name);
-    _qtyCtrl = TextEditingController(text: widget.item.qty.toString());
-    _expCtrl = TextEditingController(text: widget.item.expirationDate != null ? DateFormat('MMMM d, yyyy').format(widget.item.expirationDate!) : '');
-    _dopCtrl = TextEditingController(text: widget.item.manufacturedDate != null ? DateFormat('MMMM d, yyyy').format(widget.item.manufacturedDate!) : '');
-    _notesCtrl = TextEditingController(text: widget.item.notes ?? ''); // Initialize with item's notes
-    _barcodeCtrl = TextEditingController(text: widget.item.barcode ?? '');
     _brandCtrl = TextEditingController(text: widget.item.brand ?? '');
-    _quantityUnitCtrl = TextEditingController(text: widget.item.netWeight ?? '');
-    _netWeightCtrl = TextEditingController(); // No longer used
-    _selectedCategory = widget.item.category; // Initialize with item's category
-  }
+    _priceCtrl = TextEditingController(text: widget.item.price?.toStringAsFixed(2) ?? '0.00');
+    _netWeightCtrl = TextEditingController();
+    _parseNetWeight(widget.item.netWeight ?? '');
+    _expCtrl = TextEditingController(
+        text: widget.item.expirationDate != null
+            ? DateFormat('MMMM d, yyyy').format(widget.item.expirationDate!)
+            : '');
+    _notesCtrl = TextEditingController(text: widget.item.notes ?? '');
+    _quantity = widget.item.qty;
+    _quantityCtrl = TextEditingController(text: _quantity.toString());
+    _selectedCategory = widget.item.category;
+    _imageUrlFromItem = widget.item.imageUrl;
 
-  Future<void> _pickImage() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
-    }
-  }
-
-  Future<String?> _uploadImage() async {
-    if (_imageFile == null) {
-      return null; // No new image to upload
-    }
-    try {
-      final storageRef = FirebaseStorage.instance.ref().child('pantry_item_images/${DateTime.now().millisecondsSinceEpoch}.jpg');
-      await storageRef.putFile(_imageFile!);
-      return await storageRef.getDownloadURL();
-    } catch (e) {
-      if (!mounted) return null;
-      return null;
-    }
+    _nameCtrl.addListener(() { if (_isNameInvalid && _nameCtrl.text.isNotEmpty) setState(() => _isNameInvalid = false); });
+    _expCtrl.addListener(() { if (_isExpDateInvalid && _expCtrl.text.isNotEmpty) setState(() => _isExpDateInvalid = false); });
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _qtyCtrl.dispose();
-    _expCtrl.dispose();
-    _dopCtrl.dispose();
-    _notesCtrl.dispose();
-    _barcodeCtrl.dispose();
     _brandCtrl.dispose();
-    _quantityUnitCtrl.dispose();
+    _priceCtrl.dispose();
     _netWeightCtrl.dispose();
+    _expCtrl.dispose();
+    _notesCtrl.dispose();
+    _quantityCtrl.dispose();
+    _debounce?.cancel();
     super.dispose();
+  }
+
+  void _parseNetWeight(String netWeight) {
+    if (netWeight.isEmpty) return;
+    final RegExp regex = RegExp(r'(\d+\.?\d*)\s*([a-zA-Z]+)');
+    final Match? match = regex.firstMatch(netWeight);
+
+    if (match != null) {
+      final String? value = match.group(1);
+      final String? unit = match.group(2)?.toLowerCase();
+      if (value != null) _netWeightCtrl.text = value;
+      if (unit != null) {
+        String normalizedUnit = unit;
+        if (unit == 'ml') normalizedUnit = 'mL';
+        else if (unit == 'l') normalizedUnit = 'L';
+        else if (unit == 'g') normalizedUnit = 'g';
+        else if (unit == 'kg') normalizedUnit = 'kg';
+        else if (unit == 'lbs') normalizedUnit = 'lbs';
+        if (_units.contains(normalizedUnit)) {
+          setState(() => _selectedUnit = normalizedUnit);
+        }
+      }
+    } else {
+      _netWeightCtrl.text = netWeight;
+    }
+  }
+
+  double? _convertNetWeight(double value, String from, String to) {
+    if (from == to) return value;
+    const weightUnits = ['g', 'kg', 'lbs'];
+    const volumeUnits = ['mL', 'L'];
+    if (!(weightUnits.contains(from) && weightUnits.contains(to)) &&
+        !(volumeUnits.contains(from) && volumeUnits.contains(to))) {
+      return null;
+    }
+    const gPerKg = 1000.0;
+    const gPerLbs = 453.592;
+    const mlPerL = 1000.0;
+    double valueInBaseUnit;
+    switch (from) {
+      case 'kg': valueInBaseUnit = value * gPerKg; break;
+      case 'lbs': valueInBaseUnit = value * gPerLbs; break;
+      case 'L': valueInBaseUnit = value * mlPerL; break;
+      default: valueInBaseUnit = value; break;
+    }
+    switch (to) {
+      case 'kg': return valueInBaseUnit / gPerKg;
+      case 'lbs': return valueInBaseUnit / gPerLbs;
+      case 'L': return valueInBaseUnit / mlPerL;
+      default: return valueInBaseUnit;
+    }
   }
 
   String? _suggestCategoryFromName(String itemName) {
     itemName = itemName.toLowerCase();
-
-    // Define keywords for each category, prioritizing more specific ones
     final Map<String, List<String>> categoryKeywords = {
       'Dairy': ['milk', 'yogurt', 'cheese', 'butter', 'margarine', 'spread', 'cream', 'eggs', 'evaporada', 'condensada'],
       'Beverages': ['coffee', 'tea', 'juice', 'soda', 'water', 'chocolate drink', 'malt', 'drink', 'softdrink', 'powdered drink'],
       'Canned Goods': ['canned', 'beans', 'soup', 'tuna', 'sardines', 'corned beef', 'meat loaf', 'luncheon meat', 'fruit cocktail'],
-      'Dry Goods': ['rice', 'pasta', 'flour', 'cereal', 'grains', 'seeds', 'oil', 'legumes', 'beans', 'soup mix', 'broth', 'noodles', 'sago', 'oats', 'oatmeal', 'sugar'], // Added sugar
-      'Snacks': [
-        'chips', 'crackers', 'cookies', 'nuts', 'candies', 'chocolates', 'biscuits', 'dips', 'wafer', 'bar', 'pastillas', 'polvoron',
-        'bread', 'cake', 'pastries', 'baking needs', 'buns', 'muffin', 'donut', 'pandesal', 'ensaymada', 'packed fudge bars', 'mamon' // Merged from Bakery
-      ],
-      'Condiments': ['vinegar', 'soy sauce', 'ketchup', 'mustard', 'dressing', 'sauce', 'spices', 'powder', 'salt', 'bbq', 'seasoning', 'garlic bits', 'bagoong', 'chili', 'patis', 'fish sauce'], // Removed sugar
-      'Other': [], // Explicitly define 'Other' for clarity, though it's the fallback
+      'Dry Goods': ['rice', 'pasta', 'flour', 'cereal', 'grains', 'seeds', 'oil', 'legumes', 'beans', 'soup mix', 'broth', 'noodles', 'sago', 'oats', 'oatmeal', 'sugar'],
+      'Snacks': ['chips', 'crackers', 'cookies', 'nuts', 'candies', 'chocolates', 'biscuits', 'dips', 'wafer', 'bar', 'pastillas', 'polvoron', 'bread', 'cake', 'pastries', 'baking needs', 'buns', 'muffin', 'donut', 'pandesal', 'ensaymada', 'packed fudge bars', 'mamon'],
+      'Condiments': ['vinegar', 'soy sauce', 'ketchup', 'mustard', 'dressing', 'sauce', 'spices', 'powder', 'salt', 'bbq', 'seasoning', 'garlic bits', 'bagoong', 'chili', 'patis', 'fish sauce'],
+      'Other': [],
     };
 
-    // Iterate through categories and their keywords to find a match
     for (final categoryEntry in categoryKeywords.entries) {
       final category = categoryEntry.key;
       final keywords = categoryEntry.value;
       for (final keyword in keywords) {
-        if (itemName.contains(keyword)) {
-          return category;
-        }
+        if (itemName.contains(keyword)) return category;
       }
     }
-
-    return 'Other'; // Default if no strong match
+    return 'Other';
   }
 
   void _updateExpirationDateFromCategory({bool forceUpdate = false}) {
-    // Only update if the expiration date is not manually set, or if forced
     if ((_expCtrl.text.isEmpty || forceUpdate) && _selectedCategory != null && widget.item.manufacturedDate != null) {
       int? shelfLife = _categoryShelfLives[_selectedCategory];
       String itemName = _nameCtrl.text.toLowerCase();
 
-      // Check for more granular shelf lives based on subcategory keywords
       if (_subcategoryShelfLives.containsKey(_selectedCategory)) {
         final subcategoryMap = _subcategoryShelfLives[_selectedCategory]!;
         for (final subcategoryEntry in subcategoryMap.entries) {
-          final subcategoryKeyword = subcategoryEntry.key;
-          final subcategorySpecificShelfLife = subcategoryEntry.value;
-          if (itemName.contains(subcategoryKeyword)) {
-            shelfLife = subcategorySpecificShelfLife;
-            break; // Found a more specific match, use it
+          if (itemName.contains(subcategoryEntry.key)) {
+            shelfLife = subcategoryEntry.value;
+            break;
           }
         }
       }
@@ -228,704 +231,479 @@ class _EditPantryItemBodyState extends State<EditPantryItem> {
     }
   }
 
-  Future<void> _saveChanges(FirestoreService firestoreService) async {
-    if (firestoreService.selectedHouseholdId == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No household selected. Cannot update item.')),
-      );
+  Future<void> _pickImage(ImageSource source) async {
+    final XFile? image = await _picker.pickImage(source: source, imageQuality: 85);
+    if (image != null) {
+      setState(() {
+        _selectedImage = File(image.path);
+        _imageUrlFromItem = null;
+      });
+    }
+  }
+
+  Future<String?> _uploadImageToFirebase() async {
+    if (_selectedImage == null) return _imageUrlFromItem;
+    setState(() => _isUploadingImage = true);
+
+    try {
+      final String fileName = 'pantry_items/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final Reference ref = FirebaseStorage.instance.ref().child(fileName);
+      await ref.putFile(_selectedImage!);
+      final String downloadUrl = await ref.getDownloadURL();
+      setState(() => _isUploadingImage = false);
+      return downloadUrl;
+    } catch (e) {
+      setState(() => _isUploadingImage = false);
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error uploading image: $e')));
+      return null;
+    }
+  }
+
+  Future<void> _saveItem() async {
+    setState(() {
+      _isNameInvalid = _nameCtrl.text.isEmpty;
+      _isCategoryInvalid = _selectedCategory == null;
+      _isExpDateInvalid = _expCtrl.text.isEmpty;
+    });
+
+    if (_isNameInvalid || _isCategoryInvalid || _isExpDateInvalid) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields.')));
       return;
     }
 
-    String? newImageUrl = widget.item.imageUrl;
-    if (_imageFile != null) {
-      newImageUrl = await _uploadImage();
-      if (newImageUrl == null) {
-        return; // Image upload failed
-      }
-    }
+    final String? finalImageUrl = await _uploadImageToFirebase();
+    if (_selectedImage != null && finalImageUrl == null) return;
 
-    // Attempt to suggest category if not already set or if it's 'Other'
-    if (_selectedCategory == null || _selectedCategory == 'Other' && _nameCtrl.text.isNotEmpty) {
-      setState(() {
-        _selectedCategory = _suggestCategoryFromName(_nameCtrl.text);
-      });
-    }
-
-    // After category is set (either by user or suggestion), attempt to set expiration date
-    _updateExpirationDateFromCategory();
-
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     final updatedItem = PantryItemModel(
       id: widget.item.id,
-      householdId: firestoreService.selectedHouseholdId!, // Pass the selected household ID
+      householdId: widget.item.householdId,
       name: _nameCtrl.text,
       category: _selectedCategory!,
-      imageUrl: newImageUrl, // Use the new image URL
-      qty: int.tryParse(_qtyCtrl.text) ?? 1,
-      expiresText: _expCtrl.text,
-      barcode: _barcodeCtrl.text.isEmpty ? null : _barcodeCtrl.text,
+      price: double.tryParse(_priceCtrl.text) ?? 0.0,
+      imageUrl: finalImageUrl,
+      qty: _quantity,
       brand: _brandCtrl.text.isEmpty ? null : _brandCtrl.text,
-      quantityUnit: null,
-      netWeight: _quantityUnitCtrl.text.isEmpty ? null : _quantityUnitCtrl.text,
-      nutritionFacts: widget.item.nutritionFacts,
-      shelfLifeDays: widget.item.shelfLifeDays,
-      shelfLifeWeeks: widget.item.shelfLifeWeeks,
-      shelfLifeMonths: widget.item.shelfLifeMonths,
-      manufacturedDate: _dopCtrl.text.isNotEmpty ? DateFormat('MMMM d, yyyy').parse(_dopCtrl.text) : null,
-      expirationDate: _expCtrl.text.isNotEmpty ? DateFormat('MMMM d, yyyy').parse(_expCtrl.text) : null,
-      selected: widget.item.selected,
-      notes: _notesCtrl.text.isEmpty ? null : _notesCtrl.text, // Save notes
+      netWeight: _netWeightCtrl.text.trim().isEmpty ? null : '${_netWeightCtrl.text.trim()} $_selectedUnit',
+      notes: _notesCtrl.text.isEmpty ? null : _notesCtrl.text,
+      expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text),
+      manufacturedDate: widget.item.manufacturedDate,
+      storageLocation: widget.item.storageLocation,
     );
+
     await firestoreService.updatePantryItem(updatedItem);
     if (!mounted) return;
+    _showSuccessDialog(updatedItem);
+  }
 
-    // Determine the status of the item to pass back to the pantry screen
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final expirationDay = updatedItem.expirationDate != null ? DateTime(updatedItem.expirationDate!.year, updatedItem.expirationDate!.month, updatedItem.expirationDate!.day) : null;
-    final difference = expirationDay?.difference(today).inDays;
-
-    String status = 'none';
-    if (difference != null) {
-      if (difference < 0) {
-        status = 'expired';
-      } else if (difference <= 7) { // Using a default of 7 days for UI feedback
-        status = 'atRisk';
-      }
+  Future<void> _deleteItemFromDatabase() async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    if (widget.item.id != null) {
+      await firestoreService.deletePantryItem(widget.item.id!);
     }
-
-    Navigator.of(context).pop({
-      'status': status,
-      'itemName': updatedItem.name,
-    });
   }
 
-  // Small label
-  Widget _label(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF2E2E2E),
-        ),
-      ),
-    );
-  }
-
-  // Filled, rounded text field (looks like the screenshot)
-  Widget _filledField(
-    TextEditingController ctrl, {
-    bool readOnly = false,
-    int maxLines = 1,
-    VoidCallback? onTap,
-    TextInputType keyboardType = TextInputType.text, // Added keyboardType
-    ValueChanged<String>? onChanged, // Add onChanged parameter
-  }) {
-    return TextField(
-      controller: ctrl,
-      readOnly: readOnly,
-      maxLines: maxLines,
-      onTap: onTap,
-      onChanged: onChanged, // Pass onChanged to TextField
-      decoration: InputDecoration(
-        isDense: true,
-        filled: true,
-        fillColor: const Color(0xFFE9E9E9),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 10,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide.none,
-        ),
-      ),
-      style: const TextStyle(fontSize: 14),
-      keyboardType: keyboardType, // Used keyboardType
-    );
-  }
-
-  // Green dropdown like in the mock
-  Widget _greenDropdown({bool readOnly = false}) {
-    return Container(
-      height: 40,
-      decoration: BoxDecoration(
-        color: readOnly ? const Color(0xFFE9E9E9) : headerGreen,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          value: _selectedCategory,
-          icon: Icon(Icons.keyboard_arrow_down, color: readOnly ? Colors.black54 : Colors.white),
-          dropdownColor: Colors.white,
-          hint: Text(
-            'Select Category',
-            style: TextStyle(color: readOnly ? Colors.black54 : Colors.white, fontWeight: FontWeight.w600),
-          ),
-          items: _categories
-              .map(
-                (c) => DropdownMenuItem(
-                  value: c,
-                  child: Text(
-                    c,
-                    style: const TextStyle(color: Colors.black87, fontSize: 14),
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: readOnly ? null : (val) => setState(() {
-            _selectedCategory = val;
-            _updateExpirationDateFromCategory(); // Update expiration date when category changes
-          }),
-        ),
-      ),
-    );
-  }
-
-  // Widget to display a read-only value
-  Widget _displayField(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _label(label),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE9E9E9),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            value.isEmpty ? 'N/A' : value,
-            style: const TextStyle(fontSize: 14, color: Colors.black87),
-          ),
-        ),
-        const SizedBox(height: 14),
-      ],
-    );
-  }
-
-  // Widget for Storage Location
-  Widget _storageLocationSection() {
-    final String storageLocation = widget.item.storageLocation ?? 'Not specified';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _label('Storage Location'),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE9E9E9),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            storageLocation,
-            style: const TextStyle(fontSize: 14, color: Colors.black87),
-          ),
-        ),
-        const SizedBox(height: 14),
-      ],
-    );
-  }
-
-  // Widget for Tips Section
-  Widget _tipsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Tips',
-          style: TextStyle(
-            color: headerGreen,
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-          ),
-        ),
-        const SizedBox(height: 12),
-        _tipCard(
-          title: 'Meal Plan Suggestions',
-          content: 'This section will provide meal ideas using ${widget.item.name}.',
-          icon: Icons.restaurant_menu,
-        ),
-        _tipCard(
-          title: 'Proper Storage',
-          content: 'Learn how to store ${widget.item.name} to maximize its shelf life.',
-          icon: Icons.archive,
-        ),
-        _tipCard(
-          title: 'Nutrition Information',
-          content: 'Get detailed nutritional facts for ${widget.item.name}.',
-          icon: Icons.food_bank, // Changed to a valid icon
-        ),
-        const SizedBox(height: 12),
-        ElevatedButton.icon(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => RecipeSuggestionsPage(itemName: widget.item.name),
-              ),
-            );
-          },
-          icon: const Icon(Icons.restaurant_menu, color: Colors.white),
-          label: const Text(
-            'Find Recipes',
-            style: TextStyle(color: Colors.white),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: headerGreen,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          ),
-        ),
-        const SizedBox(height: 22),
-      ],
-    );
-  }
-
-  // Helper for tip cards
-  Widget _tipCard({required String title, required String content, required IconData icon}) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  void _showImagePickerOptions() {
+    showModalBottomSheet(context: context, builder: (ctx) =>
+    SafeArea(
+        child: Wrap(
           children: [
-            Icon(icon, color: headerGreen, size: 28),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Colors.green),
+              title: const Text('Take Photo'),
+              onTap: () { Navigator.of(ctx).pop(); _pickImage(ImageSource.camera); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Colors.blue),
+              title: const Text('Choose from Gallery'),
+              onTap: () { Navigator.of(ctx).pop(); _pickImage(ImageSource.gallery); },
+            ),
+            if (_selectedImage != null || _imageUrlFromItem != null)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Remove Image'),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  setState(() { _selectedImage = null; _imageUrlFromItem = null; });
+                },
+              ),
+          ],
+        ),
+      ));
+  }
+
+  void _showSaveOrDiscardConfirmationDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 60),
+              const SizedBox(height: 16),
+              Text('Unsaved Changes', style: TextStyle(color: inputTextColor, fontSize: 22, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+              const SizedBox(height: 8),
+              Text('Do you want to save your edits or discard them?', style: TextStyle(color: labelTextColor, fontSize: 16, fontFamily: 'Inter'), textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              Row(
                 children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                      color: headerGreen,
-                    ),
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(backgroundColor: const Color(0xFF9E9E9E), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(vertical: 14)),
+                      onPressed: () { Navigator.of(dialogContext).pop(); Navigator.of(context).pop(); },
+                      child: const Text('Discard', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    content,
-                    style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(backgroundColor: headerGreen, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(vertical: 14)),
+                      onPressed: () { Navigator.of(dialogContext).pop(); _saveItem(); },
+                      child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  // Widget for section titles
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: headerGreen,
-          fontWeight: FontWeight.w800,
-          fontSize: 18,
-        ),
-      ),
+  void _showDeleteConfirmationDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 60),
+              const SizedBox(height: 16),
+              Text('Delete Item', style: TextStyle(color: inputTextColor, fontSize: 22, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+              const SizedBox(height: 8),
+              Text('Are you sure you want to permanently delete this item?', style: TextStyle(color: labelTextColor, fontSize: 16, fontFamily: 'Inter'), textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(backgroundColor: const Color(0xFF9E9E9E), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(vertical: 14)),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: const Text('No', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(backgroundColor: deleteButtonRed, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(vertical: 14)),
+                      onPressed: () async {
+                        Navigator.of(dialogContext).pop();
+                        await _deleteItemFromDatabase();
+                        if (mounted) _showItemDeletedDialog();
+                      },
+                      child: const Text('Yes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  // Helper widget for compact info fields
-  Widget _compactInfoField({
-    required String label,
-    required String value,
-    required bool isViewing,
-    TextEditingController? controller,
-    TextInputType keyboardType = TextInputType.text,
-    bool readOnly = false,
-    VoidCallback? onTap,
-    ValueChanged<String>? onChanged,
-  }) {
-    return SizedBox(
-      width: 150, // Fixed width for compact fields
-      child: isViewing
-          ? _displayField(label, value)
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _label(label),
-                _filledField(
-                  controller!,
-                  readOnly: readOnly,
-                  onTap: onTap,
-                  keyboardType: keyboardType,
-                  onChanged: onChanged,
+  void _showSuccessDialog(PantryItemModel updatedItem) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle_outline, color: headerGreen, size: 60),
+              const SizedBox(height: 16),
+              Text('Success!', style: TextStyle(color: headerGreen, fontSize: 24, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+              const SizedBox(height: 8),
+              Text('Pantry item updated!', style: TextStyle(color: inputTextColor, fontSize: 16, fontFamily: 'Inter'), textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  style: TextButton.styleFrom(backgroundColor: headerGreen, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(vertical: 14)),
+                  onPressed: () { Navigator.of(dialogContext).pop(); Navigator.of(context).pop(updatedItem); },
+                  child: const Text('Continue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Inter')),
                 ),
-                const SizedBox(height: 14),
-              ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showItemDeletedDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.cancel_outlined, color: deleteButtonRed, size: 60),
+              const SizedBox(height: 16),
+              Text('Deleted!', style: TextStyle(color: deleteButtonRed, fontSize: 24, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+              const SizedBox(height: 8),
+              Text('Pantry item has been deleted.', style: TextStyle(color: inputTextColor, fontSize: 16, fontFamily: 'Inter'), textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  style: TextButton.styleFrom(backgroundColor: deleteButtonRed, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(vertical: 14)),
+                  onPressed: () { Navigator.of(dialogContext).pop(); Navigator.of(context).popUntil((route) => route.isFirst); },
+                  child: const Text('Continue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Inter')),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget textField(TextEditingController ctrl, {required String labelText, bool readOnly = false, VoidCallback? onTap, BorderSide? borderSide, TextInputType? keyboardType, List<TextInputFormatter>? inputFormatters, Widget? suffixIcon, String? errorText, void Function(String)? onChanged}) {
+    return TextField(
+      controller: ctrl,
+      readOnly: readOnly,
+      onTap: onTap,
+      onChanged: onChanged,
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      decoration: InputDecoration(
+        labelText: labelText,
+        suffixIcon: suffixIcon,
+        errorText: errorText,
+        labelStyle: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w500, fontSize: 14, color: labelTextColor),
+        filled: true,
+        fillColor: inputFillColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: borderSide ?? BorderSide(color: inputBorderColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: borderSide ?? BorderSide(color: inputBorderColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: (borderSide ?? BorderSide(color: inputBorderColor)).copyWith(color: headerGreen, width: 2.0)),
+      ),
+    );
+  }
+
+  Widget _quantityField() {
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: 'Quantity',
+        labelStyle: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w500, fontSize: 14, color: labelTextColor),
+        filled: true, fillColor: inputFillColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: inputBorderColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: inputBorderColor)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(icon: Icon(Icons.remove, color: headerGreen), onPressed: () { if (_quantity > 1) setState(() { _quantity--; _quantityCtrl.text = _quantity.toString(); }); }),
+          SizedBox(
+            width: 40,
+            child: TextField(
+              controller: _quantityCtrl, textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(border: InputBorder.none, contentPadding: EdgeInsets.zero),
+              onChanged: (value) {
+                final newQuantity = int.tryParse(value);
+                if (newQuantity != null && newQuantity > 0) _quantity = newQuantity;
+              },
             ),
+          ),
+          IconButton(icon: Icon(Icons.add, color: headerGreen), onPressed: () => setState(() { _quantity++; _quantityCtrl.text = _quantity.toString(); })),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final firestoreService = Provider.of<FirestoreService>(context);
-    final bool isViewing = widget.isViewing; // Get the isViewing state
+    final nameBorderSide = _isNameInvalid ? BorderSide(color: errorColor, width: 1.5) : null;
+    final categoryBorderSide = _isCategoryInvalid ? BorderSide(color: errorColor, width: 1.5) : BorderSide(color: inputBorderColor);
+    final expDateBorderSide = _isExpDateInvalid ? BorderSide(color: errorColor, width: 1.5) : null;
 
+    Widget imageWidget;
+    if (_selectedImage != null) {
+      imageWidget = Image.file(_selectedImage!, fit: BoxFit.cover, width: 100, height: 100);
+    } else if (_imageUrlFromItem != null && _imageUrlFromItem!.isNotEmpty) {
+      imageWidget = Image.network(_imageUrlFromItem!, fit: BoxFit.cover, width: 100, height: 100);
+    } else {
+      imageWidget = const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.camera_alt, color: Colors.grey, size: 30), SizedBox(height: 4), Text('Add Photo', style: TextStyle(color: Colors.grey, fontSize: 10))]));
+    }
+    
     return Scaffold(
       backgroundColor: softCream,
-      body: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Custom AppBar-like section
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF2E7D32)),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    const Text(
-                      'Back',
-                      style: TextStyle(
-                        color: Color(0xFF2E7D32),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Spacer(),
-                    if (isViewing)
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Color(0xFF2E7D32)),
-                        onPressed: () {
-                          // Navigate to edit mode
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => EditPantryItem(item: widget.item, isViewing: false),
-                            ),
-                          );
-                        },
-                      ),
-                  ],
-                ),
-              ),
-              Text(
-                isViewing ? 'Pantry Item Details' : 'Edit Pantry Item',
-                style: TextStyle(
-                  color: headerGreen,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 24,
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Image placeholder
-              Center(
-                child: GestureDetector(
-                  onTap: isViewing ? null : _pickImage, // Disable tap if viewing
-                  child: CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Colors.grey[300],
-                    backgroundImage: _imageFile != null
-                        ? FileImage(_imageFile!) as ImageProvider
-                        : (widget.item.imageUrl != null && widget.item.imageUrl!.isNotEmpty
-                            ? NetworkImage(widget.item.imageUrl!)
-                            : null),
-                    child: _imageFile == null && (widget.item.imageUrl == null || widget.item.imageUrl!.isEmpty)
-                        ? Icon(
-                            Icons.camera_alt,
-                            color: Colors.grey[600],
-                            size: 50,
-                          )
-                        : null,
+      extendBody: true,
+      appBar: AppBar(
+        backgroundColor: headerGreen,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          onPressed: _showSaveOrDiscardConfirmationDialog,
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: IconButton(
+              icon: _isUploadingImage ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save, color: Colors.white, size: 28),
+              onPressed: _isUploadingImage ? null : _saveItem,
+            ),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 180 + MediaQuery.of(context).padding.bottom),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Edit Pantry Item', style: TextStyle(color: headerGreen, fontWeight: FontWeight.w800, fontSize: 28)),
+            const SizedBox(height: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: _showImagePickerOptions,
+                  child: Container(
+                    width: 100, height: 100,
+                    decoration: BoxDecoration(color: const Color(0xFFE0E0E0), borderRadius: BorderRadius.circular(12), border: Border.all(color: (_selectedImage != null || (_imageUrlFromItem != null && _imageUrlFromItem!.isNotEmpty)) ? headerGreen : Colors.grey, width: 2)),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(10), child: imageWidget),
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
-
-              // Item Name
-              _sectionTitle('Item Details'),
-              const SizedBox(height: 12),
-              isViewing
-                  ? _displayField('Item Name', _nameCtrl.text)
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _label('Item Name'),
-                        Autocomplete<Product>(
-                          optionsBuilder: (TextEditingValue textEditingValue) async {
-                            if (textEditingValue.text.isEmpty) {
-                              return const Iterable<Product>.empty();
-                            }
-
-                            // Debounce the search
-                            if (_debounce?.isActive ?? false) _debounce!.cancel();
-                            await Future.delayed(const Duration(milliseconds: 300)); // Small delay for better UX
-
-                            final products = await firestoreService.searchProducts(textEditingValue.text).first;
-                            return products.take(5); // Limit to 5 suggestions
-                          },
-                          displayStringForOption: (Product option) => option.productName,
-                          fieldViewBuilder: (BuildContext context,
-                              TextEditingController fieldTextEditingController,
-                              FocusNode fieldFocusNode,
-                              VoidCallback onFieldSubmitted) {
-                            _nameCtrl = fieldTextEditingController; // Keep _nameCtrl updated
-                            return TextField(
-                              controller: fieldTextEditingController,
-                              focusNode: fieldFocusNode,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                filled: true,
-                                fillColor: const Color(0xFFE9E9E9),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide.none,
-                                ),
-                              ),
-                              style: const TextStyle(fontSize: 14),
-                              onChanged: (value) {
-                                // Trigger category suggestion and expiration date update on manual text change
-                                setState(() {
-                                  _selectedCategory = _suggestCategoryFromName(value);
-                                  _updateExpirationDateFromCategory();
-                                });
-                              },
-                            );
-                          },
-                          onSelected: (Product selection) {
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      textField(_nameCtrl, labelText: 'Item Name', borderSide: nameBorderSide, onChanged: (value) {
+                        if (_debounce?.isActive ?? false) _debounce!.cancel();
+                        _debounce = Timer(const Duration(milliseconds: 500), () {
+                          final suggestedCategory = _suggestCategoryFromName(value);
+                          if (suggestedCategory != _selectedCategory) {
                             setState(() {
-                              _nameCtrl.text = selection.productName;
-                              _quantityUnitCtrl.text = selection.netWeight ?? ''; // Assuming netWeight is quantityUnit
-                              if (selection.category != null) {
-                                _selectedCategory = selection.category;
-                              } else {
-                                // If product from autocomplete doesn't have a category, try to suggest one
-                                _selectedCategory = _suggestCategoryFromName(selection.productName);
-                              }
-
-                              // Attempt to set expiration date based on category default
+                              _selectedCategory = suggestedCategory;
                               _updateExpirationDateFromCategory();
                             });
-                          },
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-                    ),
-
-              // Quantity, Net Weight, Expiration Date, Date of Purchase in a more compact layout
-              Wrap(
-                spacing: 12.0, // Horizontal space between chips
-                runSpacing: 12.0, // Vertical space between lines of chips
-                children: [
-                  _compactInfoField(
-                    label: 'Quantity',
-                    value: _qtyCtrl.text,
-                    isViewing: isViewing,
-                    controller: _qtyCtrl,
-                    keyboardType: TextInputType.number,
+                          }
+                        });
+                      }),
+                      const SizedBox(height: 14),
+                      textField(_brandCtrl, labelText: 'Brand'),
+                    ],
                   ),
-                  _compactInfoField(
-                    label: 'Net Weight',
-                    value: _quantityUnitCtrl.text,
-                    isViewing: isViewing,
-                    controller: _quantityUnitCtrl,
-                  ),
-                  _compactInfoField(
-                    label: 'Expiration Date',
-                    value: _expCtrl.text,
-                    isViewing: isViewing,
-                    controller: _expCtrl,
-                    readOnly: true,
-                    onTap: isViewing
-                        ? null
-                        : () async {
-                            final pickedDate = await showDatePicker(
-                              context: context,
-                              initialDate: DateTime.now(),
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                            );
-                            if (pickedDate != null) {
-                              setState(() {
-                                _expCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
-                                // No shelf life calculator in edit, so no need to clear
-                              });
-                            }
-                          },
-                  ),
-                  _compactInfoField(
-                    label: 'Date of Purchase',
-                    value: _dopCtrl.text,
-                    isViewing: isViewing,
-                    controller: _dopCtrl,
-                    readOnly: true,
-                    onTap: isViewing
-                        ? null
-                        : () async {
-                            final pickedDate = await showDatePicker(
-                              context: context,
-                              initialDate: DateTime.now(),
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                            );
-                            if (pickedDate != null) {
-                              setState(() {
-                                _dopCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
-                              });
-                            }
-                          },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Barcode and Brand in a row
-              Wrap(
-                spacing: 12.0,
-                runSpacing: 12.0,
-                children: [
-                  _compactInfoField(
-                    label: 'Barcode',
-                    value: _barcodeCtrl.text,
-                    isViewing: isViewing,
-                    controller: _barcodeCtrl,
-                  ),
-                  _compactInfoField(
-                    label: 'Brand',
-                    value: _brandCtrl.text,
-                    isViewing: isViewing,
-                    controller: _brandCtrl,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Item Category
-              _sectionTitle('Item Category'),
-              const SizedBox(height: 12),
-              isViewing
-                  ? _displayField('Category', _selectedCategory ?? 'N/A')
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _greenDropdown(readOnly: isViewing),
-                        const SizedBox(height: 14),
-                      ],
-                    ),
-
-              // Notes
-              _sectionTitle('Notes'),
-              const SizedBox(height: 12),
-              isViewing
-                  ? _displayField('Notes', _notesCtrl.text)
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _label('Notes (Optional)'),
-                        _filledField(_notesCtrl, maxLines: 5, readOnly: isViewing),
-                        const SizedBox(height: 22),
-                      ],
-                    ),
-
-              // Storage Location Section
-              if (isViewing) _storageLocationSection(),
-
-              // Tips Section
-              if (isViewing) _tipsSection(),
-
-              // Action buttons
-              if (!isViewing)
-                Row(
-                  children: [
-                    // Cancel (light with green border)
-                    OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: headerGreen,
-                        side: BorderSide(color: headerGreen, width: 1.2),
-                        backgroundColor: softCream,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 22,
-                          vertical: 8,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        textStyle: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                    const SizedBox(width: 12),
-
-                    // Edit (solid green)
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: headerGreen,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 26,
-                          vertical: 10,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        textStyle: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
-                      onPressed: () => _saveChanges(firestoreService),
-                      child: const Text('Save'),
-                    ),
-                  ],
                 ),
-              const SizedBox(height: 12),
-              // Delete button
-              Center(
-                child: TextButton(
-                  onPressed: () async {
-                    if (widget.item.id != null) {
-                      final navigator = Navigator.of(context);
-                      await firestoreService.deletePantryItem(widget.item.id!);
-                      if (!mounted) return;
-                      navigator.pop(); // Pop after deleting
-                    }
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    textStyle: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            DropdownButtonFormField2<String>(
+              value: _selectedCategory, isExpanded: true,
+              decoration: InputDecoration(
+                labelText: 'Category', labelStyle: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w500, fontSize: 14, color: labelTextColor),
+                filled: true, fillColor: inputFillColor,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: categoryBorderSide),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: categoryBorderSide),
+              ),
+              items: _categories.map((c) => DropdownMenuItem<String>(value: c, child: Text(c, style: TextStyle(fontSize: 16, color: inputTextColor)))).toList(),
+              onChanged: (val) => setState(() {
+                _selectedCategory = val;
+                if (val != null) _isCategoryInvalid = false;
+                _updateExpirationDateFromCategory();
+              }),
+            ),
+            const SizedBox(height: 20),
+            textField(_expCtrl, labelText: 'Date of Expiration', readOnly: true, borderSide: expDateBorderSide,
+              onTap: () async {
+                final pickedDate = await showDatePicker(context: context, initialDate: widget.item.expirationDate ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
+                if (pickedDate != null) {
+                  setState(() => _expCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate));
+                }
+              },
+            ),
+            const SizedBox(height: 20),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: textField(_priceCtrl, labelText: 'Item Price', keyboardType: const TextInputType.numberWithOptions(decimal: true))),
+                const SizedBox(width: 12),
+                Expanded(child: _quantityField()),
+              ],
+            ),
+            const SizedBox(height: 20),
+             textField(
+              _netWeightCtrl, 
+              labelText: 'Net Weight', 
+              errorText: _netWeightErrorText,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+              suffixIcon: Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton2<String>(
+                    value: _selectedUnit,
+                    items: _units.map((String value) => DropdownMenuItem<String>(value: value, child: Text(value, style: TextStyle(color: inputTextColor, fontSize: 16)))).toList(),
+                    onChanged: (String? newValue) {
+                      if (newValue == null || newValue == _selectedUnit) return;
+                      setState(() => _netWeightErrorText = null);
+                      final fromUnit = _selectedUnit;
+                      final toUnit = newValue;
+                      final numValue = double.tryParse(_netWeightCtrl.text.trim());
+                      setState(() => _selectedUnit = toUnit);
+                      if (numValue == null) return;
+                      final convertedValue = _convertNetWeight(numValue.toDouble(), fromUnit, toUnit);
+                      if (convertedValue != null) {
+                        _netWeightCtrl.text = NumberFormat("0.###").format(convertedValue);
+                      } else {
+                        setState(() => _netWeightErrorText = "Cannot convert from $fromUnit to $toUnit.");
+                      }
+                    },
+                    iconStyleData: IconStyleData(icon: Icon(Icons.unfold_more, color: Colors.grey[600], size: 20)),
+                    buttonStyleData: const ButtonStyleData(padding: EdgeInsets.zero, height: 40),
+                    dropdownStyleData: DropdownStyleData(decoration: BoxDecoration(borderRadius: BorderRadius.circular(12))),
                   ),
-                  child: const Text('Delete Item'),
                 ),
               ),
-            ],
+            ),
+            const SizedBox(height: 20),
+            textField(_notesCtrl, labelText: 'Notes'),
+            const SizedBox(height: 30),
+            Center(
+              child: TextButton(
+                onPressed: _showDeleteConfirmationDialog,
+                child: Text("Delete Item", style: TextStyle(color: deleteButtonRed, fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: IgnorePointer(
+        child: SizedBox(
+          height: 180 + MediaQuery.of(context).padding.bottom,
+          child: Image.asset(
+            'assets/footer1e27d32-trans.png',
+            width: double.infinity,
+            fit: BoxFit.cover,
           ),
         ),
       ),

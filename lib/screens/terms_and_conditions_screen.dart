@@ -51,9 +51,9 @@ class TermsAndConditionsScreen extends StatelessWidget {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(10.0),
                     ),
-                    child: Column(
+                    child: const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Text(
                           '1. Confidentiality:',
                           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),

@@ -6,7 +6,7 @@ import 'package:shelf_control/models/household_model.dart'; // Import Household 
 import 'package:shelf_control/models/product_model.dart'; // Import Product model
 import 'package:shelf_control/models/user_model.dart'; // Import UserModel
 import 'package:shelf_control/models/shopping_list_model.dart'; // Import ShoppingListModel
-import 'package:shelf_control/models/shopping_list_item_model.dart'; // Import ShoppingListItemModel
+// Import ShoppingListItemModel
 import 'package:shelf_control/models/shopping_history_item_model.dart'; // Import ShoppingHistoryItemModel
 import 'package:shelf_control/models/app_notification_model.dart'; // Import AppNotificationModel
 import 'package:uuid/uuid.dart'; // For generating unique IDs
@@ -60,24 +60,34 @@ class FirestoreService extends ChangeNotifier {
 
     if (storedHouseholdId != null) {
       // Check if the stored household still exists and the user is a member
-      final householdDoc = await _db.collection('households').doc(storedHouseholdId).get();
-      if (householdDoc.exists && householdDoc.data() != null && householdDoc.data()!['members'].contains(userId)) {
-        selectedHouseholdId = storedHouseholdId; // Use the setter to update and notify
+      final householdDoc =
+          await _db.collection('households').doc(storedHouseholdId).get();
+      if (householdDoc.exists &&
+          householdDoc.data() != null &&
+          householdDoc.data()!['members'].contains(userId)) {
+        selectedHouseholdId =
+            storedHouseholdId; // Use the setter to update and notify
         return;
       }
     }
 
     // If no stored household or it's invalid, default to personal household
     final userDoc = await _db.collection('users').doc(userId).get();
-    if (userDoc.exists && userDoc.data() != null && userDoc.data()!['personalHouseholdId'] != null) {
-      selectedHouseholdId = userDoc.data()!['personalHouseholdId']; // Use the setter to update and notify
+    if (userDoc.exists &&
+        userDoc.data() != null &&
+        userDoc.data()!['personalHouseholdId'] != null) {
+      selectedHouseholdId = userDoc.data()![
+          'personalHouseholdId']; // Use the setter to update and notify
     }
   }
 
   // Create a personal household for a new user
   Future<void> createPersonalHousehold(String userId, String userEmail) async {
     final String householdId = _uuid.v4();
-    final String joinCode = _uuid.v4().substring(0, 6).toUpperCase(); // Generate a 6-character join code
+    final String joinCode = _uuid
+        .v4()
+        .substring(0, 6)
+        .toUpperCase(); // Generate a 6-character join code
 
     final Household personalHousehold = Household(
       id: householdId,
@@ -88,17 +98,24 @@ class FirestoreService extends ChangeNotifier {
       isPersonal: true,
     );
 
-    await _db.collection('households').doc(householdId).set(personalHousehold.toFirestore());
+    await _db
+        .collection('households')
+        .doc(householdId)
+        .set(personalHousehold.toFirestore());
 
     // Update the user document with their personal household ID and add to householdIds
-    await _db.collection('users').doc(userId).set({
-      'email': userEmail,
-      'personalHouseholdId': householdId,
-      'householdIds': FieldValue.arrayUnion([householdId]),
-      'createdAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true)); // Use merge to avoid overwriting existing user data
+    await _db.collection('users').doc(userId).set(
+        {
+          'email': userEmail,
+          'personalHouseholdId': householdId,
+          'householdIds': FieldValue.arrayUnion([householdId]),
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(
+            merge: true)); // Use merge to avoid overwriting existing user data
 
-    selectedHouseholdId = householdId; // Automatically select the personal household
+    selectedHouseholdId =
+        householdId; // Automatically select the personal household
     // Also set the initial nickname for the user
     await _db.collection('users').doc(userId).update({
       'nickname': userEmail.split('@').first, // Default nickname from email
@@ -155,10 +172,8 @@ class FirestoreService extends ChangeNotifier {
 
   // Get a stream of pantry items for a specific household
   Stream<List<PantryItemModel>> getPantryItemsForHousehold(String householdId) {
-    return _db
-        .collection('pantryItems')
-        .where('householdId', isEqualTo: householdId)
-        .orderBy('timestamp', descending: true)
+    return _pantryCol(householdId)
+        .orderBy('timestamp', descending: true) // keep if you have this field
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => PantryItemModel.fromFirestore(doc))
@@ -170,7 +185,7 @@ class FirestoreService extends ChangeNotifier {
     if (selectedHouseholdId == null) {
       throw Exception("No household selected.");
     }
-    await _db.collection('pantryItems').add(item.toFirestore());
+    await _pantryCol(selectedHouseholdId!).add(item.toFirestore());
   }
 
   // Update an existing pantry item for the currently selected household
@@ -178,13 +193,16 @@ class FirestoreService extends ChangeNotifier {
     if (selectedHouseholdId == null || item.id == null) {
       throw Exception("No household selected or item ID is missing.");
     }
-    await _db.collection('pantryItems').doc(item.id).update(item.toFirestore());
+    await _pantryCol(selectedHouseholdId!)
+        .doc(item.id)
+        .update(item.toFirestore());
   }
 
   // --- Shopping List Methods ---
 
   // Get a stream of shopping lists for a specific household
-  Stream<List<ShoppingListModel>> getShoppingListsForHousehold(String householdId) {
+  Stream<List<ShoppingListModel>> getShoppingListsForHousehold(
+      String householdId) {
     return _db
         .collection('shoppingLists')
         .where('householdId', isEqualTo: householdId)
@@ -208,7 +226,10 @@ class FirestoreService extends ChangeNotifier {
     if (selectedHouseholdId == null || list.id == null) {
       throw Exception("No household selected or list ID is missing.");
     }
-    await _db.collection('shoppingLists').doc(list.id).update(list.toFirestore());
+    await _db
+        .collection('shoppingLists')
+        .doc(list.id)
+        .update(list.toFirestore());
   }
 
   // Delete a shopping list
@@ -277,15 +298,22 @@ class FirestoreService extends ChangeNotifier {
         .get();
 
     for (final doc in querySnapshot.docs) {
-      await _db.collection('shoppingLists').doc(doc.id).update({'isActive': false});
+      await _db
+          .collection('shoppingLists')
+          .doc(doc.id)
+          .update({'isActive': false});
     }
 
     // Activate the selected list
-    await _db.collection('shoppingLists').doc(listId).update({'isActive': true});
+    await _db
+        .collection('shoppingLists')
+        .doc(listId)
+        .update({'isActive': true});
   }
 
   // Get the currently active shopping list for a household
-  Stream<ShoppingListModel?> getActiveShoppingListForHousehold(String householdId) {
+  Stream<ShoppingListModel?> getActiveShoppingListForHousehold(
+      String householdId) {
     return _db
         .collection('shoppingLists')
         .where('householdId', isEqualTo: householdId)
@@ -293,11 +321,11 @@ class FirestoreService extends ChangeNotifier {
         .limit(1)
         .snapshots()
         .map((snapshot) {
-          if (snapshot.docs.isNotEmpty) {
-            return ShoppingListModel.fromFirestore(snapshot.docs.first);
-          }
-          return null;
-        });
+      if (snapshot.docs.isNotEmpty) {
+        return ShoppingListModel.fromFirestore(snapshot.docs.first);
+      }
+      return null;
+    });
   }
 
   // --- Notification Settings Methods ---
@@ -339,7 +367,8 @@ class FirestoreService extends ChangeNotifier {
   }
 
   // Get a stream of shopping history items for a specific household
-  Stream<List<ShoppingHistoryItemModel>> getShoppingHistoryForHousehold(String householdId) {
+  Stream<List<ShoppingHistoryItemModel>> getShoppingHistoryForHousehold(
+      String householdId) {
     return _db
         .collection('shoppingHistory')
         .where('householdId', isEqualTo: householdId)
@@ -357,7 +386,7 @@ class FirestoreService extends ChangeNotifier {
     }
 
     // Get the item details before deleting/updating
-    final itemDoc = await _db.collection('pantryItems').doc(itemId).get();
+    final itemDoc = await _pantryCol(selectedHouseholdId!).doc(itemId).get();
     if (!itemDoc.exists) {
       return; // Item doesn't exist
     }
@@ -366,14 +395,18 @@ class FirestoreService extends ChangeNotifier {
     // Determine productId from local_products_ph if barcode is available
     String? productId;
     if (item.barcode != null && item.barcode!.isNotEmpty) {
-      final productQuery = await _db.collection('local_products_ph').where('barcode', isEqualTo: item.barcode).limit(1).get();
+      final productQuery = await _db
+          .collection('local_products_ph')
+          .where('barcode', isEqualTo: item.barcode)
+          .limit(1)
+          .get();
       if (productQuery.docs.isNotEmpty) {
         productId = productQuery.docs.first.id;
       }
     }
 
     // Update the status to 'Deleted'
-    await _db.collection('pantryItems').doc(itemId).update({
+    await _pantryCol(selectedHouseholdId!).doc(itemId).update({
       'status': 'Deleted',
       'deletedAt': FieldValue.serverTimestamp(),
     });
@@ -403,18 +436,22 @@ class FirestoreService extends ChangeNotifier {
 
     // First, update the original item's quantity in the pantry
     if (item.qty > consumedQty) {
-      await _db.collection('pantryItems').doc(item.id).update({
+      await _pantryCol(selectedHouseholdId!).doc(item.id).update({
         'qty': item.qty - consumedQty,
       });
     } else {
       // If all available quantity is consumed, delete the item from the pantry
-      await _db.collection('pantryItems').doc(item.id).delete();
+      await _pantryCol(selectedHouseholdId!).doc(item.id).delete();
     }
 
     // Determine productId from local_products_ph if barcode is available
     String? productId;
     if (item.barcode != null && item.barcode!.isNotEmpty) {
-      final productQuery = await _db.collection('local_products_ph').where('barcode', isEqualTo: item.barcode).limit(1).get();
+      final productQuery = await _db
+          .collection('local_products_ph')
+          .where('barcode', isEqualTo: item.barcode)
+          .limit(1)
+          .get();
       if (productQuery.docs.isNotEmpty) {
         productId = productQuery.docs.first.id;
       }
@@ -461,12 +498,18 @@ class FirestoreService extends ChangeNotifier {
       if (!userDoc.exists || userDoc.data()?['householdIds'] == null) {
         return [];
       }
-      List<String> householdIds = List<String>.from(userDoc.data()!['householdIds']);
+      List<String> householdIds =
+          List<String>.from(userDoc.data()!['householdIds']);
       if (householdIds.isEmpty) {
         return [];
       }
-      final querySnapshot = await _db.collection('households').where(FieldPath.documentId, whereIn: householdIds).get();
-      return querySnapshot.docs.map((doc) => Household.fromFirestore(doc)).toList();
+      final querySnapshot = await _db
+          .collection('households')
+          .where(FieldPath.documentId, whereIn: householdIds)
+          .get();
+      return querySnapshot.docs
+          .map((doc) => Household.fromFirestore(doc))
+          .toList();
     });
   }
 
@@ -487,7 +530,10 @@ class FirestoreService extends ChangeNotifier {
       isPersonal: false,
     );
 
-    await _db.collection('households').doc(householdId).set(newHousehold.toFirestore());
+    await _db
+        .collection('households')
+        .doc(householdId)
+        .set(newHousehold.toFirestore());
 
     // Add householdId to the user's householdIds array
     await _db.collection('users').doc(userId).update({
@@ -508,7 +554,11 @@ class FirestoreService extends ChangeNotifier {
       throw Exception("User not logged in.");
     }
 
-    final querySnapshot = await _db.collection('households').where('joinCode', isEqualTo: joinCode).limit(1).get();
+    final querySnapshot = await _db
+        .collection('households')
+        .where('joinCode', isEqualTo: joinCode)
+        .limit(1)
+        .get();
 
     if (querySnapshot.docs.isEmpty) {
       throw Exception("Invalid join code.");
@@ -547,7 +597,6 @@ class FirestoreService extends ChangeNotifier {
     }
     return null;
   }
-
 
   // Update a user's nickname
   Future<void> updateUserNickname(String userId, String nickname) async {
@@ -589,6 +638,19 @@ class FirestoreService extends ChangeNotifier {
     }
   }
 
+  Future<void> markAsWasted(PantryItemModel item) async {
+  if (selectedHouseholdId == null || item.id == null) {
+    throw Exception("No household selected or item ID is missing.");
+  }
+  final updated = item.copyWith(
+    status: 'wasted',
+    wastedAt: DateTime.now(),
+  );
+  await _pantryCol(selectedHouseholdId!)
+      .doc(item.id)
+      .update(updated.toFirestore());
+}
+
   // Search for products in the local_products_ph collection
   Stream<List<Product>> searchProducts(String query) {
     if (query.isEmpty) {
@@ -600,9 +662,15 @@ class FirestoreService extends ChangeNotifier {
         .where('productName', isLessThanOrEqualTo: '$query\uf8ff')
         .limit(10) // Limit to 10 suggestions
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => Product.fromFirestore(doc))
-            .toList());
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => Product.fromFirestore(doc)).toList());
+  }
+
+  CollectionReference<Map<String, dynamic>> _pantryCol(String householdId) {
+    return _db
+        .collection('pantries')
+        .doc(householdId)
+        .collection('pantryItems');
   }
 
   // Get frequently consumed items for a household

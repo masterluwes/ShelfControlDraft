@@ -589,23 +589,21 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                       Navigator.of(dialogCtx, rootNavigator: true).pop();
                       if (!mounted) return;
 
-                      if (newList != null) {
-                        final result = await Navigator.of(parentContext).push(
-                          MaterialPageRoute(
-                            builder: (_) => ListItemsPage(shoppingList: newList!),
-                            settings: RouteSettings(
-                              arguments: {
-                                'seedItems': generatedItems,
-                                'isGeneratedTemp': true,
-                                'genMode': mode.name,
-                                'budget': sliderValue,
-                              },
-                            ),
+                      final result = await Navigator.of(parentContext).push(
+                        MaterialPageRoute(
+                          builder: (_) => ListItemsPage(shoppingList: newList!),
+                          settings: RouteSettings(
+                            arguments: {
+                              'seedItems': generatedItems,
+                              'isGeneratedTemp': true,
+                              'genMode': mode.name,
+                              'budget': sliderValue,
+                            },
                           ),
-                        );
-                        if (mounted) _handleListPageResult(result);
-                      }
-                    }
+                        ),
+                      );
+                      if (mounted) _handleListPageResult(result);
+                                        }
                   },
                   child: const Text('Generate'),
                 ),
@@ -892,11 +890,11 @@ class _ListCard extends StatelessWidget {
         color: Colors.white,
         border: Border.all(color: sep),
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: const Color.fromARGB(10, 0, 0, 0),
+            color: Color.fromARGB(10, 0, 0, 0),
             blurRadius: 4,
-            offset: const Offset(0, 1),
+            offset: Offset(0, 1),
           ),
         ],
       ),

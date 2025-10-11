@@ -52,9 +52,9 @@ class PrivacyPolicyScreen extends StatelessWidget {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(10.0),
                     ),
-                    child: Column(
+                    child: const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Text(
                           'We collect only what’s needed to help you manage your pantry.',
                           style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
