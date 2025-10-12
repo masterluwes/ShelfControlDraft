@@ -5,6 +5,15 @@ import 'weekly_report.dart';
 import 'package:provider/provider.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:shelf_control/models/pantry_item_model.dart';
+import 'package:flutter/rendering.dart';
+import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
+import '../services/report_service.dart';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 // for the week dropdown
 class WeekPeriod {
@@ -68,6 +77,144 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
   bool showConsumedItems = false;
 
   String _selectedGraph = 'waste';
+
+  // ===== PDF export state & helpers =====
+  final GlobalKey _trendKey =
+      GlobalKey(); // wraps your BarChart for PNG capture
+  List<PantryItemModel> _latestItems = []; // snapshot for export
+
+  Future<Uint8List?> _capturePng(GlobalKey key,
+      {double pixelRatio = 3.0}) async {
+    try {
+      final boundary =
+          key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final image = await boundary.toImage(pixelRatio: pixelRatio);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _exportWeeklyPdfForRange(
+      DateTime rangeStart, DateTime rangeEnd) async {
+    // Ensure the chart is on-screen for capture
+    final trendPng = await _capturePng(_trendKey);
+
+    bool inRange(DateTime? d) =>
+        d != null && !d.isBefore(rangeStart) && !d.isAfter(rangeEnd);
+
+    final wastedThisRange = _latestItems
+        .where((i) => i.status == 'wasted' && inRange(i.wastedAt))
+        .toList();
+    final consumedThisRange = _latestItems
+        .where((i) => i.status == 'consumed' && inRange(i.consumedAt))
+        .toList();
+
+    final totalWastedItems =
+        wastedThisRange.fold<int>(0, (s, i) => s + (i.qty ?? 1));
+    final totalItemsOut = totalWastedItems +
+        consumedThisRange.fold<int>(0, (s, i) => s + (i.qty ?? 1));
+    final totalWasteCost =
+        wastedThisRange.fold<double>(0, (s, i) => s + (i.price ?? 0));
+
+    // Your model has no weight field—use 0.0 and the PDF will hide that KPI
+    final totalWasteKg = 0.0;
+
+    // Category aggregation
+    final Map<String, CategoryRow> categoryRows = {};
+    for (final cat
+        in wastedThisRange.map((i) => i.category ?? 'Uncategorized').toSet()) {
+      final list =
+          wastedThisRange.where((i) => (i.category ?? 'Uncategorized') == cat);
+      final count = list.fold<int>(0, (s, i) => s + (i.qty ?? 1));
+      final cost = list.fold<double>(0, (s, i) => s + (i.price ?? 0));
+      categoryRows[cat] =
+          CategoryRow(category: cat, itemsWasted: count, totalCost: cost);
+    }
+    final totalCostSum =
+        categoryRows.values.fold<double>(0, (s, r) => s + r.totalCost);
+    for (final r in categoryRows.values.toList()) {
+      final share =
+          (totalCostSum > 0) ? (r.totalCost / totalCostSum) * 100.0 : 0.0;
+      categoryRows[r.category] = CategoryRow(
+        category: r.category,
+        itemsWasted: r.itemsWasted,
+        totalCost: r.totalCost,
+        sharePercent: share,
+      );
+    }
+
+    // Detailed item rows
+    final List<ItemWasteRow> itemRows = wastedThisRange.map((i) {
+      return ItemWasteRow(
+        category: i.category ?? 'Uncategorized',
+        itemName: i.name ?? 'Unknown',
+        quantity: i.qty ?? 1,
+        cost: i.price,
+        expiryDate: null, // your PantryItemModel has no expiry field
+        wastedAt: i.wastedAt,
+      );
+    }).toList();
+
+    // Quick insights for the PDF
+    final topCat = categoryRows.values.isEmpty
+        ? null
+        : categoryRows.values
+            .reduce((a, b) => a.totalCost >= b.totalCost ? a : b);
+
+    final insights = <String>[
+      'You wasted ${_percent(totalWastedItems, totalItemsOut)} of items leaving your pantry in this period — review expiry dates more often.',
+      if (topCat != null) 'Most waste occurred in ${topCat.category}.',
+    ];
+
+    final suggestions = <String>[
+      'Consider smaller restocks for frequently wasted items.',
+      'Keep perishable goods (like Dairy) in front (FIFO).',
+    ];
+
+    final stats = WasteWeeklyStats(
+      householdName: 'Household', // plug actual name if you have it
+      weekStart: rangeStart,
+      weekEnd: rangeEnd,
+      generatedAt: DateTime.now(),
+      totalWastedItems: totalWastedItems,
+      totalItemsOut: totalItemsOut,
+      totalWasteCost: totalWasteCost,
+      totalWasteWeightKg: totalWasteKg,
+      categoryRows: categoryRows,
+      itemWasteRows: itemRows,
+      behavioralInsights: insights,
+      baseRecommendations: suggestions,
+      weeklyTrendPng: trendPng,
+      costByCategoryPng: null, // add if you make a second chart later
+    );
+
+    await initializeDateFormatting('en_PH');
+
+// Now build and share the PDF
+    final pdfBytes = await WasteReportService().buildWeeklyPdf(stats);
+    await Printing.sharePdf(
+      bytes: pdfBytes,
+      filename:
+          'ShelfControl_Waste_${DateFormat('yyyyMMdd').format(rangeEnd)}.pdf',
+    );
+
+    final dir = await getApplicationDocumentsDirectory();
+    final filename =
+        'ShelfControl_Waste_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf';
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(pdfBytes);
+
+    print('📁 Saved PDF locally at: ${file.path}');
+  }
+
+  String _percent(int part, int whole) {
+    if (whole == 0) return '0%';
+    final p = (part / whole) * 100.0;
+    return '${p.toStringAsFixed(1)}%';
+  }
 
   String getWasteInsight(int thisWeekWaste, int lastWeekWaste) {
     if (lastWeekWaste == 0 && thisWeekWaste == 0) {
@@ -191,9 +338,25 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       title: const Text("This week"),
-                      onTap: () {
+                      onTap: () async {
                         Navigator.pop(context);
-                        // Backend call
+                        if (selectedWeek == null) return;
+
+                        final start = DateTime(
+                          selectedWeek!.startDate.year,
+                          selectedWeek!.startDate.month,
+                          selectedWeek!.startDate.day,
+                        );
+                        final end = DateTime(
+                          selectedWeek!.endDate.year,
+                          selectedWeek!.endDate.month,
+                          selectedWeek!.endDate.day,
+                          23,
+                          59,
+                          59,
+                        );
+
+                        await _exportWeeklyPdfForRange(start, end);
                       },
                     ),
                     // Custom range
@@ -260,9 +423,21 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         Navigator.pop(context);
-                        // Backend call
+                        // Minimal: export full span from first to last week in the dropdowns
+                        final start = DateTime(
+                            weeks.first.startDate.year,
+                            weeks.first.startDate.month,
+                            weeks.first.startDate.day);
+                        final end = DateTime(
+                            weeks.last.endDate.year,
+                            weeks.last.endDate.month,
+                            weeks.last.endDate.day,
+                            23,
+                            59,
+                            59);
+                        await _exportWeeklyPdfForRange(start, end);
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF2E7D32),
@@ -301,6 +476,8 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
         }
 
         final allItems = snap.data ?? [];
+
+        _latestItems = allItems;
 
         // 3) Get current week range from the dropdown selection
         final rangeStart = selectedWeek!.startDate;
@@ -572,81 +749,86 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                             ],
                           ),
                         ),
-                        SizedBox(
-                          height: 250,
-                          child: Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 16.0),
-                            child: BarChart(
-                              BarChartData(
-                                gridData: FlGridData(
-                                    show: true, drawVerticalLine: false),
-                                alignment: BarChartAlignment.spaceAround,
-                                maxY: _selectedGraph == "waste"
-                                    ? (weeklyWasteSeries.isEmpty
-                                        ? 5
-                                        : (weeklyWasteSeries.reduce(
-                                                    (a, b) => a > b ? a : b) +
-                                                2)
-                                            .toDouble())
-                                    : (weeklyConsumedSeries.isEmpty
-                                        ? 5
-                                        : (weeklyConsumedSeries.reduce(
-                                                    (a, b) => a > b ? a : b) +
-                                                2)
-                                            .toDouble()),
-                                titlesData: FlTitlesData(
-                                  leftTitles: AxisTitles(
-                                      sideTitles: SideTitles(showTitles: true)),
-                                  rightTitles: AxisTitles(
-                                      sideTitles:
-                                          SideTitles(showTitles: false)),
-                                  topTitles: AxisTitles(
-                                      sideTitles:
-                                          SideTitles(showTitles: false)),
-                                  bottomTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      getTitlesWidget: (value, meta) {
-                                        final index = value.toInt();
-                                        final total = _selectedGraph == "waste"
-                                            ? weeklyWasteSeries.length
-                                            : weeklyConsumedSeries.length;
-                                        // Show last 8 weeks as W-7 ... W current
-                                        if (index >= 0 && index < total) {
-                                          return Text("W${index + 1}",
-                                              style: const TextStyle(
-                                                  fontSize: 10));
-                                        }
-                                        return const SizedBox.shrink();
-                                      },
+                        RepaintBoundary(
+                          key: _trendKey,
+                          child: SizedBox(
+                            height: 250,
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16.0),
+                              child: BarChart(
+                                BarChartData(
+                                  gridData: const FlGridData(
+                                      show: true, drawVerticalLine: false),
+                                  alignment: BarChartAlignment.spaceAround,
+                                  maxY: _selectedGraph == "waste"
+                                      ? (weeklyWasteSeries.isEmpty
+                                          ? 5
+                                          : (weeklyWasteSeries.reduce(
+                                                      (a, b) => a > b ? a : b) +
+                                                  2)
+                                              .toDouble())
+                                      : (weeklyConsumedSeries.isEmpty
+                                          ? 5
+                                          : (weeklyConsumedSeries.reduce(
+                                                      (a, b) => a > b ? a : b) +
+                                                  2)
+                                              .toDouble()),
+                                  titlesData: FlTitlesData(
+                                    leftTitles: const AxisTitles(
+                                        sideTitles:
+                                            SideTitles(showTitles: true)),
+                                    rightTitles: const AxisTitles(
+                                        sideTitles:
+                                            SideTitles(showTitles: false)),
+                                    topTitles: const AxisTitles(
+                                        sideTitles:
+                                            SideTitles(showTitles: false)),
+                                    bottomTitles: AxisTitles(
+                                      sideTitles: SideTitles(
+                                        showTitles: true,
+                                        getTitlesWidget: (value, meta) {
+                                          final index = value.toInt();
+                                          final total =
+                                              _selectedGraph == "waste"
+                                                  ? weeklyWasteSeries.length
+                                                  : weeklyConsumedSeries.length;
+                                          // Show last 8 weeks as W-7 ... W current
+                                          if (index >= 0 && index < total) {
+                                            return Text("W${index + 1}",
+                                                style: const TextStyle(
+                                                    fontSize: 10));
+                                          }
+                                          return const SizedBox.shrink();
+                                        },
+                                      ),
                                     ),
                                   ),
-                                ),
-                                barGroups: List.generate(
-                                  (_selectedGraph == "waste"
-                                      ? weeklyWasteSeries.length
-                                      : weeklyConsumedSeries.length),
-                                  (index) {
-                                    final data = _selectedGraph == "waste"
-                                        ? weeklyWasteSeries
-                                        : weeklyConsumedSeries;
-                                    final y =
-                                        (index >= 0 && index < data.length)
-                                            ? data[index].toDouble()
-                                            : 0.0;
-                                    return BarChartGroupData(
-                                      x: index,
-                                      barRods: [
-                                        BarChartRodData(
-                                          toY: y,
-                                          width: 14,
-                                          borderRadius:
-                                              BorderRadius.circular(4),
-                                        ),
-                                      ],
-                                    );
-                                  },
+                                  barGroups: List.generate(
+                                    (_selectedGraph == "waste"
+                                        ? weeklyWasteSeries.length
+                                        : weeklyConsumedSeries.length),
+                                    (index) {
+                                      final data = _selectedGraph == "waste"
+                                          ? weeklyWasteSeries
+                                          : weeklyConsumedSeries;
+                                      final y =
+                                          (index >= 0 && index < data.length)
+                                              ? data[index].toDouble()
+                                              : 0.0;
+                                      return BarChartGroupData(
+                                        x: index,
+                                        barRods: [
+                                          BarChartRodData(
+                                            toY: y,
+                                            width: 14,
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
                                 ),
                               ),
                             ),
@@ -654,7 +836,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                         ),
                         const SizedBox(height: 12),
                         // Waste comparison
-                        Text(
+                        const Text(
                           "This Week's Waste",
                           style: TextStyle(
                             fontSize: 18,
@@ -744,7 +926,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                             children: [
                               Text(
                                 "Wasted items this week: $thisWeekWaste",
-                                style: TextStyle(fontWeight: FontWeight.bold),
+                                style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
                               Icon(
                                 showWastedItems
@@ -783,7 +965,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
 
                         const SizedBox(height: 24),
                         // Consumption
-                        Text(
+                        const Text(
                           "This Week's Food Usage",
                           style: TextStyle(
                             fontSize: 18,
@@ -845,7 +1027,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                             children: [
                               Text(
                                 "Total Consumed Items: $thisWeekConsumed",
-                                style: TextStyle(fontWeight: FontWeight.bold),
+                                style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
                               Icon(
                                 showConsumedItems

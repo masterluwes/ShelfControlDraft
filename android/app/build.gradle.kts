@@ -25,7 +25,7 @@ android {
         applicationId = "com.example.shelfcontrol"
 
         // KTS syntax: use assignments, not minSdkVersion(...)
-        minSdkVersion = flutter.minSdkVersion
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
 
         versionCode = flutter.versionCode

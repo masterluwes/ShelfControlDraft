@@ -112,7 +112,7 @@ class MealPlanner {
   // A tiny rule DSL
   // Each rule defines a "pantry-only" meal with required and optional ingredients.
   // We keep it generic so you can expand later.
-  static List<_Rule> _rules = [
+  static final List<_Rule> _rules = [
     _Rule(
       id: 'tuna_pasta',
       title: 'Tuna Pantry Pasta',

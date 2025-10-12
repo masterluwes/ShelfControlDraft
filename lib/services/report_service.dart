@@ -3,25 +3,26 @@ import 'dart:typed_data';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:flutter/services.dart' show rootBundle;
 
 class WasteWeeklyStats {
   final String householdName;
-  final DateTime weekStart;        // e.g., 2025-10-06
-  final DateTime weekEnd;          // e.g., 2025-10-12 (inclusive)
-  final DateTime generatedAt;      // now()
+  final DateTime weekStart; // e.g., 2025-10-06
+  final DateTime weekEnd; // e.g., 2025-10-12 (inclusive)
+  final DateTime generatedAt; // now()
 
-  final int totalWastedItems;      // e.g., 12
-  final int totalItemsOut;         // wasted + consumed that left pantry
-  final double totalWasteCost;     // e.g., 256.0
+  final int totalWastedItems; // e.g., 12
+  final int totalItemsOut; // wasted + consumed that left pantry
+  final double totalWasteCost; // e.g., 256.0
   final double totalWasteWeightKg; // e.g., 4.2
   final Map<String, CategoryRow> categoryRows; // by category key
-  final List<ItemWasteRow> itemWasteRows;      // detailed items
-  final List<String> behavioralInsights;       // bullet points
-  final List<String> baseRecommendations;      // bullet points (precomputed)
+  final List<ItemWasteRow> itemWasteRows; // detailed items
+  final List<String> behavioralInsights; // bullet points
+  final List<String> baseRecommendations; // bullet points (precomputed)
 
   // Optional chart images (PNG bytes)
-  final Uint8List? weeklyTrendPng;       // consumed vs wasted line/bar
-  final Uint8List? costByCategoryPng;    // pie or bar by category
+  final Uint8List? weeklyTrendPng; // consumed vs wasted line/bar
+  final Uint8List? costByCategoryPng; // pie or bar by category
 
   WasteWeeklyStats({
     required this.householdName,
@@ -42,15 +43,16 @@ class WasteWeeklyStats {
 
   double get wastePercent =>
       totalItemsOut == 0 ? 0 : (totalWastedItems / totalItemsOut) * 100.0;
-  double get efficiencyRate =>
-      totalItemsOut == 0 ? 0 : ((totalItemsOut - totalWastedItems) / totalItemsOut) * 100.0;
+  double get efficiencyRate => totalItemsOut == 0
+      ? 0
+      : ((totalItemsOut - totalWastedItems) / totalItemsOut) * 100.0;
 }
 
 class CategoryRow {
-  final String category;           // e.g., Dairy
-  final int itemsWasted;           // e.g., 3
-  final double totalCost;          // e.g., 60
-  final double? sharePercent;      // computed upstream or here
+  final String category; // e.g., Dairy
+  final int itemsWasted; // e.g., 3
+  final double totalCost; // e.g., 60
+  final double? sharePercent; // computed upstream or here
   CategoryRow({
     required this.category,
     required this.itemsWasted,
@@ -61,11 +63,11 @@ class CategoryRow {
 
 class ItemWasteRow {
   final String category;
-  final String itemName;           // e.g., Milk
-  final int quantity;              // e.g., 3
-  final double? cost;              // optional per-item or total
-  final DateTime? expiryDate;      // optional
-  final DateTime? wastedAt;        // for analytics
+  final String itemName; // e.g., Milk
+  final int quantity; // e.g., 3
+  final double? cost; // optional per-item or total
+  final DateTime? expiryDate; // optional
+  final DateTime? wastedAt; // for analytics
   ItemWasteRow({
     required this.category,
     required this.itemName,
@@ -77,17 +79,49 @@ class ItemWasteRow {
 }
 
 class WasteReportService {
-  final _date = DateFormat('MMM d, yyyy', 'en_PH');
-  final _dateTime = DateFormat('MMM d, yyyy h:mm a', 'en_PH');
-  final _money = NumberFormat.currency(locale: 'en_PH', symbol: '₱');
+  final _date = DateFormat('MMM d, yyyy'); // no locale param
+  final _dateTime = DateFormat('MMM d, yyyy h:mm a'); // no locale param
+  final _money = NumberFormat.currency(name: 'PHP', symbol: '₱');
 
   Future<Uint8List> buildWeeklyPdf(WasteWeeklyStats stats) async {
-    final doc = pw.Document();
+    // 1) Load fonts from assets
+    pw.Font fontRegular;
+    pw.Font fontBold;
+
+    try {
+      fontRegular = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/NotoSans.ttf'),
+      );
+      fontBold = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/NotoSans.ttf'),
+      );
+    } catch (e, st) {
+      // This is the most common runtime error — wrong path or pubspec not updated.
+      // Log clearly and fall back to the default font so you can still generate a PDF.
+      // (Default Helvetica won’t render ₱ / bullets perfectly, but avoids a crash.)
+      // You can also rethrow to fail hard if you prefer.
+      // ignore: avoid_print
+      print('[WasteReportService] Font load failed: $e\n$st');
+      // Fallback: use the built-in font so the app does not crash
+      fontRegular = pw.Font.helvetica();
+      fontBold = pw.Font.helveticaBold();
+    }
+
+    // 2) Apply fonts to the whole document via theme
+    final theme = pw.ThemeData.withFont(
+      base: fontRegular,
+      bold: fontBold,
+      italic: fontRegular,
+      boldItalic: fontBold,
+    );
+
+    // 3) Create the document with the theme (so we’re NOT using Helvetica)
+    final doc = pw.Document(theme: theme);
 
     // ---------- Cover ----------
     doc.addPage(
       pw.Page(
-        pageTheme: _pageTheme(),
+        pageTheme: _pageTheme(theme), // pass theme through
         build: (ctx) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -95,19 +129,25 @@ class WasteReportService {
               _header(title: 'SHELFCONTROL WASTE TRACKER REPORT'),
               pw.SizedBox(height: 16),
               pw.Text('Household: ${stats.householdName}',
-                  style: pw.TextStyle(fontSize: 14)),
+                  style: const pw.TextStyle(fontSize: 14)),
               pw.Text(
                 'Week: ${_date.format(stats.weekStart)} – ${_date.format(stats.weekEnd)}',
-                style: pw.TextStyle(fontSize: 14),
+                style: const pw.TextStyle(fontSize: 14),
               ),
-              pw.Text('Generated: ${_dateTime.format(stats.generatedAt)}',
-                  style: pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+              pw.Text(
+                'Generated: ${_dateTime.format(stats.generatedAt)}',
+                style:
+                    const pw.TextStyle(fontSize: 12, color: PdfColors.grey700),
+              ),
               pw.SizedBox(height: 24),
               _kpiRow(stats),
               pw.Spacer(),
-              pw.Text('This report summarizes pantry waste for the selected week, '
-                  'highlights behavioral patterns, and provides concrete actions to reduce waste next week.',
-                  style: pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
+              pw.Text(
+                'This report summarizes pantry waste for the selected week, '
+                'highlights behavioral patterns, and provides concrete actions to reduce waste next week.',
+                style:
+                    const pw.TextStyle(fontSize: 11, color: PdfColors.grey700),
+              ),
             ],
           );
         },
@@ -118,7 +158,7 @@ class WasteReportService {
     if (stats.weeklyTrendPng != null || stats.costByCategoryPng != null) {
       doc.addPage(
         pw.Page(
-          pageTheme: _pageTheme(),
+          pageTheme: _pageTheme(theme),
           build: (ctx) {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -127,16 +167,19 @@ class WasteReportService {
                 pw.SizedBox(height: 12),
                 if (stats.weeklyTrendPng != null) ...[
                   pw.Text('Consumed vs Wasted (Daily)',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                      style: pw.TextStyle(
+                          fontSize: 12, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 8),
                   pw.Image(pw.MemoryImage(stats.weeklyTrendPng!), height: 180),
                   pw.SizedBox(height: 20),
                 ],
                 if (stats.costByCategoryPng != null) ...[
                   pw.Text('Cost by Category',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                      style: pw.TextStyle(
+                          fontSize: 12, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 8),
-                  pw.Image(pw.MemoryImage(stats.costByCategoryPng!), height: 220),
+                  pw.Image(pw.MemoryImage(stats.costByCategoryPng!),
+                      height: 220),
                 ],
               ],
             );
@@ -148,7 +191,7 @@ class WasteReportService {
     // ---------- Category Table ----------
     doc.addPage(
       pw.Page(
-        pageTheme: _pageTheme(),
+        pageTheme: _pageTheme(theme),
         build: (ctx) {
           final rows = stats.categoryRows.values.toList()
             ..sort((a, b) => b.totalCost.compareTo(a.totalCost));
@@ -160,14 +203,16 @@ class WasteReportService {
               pw.SizedBox(height: 12),
               pw.Table.fromTextArray(
                 headers: const ['Category', 'Items Wasted', 'Cost', 'Share'],
-                data: rows.map((r) => [
-                  r.category,
-                  r.itemsWasted.toString(),
-                  _money.format(r.totalCost),
-                  r.sharePercent == null
-                      ? '-'
-                      : '${r.sharePercent!.toStringAsFixed(1)}%',
-                ]).toList(),
+                data: rows
+                    .map((r) => [
+                          r.category,
+                          r.itemsWasted.toString(),
+                          _money.format(r.totalCost),
+                          r.sharePercent == null
+                              ? '-'
+                              : '${r.sharePercent!.toStringAsFixed(1)}%',
+                        ])
+                    .toList(),
                 headerStyle: pw.TextStyle(
                     fontWeight: pw.FontWeight.bold, color: PdfColors.white),
                 headerDecoration: const pw.BoxDecoration(color: PdfColors.blue),
@@ -183,7 +228,8 @@ class WasteReportService {
               pw.SizedBox(height: 16),
               pw.Text(
                 'Top items wasted',
-                style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                style:
+                    pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
               ),
               pw.SizedBox(height: 8),
               _topItemsTable(stats),
@@ -197,7 +243,7 @@ class WasteReportService {
     final actionable = _computeActionableRecommendations(stats);
     doc.addPage(
       pw.Page(
-        pageTheme: _pageTheme(),
+        pageTheme: _pageTheme(theme),
         build: (ctx) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -213,7 +259,8 @@ class WasteReportService {
               pw.Text(
                 'Tip: Re-check expiry dates every weekend and move “at-risk” items to the front. '
                 'Use FIFO (First-In, First-Out) for Dairy and Snacks.',
-                style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+                style:
+                    const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
               ),
             ],
           );
@@ -226,13 +273,10 @@ class WasteReportService {
 
   // ---------- Helpers ----------
 
-  pw.PageTheme _pageTheme() => pw.PageTheme(
-        margin: pw.EdgeInsets.all(28),
+  pw.PageTheme _pageTheme(pw.ThemeData theme) => pw.PageTheme(
+        theme: theme,
+        margin: const pw.EdgeInsets.all(28),
         textDirection: pw.TextDirection.ltr,
-        theme: pw.ThemeData.withFont(
-          base: pw.Font.helvetica(),
-          bold: pw.Font.helveticaBold(),
-        ),
       );
 
   pw.Widget _header({required String title}) => pw.Container(
@@ -248,7 +292,7 @@ class WasteReportService {
         ),
       );
 
-  pw.Widget _kpiCard(String label, String value, {PdfColor color = PdfColors.blue}) {
+  pw.Widget _kpiCard(String label, String value) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),
       decoration: pw.BoxDecoration(
@@ -260,37 +304,40 @@ class WasteReportService {
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text(label,
-              style: pw.TextStyle(fontSize: 10, color: PdfColors.grey800)),
+              style:
+                  const pw.TextStyle(fontSize: 10, color: PdfColors.grey800)),
           pw.SizedBox(height: 4),
           pw.Text(value,
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              style:
+                  pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
         ],
       ),
     );
   }
 
   pw.Widget _kpiRow(WasteWeeklyStats s) {
-  final tiles = <pw.Widget>[
-    _kpiCard('Total Wasted Items', '${s.totalWastedItems}'),
-    _kpiCard('Waste % of Outflow', '${s.wastePercent.toStringAsFixed(1)}%'),
-    _kpiCard('Total Cost of Waste', _money.format(s.totalWasteCost)),
-    _kpiCard('Efficiency Rate', '${s.efficiencyRate.toStringAsFixed(1)}%'),
-  ];
+    final tiles = <pw.Widget>[
+      _kpiCard('Total Wasted Items', '${s.totalWastedItems}'),
+      _kpiCard('Waste % of Outflow', '${s.wastePercent.toStringAsFixed(1)}%'),
+      _kpiCard('Total Cost of Waste', _money.format(s.totalWasteCost)),
+      _kpiCard('Efficiency Rate', '${s.efficiencyRate.toStringAsFixed(1)}%'),
+    ];
 
-  // Only show weight if we have non-zero data
-  if (s.totalWasteWeightKg > 0) {
-    tiles.insert(
-      3,
-      _kpiCard('Total Waste Weight', '${s.totalWasteWeightKg.toStringAsFixed(2)} kg'),
+    // Only show weight if we have non-zero data
+    if (s.totalWasteWeightKg > 0) {
+      tiles.insert(
+        3,
+        _kpiCard('Total Waste Weight',
+            '${s.totalWasteWeightKg.toStringAsFixed(2)} kg'),
+      );
+    }
+
+    return pw.Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: tiles,
     );
   }
-
-  return pw.Wrap(
-    spacing: 10,
-    runSpacing: 10,
-    children: tiles,
-  );
-}
 
   pw.Widget _topItemsTable(WasteWeeklyStats s) {
     final rows = s.itemWasteRows.toList()
@@ -299,15 +346,19 @@ class WasteReportService {
 
     return pw.Table.fromTextArray(
       headers: const ['Category', 'Item', 'Qty', 'Cost', 'Expiry'],
-      data: top.map((r) => [
-        r.category,
-        r.itemName,
-        r.quantity.toString(),
-        r.cost == null ? '-' : _money.format(r.cost),
-        r.expiryDate == null ? '-' : DateFormat('MMM d', 'en_PH').format(r.expiryDate!),
-      ]).toList(),
-      headerStyle: pw.TextStyle(
-          fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+      data: top
+          .map((r) => [
+                r.category,
+                r.itemName,
+                r.quantity.toString(),
+                r.cost == null ? '-' : _money.format(r.cost),
+                r.expiryDate == null
+                    ? '-'
+                    : DateFormat('MMM d', 'en_PH').format(r.expiryDate!),
+              ])
+          .toList(),
+      headerStyle:
+          pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
       headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo),
       cellStyle: const pw.TextStyle(fontSize: 10),
       columnWidths: {
@@ -330,7 +381,8 @@ class WasteReportService {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text('•  ', style: const pw.TextStyle(fontSize: 11)),
-              pw.Expanded(child: pw.Text(t, style: const pw.TextStyle(fontSize: 11))),
+              pw.Expanded(
+                  child: pw.Text(t, style: const pw.TextStyle(fontSize: 11))),
             ],
           ),
         );
@@ -351,9 +403,11 @@ class WasteReportService {
     // 2) Category driver
     final topCat = s.categoryRows.values.isEmpty
         ? null
-        : s.categoryRows.values.reduce((a, b) => a.totalCost >= b.totalCost ? a : b);
+        : s.categoryRows.values
+            .reduce((a, b) => a.totalCost >= b.totalCost ? a : b);
     if (topCat != null && topCat.itemsWasted >= 2) {
-      out.add('Most waste is in ${topCat.category}. Buy smaller pack sizes next week and adopt FIFO for this category.');
+      out.add(
+          'Most waste is in ${topCat.category}. Buy smaller pack sizes next week and adopt FIFO for this category.');
     }
 
     // 3) SKU repeats
@@ -365,27 +419,27 @@ class WasteReportService {
       ..sort((a, b) => b.value.compareTo(a.value));
     if (frequent.isNotEmpty) {
       final names = frequent.take(3).map((e) => e.key).join(', ');
-      out.add('Repeated waste detected: $names — buy smaller quantities and delay restock until consumed.');
+      out.add(
+          'Repeated waste detected: $names — buy smaller quantities and delay restock until consumed.');
     }
 
     // 4) Upcoming expiries → cook plan
-    final soon = s.itemWasteRows
-        .where((r) => r.expiryDate != null)
-        .where((r) {
-          final d = r.expiryDate!;
-          final now = s.generatedAt;
-          final days = d.difference(now).inDays;
-          return days >= 0 && days <= 3;
-        })
-        .toList();
+    final soon = s.itemWasteRows.where((r) => r.expiryDate != null).where((r) {
+      final d = r.expiryDate!;
+      final now = s.generatedAt;
+      final days = d.difference(now).inDays;
+      return days >= 0 && days <= 3;
+    }).toList();
     if (soon.isNotEmpty) {
       final names = soon.take(5).map((r) => r.itemName).join(', ');
-      out.add('Cook soon (expiring ≤3 days): $names. Plan 2 quick meals using these first.');
+      out.add(
+          'Cook soon (expiring ≤3 days): $names. Plan 2 quick meals using these first.');
     }
 
     // 5) Budget angle
     if (s.totalWasteCost >= 200) {
-      out.add('You lost ${_money.format(s.totalWasteCost)} this week due to waste. '
+      out.add(
+          'You lost ${_money.format(s.totalWasteCost)} this week due to waste. '
           'Cap snack restocks at 1 pack per week and review on Sundays.');
     }
 
