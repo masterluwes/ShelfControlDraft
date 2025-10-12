@@ -3,6 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart'; // Added for Firebase App Check
 import 'package:shelf_control/screens/create_account_page.dart';
 import 'package:shelf_control/screens/login_page.dart';
+import 'package:shelf_control/screens/guest_page.dart';
+import 'package:shelf_control/screens/splash_screen.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/feature_preview_screen.dart';
 import 'package:shelf_control/screens/dashboard_page.dart';
@@ -10,7 +12,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:provider/provider.dart';
 import 'package:shelf_control/services/notification_service.dart'; // Import the new service
-// Import HouseholdSetupPage
+import 'package:shelf_control/screens/household_page.dart'; // Import HouseholdSetupPage
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

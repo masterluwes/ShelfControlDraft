@@ -233,7 +233,7 @@ class _DietaryPreferencesPageState extends State<DietaryPreferencesPage> {
       padding: const EdgeInsets.symmetric(vertical: 2.0),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFFFFBE6),
+          color: Color(0xFFFFFBE6),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Padding(
@@ -259,7 +259,7 @@ class _DietaryPreferencesPageState extends State<DietaryPreferencesPage> {
               ),
             ),
             value: value,
-            activeThumbColor: const Color(0xFF2E7D32),
+            activeColor: const Color(0xFF2E7D32),
             activeTrackColor: const Color(0xFF81C784),
             onChanged: onChanged,
             contentPadding: EdgeInsets.zero,

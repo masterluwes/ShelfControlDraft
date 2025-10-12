@@ -303,22 +303,16 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         final statusA = _getItemStatus(a);
         final statusB = _getItemStatus(b);
 
-        if (statusA == ItemStatus.expired && statusB != ItemStatus.expired) {
+        if (statusA == ItemStatus.expired && statusB != ItemStatus.expired)
           return -1;
-        }
-        if (statusA != ItemStatus.expired && statusB == ItemStatus.expired) {
+        if (statusA != ItemStatus.expired && statusB == ItemStatus.expired)
           return 1;
-        }
         if (statusA == ItemStatus.atRisk &&
             statusB != ItemStatus.atRisk &&
-            statusB != ItemStatus.expired) {
-          return -1;
-        }
+            statusB != ItemStatus.expired) return -1;
         if (statusA != ItemStatus.atRisk &&
             statusB == ItemStatus.atRisk &&
-            statusA != ItemStatus.expired) {
-          return 1;
-        }
+            statusA != ItemStatus.expired) return 1;
       }
 
       switch (sortBy) {

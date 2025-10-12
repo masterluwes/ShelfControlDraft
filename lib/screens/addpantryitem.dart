@@ -349,9 +349,8 @@ class _AddPantryItemState extends State<AddPantryItem> {
       if (value != null) _netWeightCtrl.text = value;
       if (unit != null) {
         String normalizedUnit = unit;
-        if (unit == 'ml') {
-          normalizedUnit = 'mL';
-        } else if (unit == 'l') normalizedUnit = 'L';
+        if (unit == 'ml') normalizedUnit = 'mL';
+        else if (unit == 'l') normalizedUnit = 'L';
         else if (unit == 'g') normalizedUnit = 'g';
         else if (unit == 'kg') normalizedUnit = 'kg';
         else if (unit == 'lbs') normalizedUnit = 'lbs';
@@ -675,12 +674,10 @@ class _AddPantryItemState extends State<AddPantryItem> {
           IconButton(
             icon: Icon(Icons.remove, color: headerGreen),
             onPressed: () {
-              if (_quantity > 1) {
-                setState(() {
+              if (_quantity > 1) setState(() {
                 _quantity--;
                 _quantityCtrl.text = _quantity.toString();
               });
-              }
             },
           ),
           SizedBox(
@@ -696,12 +693,10 @@ class _AddPantryItemState extends State<AddPantryItem> {
                 if (newQuantity != null && newQuantity > 0) _quantity = newQuantity;
               },
               onTapOutside: (_) {
-                if (_quantityCtrl.text.isEmpty || _quantity == 0) {
-                  setState(() {
+                if (_quantityCtrl.text.isEmpty || _quantity == 0) setState(() {
                   _quantity = 1;
                   _quantityCtrl.text = '1';
                 });
-                }
               },
             ),
           ),

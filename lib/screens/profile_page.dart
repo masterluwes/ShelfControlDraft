@@ -289,7 +289,7 @@ class _ProfilePageState extends State<ProfilePage> {
         await _storage.ref().child('profile_images/${user.uid}').delete();
       } on FirebaseException catch (e) {
         if (e.code != 'object-not-found') {
-          rethrow;
+          throw e;
         }
       }
 
@@ -306,7 +306,7 @@ class _ProfilePageState extends State<ProfilePage> {
         onContinue: () {
           if (mounted) {
             Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (context) => const WelcomePage()),
+              MaterialPageRoute(builder: (context) => WelcomePage()),
               (Route<dynamic> route) => false,
             );
           }
@@ -649,9 +649,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: const SafeArea(
+                  child: SafeArea(
                     top: false,
-                    child: Text("Save Profile", style: TextStyle(fontSize: 18, color: pureWhite)),
+                    child: const Text("Save Profile", style: TextStyle(fontSize: 18, color: pureWhite)),
                   ),
                 ),
               ),

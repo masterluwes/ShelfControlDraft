@@ -266,7 +266,7 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     SwitchListTile(
                       title: const Text('"Expired" Items'),
                       value: expiredItems,
-                      activeThumbColor: const Color(0xFF2E7D32),
+                      activeColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
                       onChanged: (val) {
                         setState(() => expiredItems = val);
@@ -276,7 +276,7 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     SwitchListTile(
                       title: const Text('"At risk" Items'),
                       value: atRiskItems,
-                      activeThumbColor: const Color(0xFF2E7D32),
+                      activeColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
                       onChanged: (val) {
                         setState(() => atRiskItems = val);
@@ -286,7 +286,7 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     SwitchListTile(
                       title: const Text('"Did You Consume?" Prompts'), // New toggle
                       value: didYouConsumePrompts,
-                      activeThumbColor: const Color(0xFF2E7D32),
+                      activeColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
                       onChanged: (val) {
                         setState(() => didYouConsumePrompts = val);
@@ -296,7 +296,7 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     SwitchListTile(
                       title: const Text("App Updates"),
                       value: appUpdates,
-                      activeThumbColor: const Color(0xFF2E7D32),
+                      activeColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
                       onChanged: (val) {
                         setState(() => appUpdates = val);
@@ -306,7 +306,7 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     SwitchListTile(
                       title: const Text("Item Recommendations"),
                       value: itemRecommendations,
-                      activeThumbColor: const Color(0xFF2E7D32),
+                      activeColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
                       onChanged: (val) {
                         setState(() => itemRecommendations = val);
@@ -316,7 +316,7 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     SwitchListTile(
                       title: const Text("Tips and Suggestions"),
                       value: tipsSuggestions,
-                      activeThumbColor: const Color(0xFF2E7D32),
+                      activeColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
                       onChanged: (val) {
                         setState(() => tipsSuggestions = val);

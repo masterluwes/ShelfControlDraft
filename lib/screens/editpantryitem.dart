@@ -143,9 +143,8 @@ class _EditPantryItemState extends State<EditPantryItem> {
       if (value != null) _netWeightCtrl.text = value;
       if (unit != null) {
         String normalizedUnit = unit;
-        if (unit == 'ml') {
-          normalizedUnit = 'mL';
-        } else if (unit == 'l') normalizedUnit = 'L';
+        if (unit == 'ml') normalizedUnit = 'mL';
+        else if (unit == 'l') normalizedUnit = 'L';
         else if (unit == 'g') normalizedUnit = 'g';
         else if (unit == 'kg') normalizedUnit = 'kg';
         else if (unit == 'lbs') normalizedUnit = 'lbs';

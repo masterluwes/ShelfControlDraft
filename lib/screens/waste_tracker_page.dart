@@ -579,7 +579,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                 const EdgeInsets.symmetric(horizontal: 16.0),
                             child: BarChart(
                               BarChartData(
-                                gridData: const FlGridData(
+                                gridData: FlGridData(
                                     show: true, drawVerticalLine: false),
                                 alignment: BarChartAlignment.spaceAround,
                                 maxY: _selectedGraph == "waste"
@@ -596,12 +596,12 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                                 2)
                                             .toDouble()),
                                 titlesData: FlTitlesData(
-                                  leftTitles: const AxisTitles(
+                                  leftTitles: AxisTitles(
                                       sideTitles: SideTitles(showTitles: true)),
-                                  rightTitles: const AxisTitles(
+                                  rightTitles: AxisTitles(
                                       sideTitles:
                                           SideTitles(showTitles: false)),
-                                  topTitles: const AxisTitles(
+                                  topTitles: AxisTitles(
                                       sideTitles:
                                           SideTitles(showTitles: false)),
                                   bottomTitles: AxisTitles(
@@ -654,7 +654,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                         ),
                         const SizedBox(height: 12),
                         // Waste comparison
-                        const Text(
+                        Text(
                           "This Week's Waste",
                           style: TextStyle(
                             fontSize: 18,
@@ -744,7 +744,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                             children: [
                               Text(
                                 "Wasted items this week: $thisWeekWaste",
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                               Icon(
                                 showWastedItems
@@ -783,7 +783,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
 
                         const SizedBox(height: 24),
                         // Consumption
-                        const Text(
+                        Text(
                           "This Week's Food Usage",
                           style: TextStyle(
                             fontSize: 18,
@@ -845,7 +845,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                             children: [
                               Text(
                                 "Total Consumed Items: $thisWeekConsumed",
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                               Icon(
                                 showConsumedItems

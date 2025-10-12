@@ -76,9 +76,9 @@ class _CookingViewPageState extends State<CookingViewPage>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          content: const Column(
+          content: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
+            children: const [
               Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 48),
               SizedBox(height: 16),
               Text(
