@@ -46,3 +46,9 @@ app.*.map.json
 
 # Ignore heap dump files
 *.hprof
+
+# Env files
+.env
+*.env
+functions/.env
+functions/.runtimeconfig.json

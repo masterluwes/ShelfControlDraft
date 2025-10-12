@@ -5,6 +5,11 @@ import 'dart:ui'; // For BackdropFilter
 import 'package:shelf_control/screens/mealsuggest.dart'; // Import to access the Recipe model
 import 'package:shelf_control/screens/cooking_view.dart'; // <-- 1. ADD THIS IMPORT
 
+String _truncate(String? s, int max) {
+  final v = (s ?? '');
+  return (v.length <= max) ? v : v.substring(0, max);
+}
+
 class RecipeDetailsPage extends StatefulWidget {
   final Recipe recipe;
   const RecipeDetailsPage({super.key, required this.recipe});
@@ -83,9 +88,19 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         TextSpan(
-                          text: widget.recipe.description.substring(
-                            widget.recipe.name.length,
-                          ),
+                          text: (() {
+                            final desc = widget.recipe.description ?? '';
+                            // Remove the name prefix only if the description actually starts with the name
+                            if (desc.startsWith(widget.recipe.name)) {
+                              final start = widget.recipe.name.length;
+                              // Guard against RangeError by clamping the start within string bounds
+                              final safeStart =
+                                  start > desc.length ? desc.length : start;
+                              final rest = desc.substring(safeStart).trimLeft();
+                              return rest.isEmpty ? desc : rest;
+                            }
+                            return desc;
+                          })(),
                         ),
                       ],
                     ),

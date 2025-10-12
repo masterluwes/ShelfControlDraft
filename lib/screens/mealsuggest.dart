@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shelf_control/screens/recipedetails.dart';
 import 'package:shelf_control/screens/mealhistory.dart';
 import 'package:shelf_control/services/meal_planner.dart';
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import Provider
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
+import 'package:shelf_control/services/spoonacular_client.dart';
+import 'package:shelf_control/services/recipe_suggest_service.dart';
+import 'package:shelf_control/models/user_prefs_model.dart';
+import 'package:shelf_control/models/suggested_recipe.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+final _svc = RecipeSuggestService(
+  SpoonacularClient(dotenv.env['SPOONACULAR_KEY'] ?? ''),
+);
 
 // ===== CONFIG =====
 const double kMinCoverageToShow = 0.5; // 50% pantry coverage
@@ -113,7 +123,6 @@ class Recipe {
   }
 }
 
-
 // --- Main Widget (same UI as yours, but dynamic) ---
 class MealSuggest extends StatefulWidget {
   const MealSuggest({super.key});
@@ -126,11 +135,77 @@ class _MealSuggestState extends State<MealSuggest> {
   bool _refreshing = false;
   late FirestoreService _firestoreService; // Declare FirestoreService
 
+  final _svc = RecipeSuggestService(
+  SpoonacularClient(dotenv.env['SPOONACULAR_KEY'] ?? ''),
+);
+
+  late FirestoreService _firestore;
+  List<SuggestedRecipe> _recipes = [];
+
+  bool _loading = false;
+  String? _error;
+
+// If you already have these from some provider, set them there.
+// Otherwise, initialize in didChangeDependencies() (example below).
+  String? householdId;
+  String? userId;
+
   @override
   void initState() {
     super.initState();
     _firestoreService = Provider.of<FirestoreService>(context, listen: false);
   }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _firestore = Provider.of<FirestoreService>(context, listen: false);
+
+    // set IDs – adjust this line if your service exposes the selected household differently
+    householdId = _firestore.selectedHouseholdId;
+    userId = FirebaseAuth.instance.currentUser?.uid;
+
+    // run once after first build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_recipes.isEmpty && _error == null) _load();
+    });
+  }
+
+  Future<void> _load() async {
+    if (householdId == null || userId == null) {
+      setState(() => _error = 'Missing household/user context.');
+      return;
+    }
+    try {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+
+      final pantry = await _firestore.getPantryForHousehold(householdId!);
+      final prefs = await _firestore.getUserPrefs(
+        userId: userId!,
+        householdId: householdId!,
+      );
+
+      final list = await _svc.suggest(pantry: pantry, prefs: prefs, limit: 12);
+
+      if (!mounted) return;
+      setState(() {
+        _recipes = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+    print('uid=${FirebaseAuth.instance.currentUser?.uid}, hid=$householdId');
+  }
+
+  
 
   // Normalization helpers
   String _norm(String s) => s
@@ -196,8 +271,10 @@ class _MealSuggestState extends State<MealSuggest> {
 
     // Streams
     final pantryStream = _firestoreService.selectedHouseholdId == null
-        ? Stream.value(<PantryItemModel>[]) // Return an empty stream of PantryItemModel if no household is selected
-        : _firestoreService.getPantryItemsForHousehold(_firestoreService.selectedHouseholdId!);
+        ? Stream.value(
+            <PantryItemModel>[]) // Return an empty stream of PantryItemModel if no household is selected
+        : _firestoreService
+            .getPantryItemsForHousehold(_firestoreService.selectedHouseholdId!);
 
     return Scaffold(
       backgroundColor: pageBg,
@@ -238,7 +315,9 @@ class _MealSuggestState extends State<MealSuggest> {
               );
             },
           ),
+          
         ],
+        
       ),
       body: StreamBuilder<List<PantryItemModel>>(
         stream: pantryStream,
@@ -247,7 +326,8 @@ class _MealSuggestState extends State<MealSuggest> {
             return const Center(child: CircularProgressIndicator());
           }
           if (pantrySnap.hasError) {
-            return Center(child: Text('Error loading pantry: ${pantrySnap.error}'));
+            return Center(
+                child: Text('Error loading pantry: ${pantrySnap.error}'));
           }
           if (!pantrySnap.hasData || pantrySnap.data!.isEmpty) {
             return const Center(child: Text('No pantry items yet. Add some!'));
@@ -262,30 +342,118 @@ class _MealSuggestState extends State<MealSuggest> {
               name: model.name,
               qty: model.qty,
               expiryAt: model.expirationDate,
-              consumed: model.status == 'Consumed', // Assuming 'Consumed' status means consumed
-              nearExpiry: false, // This will be computed by MealPlanner.generate if needed, or can be set based on model.status
+              consumed: model.status ==
+                  'Consumed', // Assuming 'Consumed' status means consumed
+              nearExpiry:
+                  false, // This will be computed by MealPlanner.generate if needed, or can be set based on model.status
             );
           }).toList();
 
           // 2) Generate suggestions from pantry (near-expiry prioritized, <=2 missing)
-          final suggestions = MealPlanner.generate(
-            pantry: pantryItems,
-            nearExpiryDays: 5,
-            maxMissing: 2,
-            maxResults: 12,
-          );
+          @override
+          Widget build(BuildContext context) {
+            if (_loading)
+              return const Center(child: CircularProgressIndicator());
+            if (_error != null) {
+              return Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Unable to load suggestions:\n$_error'),
+                  const SizedBox(height: 8),
+                  ElevatedButton(onPressed: _load, child: const Text('Retry')),
+                ]),
+              );
+            }
+            if (_recipes.isEmpty) {
+              return const Center(
+                  child: Text('No suggestions yet. Add more pantry items.'));
+            }
+
+            // if your card code expects your old UI Recipe type, map it here:
+            final suggested = _recipes
+                .map((r) => Recipe(
+                      name: r.title,
+                      imageUrl: r.imageUrl ?? '',
+                      servingSize:
+                          r.servings == null ? '' : '${r.servings} servings',
+                      calories: r.kcalPerServing == null
+                          ? ''
+                          : '${r.kcalPerServing} kcal/serving',
+                      time: r.timeMin == null ? '' : '${r.timeMin} min',
+                      description:
+                          'Uses ${r.usesExpiring.length} near-expiry item(s)',
+                      ingredients: r.ingredients
+                          .map((i) => {
+                                'name': i.name,
+                                'amount': i.qty == null
+                                    ? ''
+                                    : (i.unit == null
+                                        ? '${i.qty}'
+                                        : '${i.qty} ${i.unit}')
+                              })
+                          .toList(),
+                      directions: r.steps.isEmpty
+                          ? const ['See steps in details']
+                          : r.steps,
+                    ))
+                .toList();
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: suggested.length,
+              itemBuilder: (_, i) =>
+                  _buildMealCard(context: context, recipe: suggested[i]),
+            );
+          }
 
           // 3) Map to your existing Recipe model (string fields)
-          final suggested = suggestions.map((s) => Recipe(
-            name: s.name,
-            imageUrl: s.imageUrl,
-            servingSize: s.servingSize,
-            calories: s.calories,
-            time: s.time,
-            description: s.description,
-            ingredients: s.ingredients,
-            directions: s.directions,
-          )).toList();
+          // loading / error / empty states first
+          if (_loading) return const Center(child: CircularProgressIndicator());
+          if (_error != null) {
+            return Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text('Unable to load suggestions:\n$_error'),
+                const SizedBox(height: 8),
+                ElevatedButton(onPressed: _load, child: const Text('Retry')),
+              ]),
+            );
+          }
+          if (_recipes.isEmpty) {
+            return const Center(
+                child: Text('No suggestions yet. Add more pantry items.'));
+          }
+
+// If your card builder expects your old `Recipe` UI type,
+// map each SuggestedRecipe from `_recipes` -> Recipe
+          final List<Recipe> suggested = _recipes
+              .map((r) => Recipe(
+                    name: r.title,
+                    imageUrl: r.imageUrl ?? '',
+                    servingSize:
+                        r.servings == null ? '' : '${r.servings} servings',
+                    calories: r.kcalPerServing == null
+                        ? ''
+                        : '${r.kcalPerServing} kcal/serving',
+                    time: r.timeMin == null ? '' : '${r.timeMin} min',
+                    description:
+                        'Uses ${r.usesExpiring.length} near-expiry item(s)',
+                    ingredients: r.ingredients
+                        .map((i) => {
+                              'name': i.name,
+                              'amount': i.qty == null
+                                  ? ''
+                                  : (i.unit == null
+                                      ? '${i.qty}'
+                                      : '${i.qty} ${i.unit}')
+                            })
+                        .toList(),
+                    directions: r.steps.isEmpty
+                        ? const ['See steps in details']
+                        : r.steps,
+                  ))
+              .toList();
+
+// Now render `suggested` (NOT `suggestions`)
+          
 
           // 4) Build the UI (same layout you already use)
           return SingleChildScrollView(
@@ -298,7 +466,8 @@ class _MealSuggestState extends State<MealSuggest> {
                   if (suggested.isEmpty)
                     const Text('No suggestions yet. Add more pantry items!')
                   else
-                    ...suggested.map((r) => _buildMealCard(context: context, recipe: r)),
+                    ...suggested.map(
+                        (r) => _buildMealCard(context: context, recipe: r)),
                 ],
               ),
             ),
@@ -306,10 +475,7 @@ class _MealSuggestState extends State<MealSuggest> {
         },
       ),
     );
-    
   }
-
-  
 
   Widget _buildNoteBanner() {
     return Container(

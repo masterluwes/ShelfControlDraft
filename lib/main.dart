@@ -11,22 +11,28 @@ import 'package:shelf_control/services/firestore_service.dart';
 import 'package:provider/provider.dart';
 import 'package:shelf_control/services/notification_service.dart'; // Import the new service
 // Import HouseholdSetupPage
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    // ✅ load from assets
+    await dotenv.load(fileName: "assets/env/.env");
+  } catch (e) {
+    // Don’t crash the app if the file isn’t found; just log.
+    debugPrint('dotenv load failed: $e');
+  }
   await Firebase.initializeApp();
   await FirebaseAppCheck.instance.activate(
     androidProvider: AndroidProvider.playIntegrity,
   );
 
-  // Initialize NotificationService
-  final NotificationService notificationService = NotificationService();
+  final notificationService = NotificationService();
   await notificationService.initialize();
-
 
   runApp(
     ChangeNotifierProvider(
-      create: (context) => FirestoreService(),
+      create: (_) => FirestoreService(),
       child: const ShelfControlApp(),
     ),
   );

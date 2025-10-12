@@ -1,5 +1,5 @@
 class SuggestedRecipe {
-  final String id;                      // "spoonacular:12345" or "ai:uuid"
+  final String id;
   final String title;
   final String? imageUrl;
   final List<IngredientLine> ingredients;
@@ -7,8 +7,8 @@ class SuggestedRecipe {
   final int? servings;
   final int? timeMin;
   final int? kcalPerServing;
-  final String source;                  // "spoonacular" | "ai"
-  final List<String> usesExpiring;      // pantry items consumed that are near-expiry
+  final String source;              // "spoonacular" | "ai"
+  final List<String> usesExpiring;
   final double score;
 
   SuggestedRecipe({
