@@ -14,6 +14,9 @@ import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPre
 import 'dart:convert'; // For JSON encoding/decoding
 // import 'package:fuzzywuzzy/fuzzywuzzy.dart'; // Removed fuzzywuzzy
 import 'package:shelf_control/models/meal_history_model.dart';
+import 'package:shelf_control/models/shopping_list_item_model.dart';
+import 'package:shelf_control/models/shopping_list_model.dart';
+import 'package:shelf_control/models/pantry_item_model.dart';
 
 class FirestoreService extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -953,4 +956,50 @@ class FirestoreService extends ChangeNotifier {
 
     await batch.commit();
   }
+
+  Future<void> addMissingIngredientsToShopping({
+  required String householdId,
+  required List<Map<String,String>> recipeIngredients,
+  required List<PantryItemModel> pantryItems,
+}) async {
+  // Build fast lookup
+  final pantryNames = pantryItems.map((p) => p.name.toLowerCase()).toList();
+
+  // naive normalization
+  String norm(String s) => s.toLowerCase().trim();
+
+  final missing = <String>[];
+  for (final ing in recipeIngredients) {
+    final name = norm(ing['name'] ?? '');
+    if (name.isEmpty) continue;
+    final has = pantryNames.any((p) => p.contains(name) || name.contains(p));
+    if (!has) missing.add(name);
+  }
+
+  if (missing.isEmpty) return;
+
+  // Ensure there is an active list (you already have setActiveShoppingList / addShoppingList)
+  // For simplicity, just create a new list named "Meal Gaps" (or merge with current active).
+  final list = ShoppingListModel(
+    id: null,
+    householdId: householdId,
+    name: 'Meal Gaps',
+    createdAt: DateTime.now(),
+    isActive: true,
+    type: 'shopping',
+    items: missing.map((n) => ShoppingListItemModel(
+      id: null,
+      name: n,
+      quantity: 1,
+      unitPrice: 0.0,
+      isPurchased: false,
+      type: 'auto',
+    )).toList(),
+  );
+
+  await addShoppingList(list);
+}
+
+
+
 }

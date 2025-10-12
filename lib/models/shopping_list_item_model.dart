@@ -12,6 +12,8 @@ class ShoppingListItemModel {
   bool isPurchased;
   bool isBookmarked; // Added isBookmarked field
   String? nutrition; // New: Optional nutrition information
+  final String type;
+
 
   ShoppingListItemModel({
     this.id,
@@ -25,7 +27,8 @@ class ShoppingListItemModel {
     this.isPurchased = false,
     this.isBookmarked = false,
     this.nutrition,
-  });
+    String? type,
+  }) : type = type ?? 'manual';
 
   // Factory constructor to create a ShoppingListItemModel from a Firestore DocumentSnapshot
   factory ShoppingListItemModel.fromFirestore(DocumentSnapshot doc) {
@@ -42,6 +45,7 @@ class ShoppingListItemModel {
       isPurchased: data['isPurchased'] ?? false,
       isBookmarked: data['isBookmarked'] ?? false,
       nutrition: data['nutrition'],
+       type: (data['type'] as String?) ?? 'manual',
     );
   }
 
@@ -76,6 +80,7 @@ class ShoppingListItemModel {
       'isPurchased': isPurchased,
       'isBookmarked': isBookmarked, // Serialize isBookmarked
       'nutrition': nutrition, // Serialize nutrition
+       'type': type, 
     };
   }
 
@@ -92,6 +97,7 @@ class ShoppingListItemModel {
     bool? isPurchased,
     bool? isBookmarked, // Added to copyWith
     String? nutrition, // Added to copyWith
+    String? type,
   }) {
     return ShoppingListItemModel(
       id: id ?? this.id,
@@ -105,6 +111,7 @@ class ShoppingListItemModel {
       isPurchased: isPurchased ?? this.isPurchased,
       isBookmarked: isBookmarked ?? this.isBookmarked, // Copy isBookmarked
       nutrition: nutrition ?? this.nutrition, // Copy nutrition
+      type: type ?? this.type,
     );
   }
 }

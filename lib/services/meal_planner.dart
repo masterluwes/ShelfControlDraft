@@ -8,13 +8,16 @@ import 'dart:convert';
 class PantryItem {
   final String name; // normalized lower-case
   final int qty; // quantity available
+  final String category;
   final DateTime? expiryAt; // nullable
   final bool consumed; // default false
   final bool nearExpiry; // computed
+   // e.g., "Canned Goods", "Grains"
 
   PantryItem({
     required this.name,
     required this.qty,
+    required this.category,
     required this.expiryAt,
     required this.consumed,
     required this.nearExpiry,
@@ -42,6 +45,24 @@ class RecipeSuggestion {
     required this.ingredients,
     required this.directions,
     required this.difficulty,
+  });
+}
+
+class MealFilters {
+  final int maxCookMinutes; // per recipe
+  final int allowMissing; // 0..2
+  final int servings; // for display only
+  final List<String> allergens; // e.g., ["peanut","shellfish"]
+  final List<String> dislikes; // e.g., ["cilantro"]
+  final bool prioritizeNearExpiry;
+
+  const MealFilters({
+    this.maxCookMinutes = 45,
+    this.allowMissing = 2,
+    this.servings = 2,
+    this.allergens = const [],
+    this.dislikes = const [],
+    this.prioritizeNearExpiry = true,
   });
 }
 
@@ -150,6 +171,7 @@ class MealPlanner {
       items.add(PantryItem(
         name: name,
         qty: qty,
+        category: 'Uncategorized',
         expiryAt: expiryAt,
         consumed: false,
         nearExpiry: near,
@@ -314,6 +336,91 @@ class MealPlanner {
     } else {
       return 'Hard';
     }
+  }
+
+  static Future<List<RecipeSuggestion>> suggestOnDemand({
+    required String householdId,
+    required List<PantryItem> pantry,
+    required MealFilters filters,
+    int maxResults = 12,
+  }) async {
+    // 1) Get candidates (Phase 2: API + local + cache)
+    var cands = await MealPlanner.generateHybrid(
+      householdId: householdId,
+      pantry: pantry,
+      apiCount: maxResults * 2, // ask a bit more, we’ll filter down
+      addNutrition: false,
+    );
+
+    int minutesOf(String t) =>
+        int.tryParse(t.replaceAll(RegExp(r'[^0-9]'), '').trim()) ?? 0;
+
+    bool conflicts(List<Map<String, String>> ings, List<String> needles) {
+      final names = ings.map((i) => (i['name'] ?? '').toLowerCase()).toList();
+      return needles.any((n) => names.any((x) => x.contains(n.toLowerCase())));
+    }
+
+    // 2) Apply filters
+    cands = cands.where((r) {
+      if (minutesOf(r.time) > filters.maxCookMinutes) return false;
+      if (conflicts(r.ingredients, filters.allergens)) return false;
+      if (conflicts(r.ingredients, filters.dislikes)) return false;
+      return true;
+    }).toList();
+
+    // 3) Recompute coverage/missing against pantry for final scoring
+    List<String> pantryNames = pantry.map((p) => p.name.toLowerCase()).toList();
+    bool isNear(PantryItem p) =>
+        p.nearExpiry; // you already compute this upstream
+
+    double score(RecipeSuggestion r) {
+      // coverage
+      final ingNames =
+          r.ingredients.map((i) => (i['name'] ?? '').toLowerCase());
+      int have = 0;
+      int missing = 0;
+      int nearUsed = 0;
+      for (final n in ingNames) {
+        final hit = pantry.firstWhere(
+          (p) => p.name.toLowerCase().contains(n),
+          orElse: () => PantryItem(
+            name: '',
+            qty: 0,
+            category: '',
+            expiryAt: null,
+            nearExpiry: false,
+            consumed: false,
+          ),
+        );
+        if (hit.name.isEmpty) {
+          missing++;
+        } else {
+          have++;
+          if (isNear(hit)) nearUsed++;
+        }
+      }
+      if (missing > filters.allowMissing) return -1e6; // hard filter
+
+      // base components
+      final cov = have / (have + missing == 0 ? 1 : (have + missing));
+      final near = filters.prioritizeNearExpiry
+          ? (nearUsed / (have == 0 ? 1 : have))
+          : 0.0;
+      final time = minutesOf(r.time);
+      final timeScore = 1.0 - (time.clamp(0, 60) / 60.0);
+
+      // Difficulty nudge (Easy > Moderate > Hard)
+      final diffNudge = (r.difficulty == 'Easy')
+          ? 0.05
+          : (r.difficulty == 'Moderate' ? 0.02 : 0.0);
+
+      return 0.55 * cov + 0.25 * timeScore + 0.15 * near + diffNudge;
+    }
+
+    cands.sort((a, b) => score(b).compareTo(score(a)));
+
+    // 4) Trim to top maxResults and return
+    return cands.take(maxResults).toList();
   }
 
   /// Generate suggestions from pantry items (pure local rules).

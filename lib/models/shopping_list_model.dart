@@ -16,7 +16,7 @@ class ShoppingListModel {
     required this.name,
     required this.createdAt,
     required this.items,
-    required this.type,
+    this.type = 'shopping',
     this.isActive = false, // Default to false
   });
 

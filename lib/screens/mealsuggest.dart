@@ -5,6 +5,7 @@ import 'package:shelf_control/screens/mealhistory.dart';
 import '../services/meal_planner.dart' as mp;
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import Provider
+import 'package:shelf_control/models/pantry_item_model.dart';
 
 // ===== CONFIG =====
 const double kMinCoverageToShow = 0.5; // 50% pantry coverage
@@ -125,27 +126,112 @@ class MealSuggest extends StatefulWidget {
 class _MealSuggestState extends State<MealSuggest> {
   bool _refreshing = false;
   late FirestoreService _firestoreService; // Declare FirestoreService
+  int _maxMinutes = 45;
+  int _allowMissing = 2;
+  int _servings = 2;
+  bool _nearExpiryFirst = true;
+// Simple text filters (comma separated); optional
+  final _allergensCtl = TextEditingController(text: '');
+  final _dislikesCtl = TextEditingController(text: '');
 
-  Widget _buildRecipeList(BuildContext context, List<Recipe> suggested) {
-  return SingleChildScrollView(
-    child: Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          _buildNoteBanner(),
-          const SizedBox(height: 20),
-          if (suggested.isEmpty)
-            const Text('No suggestions yet. Add more pantry items!')
-          else
-            ...suggested.map(
-              (r) => _buildMealCard(context: context, recipe: r),
+  Widget _filtersBar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text('Max time:'),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Slider(
+                min: 10,
+                max: 90,
+                divisions: 8,
+                value: _maxMinutes.toDouble(),
+                label: '$_maxMinutes min',
+                onChanged: (v) => setState(() => _maxMinutes = v.round()),
+              ),
             ),
-        ],
-      ),
-    ),
-  );
-}
+            const SizedBox(width: 12),
+            const Text('Allow missing:'),
+            const SizedBox(width: 8),
+            DropdownButton<int>(
+              value: _allowMissing,
+              items: const [0, 1, 2]
+                  .map((e) => DropdownMenuItem(value: e, child: Text('$e')))
+                  .toList(),
+              onChanged: (v) => setState(() => _allowMissing = v ?? 2),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            Switch(
+              value: _nearExpiryFirst,
+              onChanged: (v) => setState(() => _nearExpiryFirst = v),
+            ),
+            const Text('Prioritize near-expiry'),
+            const Spacer(),
+            const Text('Servings:'),
+            const SizedBox(width: 8),
+            DropdownButton<int>(
+              value: _servings,
+              items: const [1, 2, 3, 4, 6]
+                  .map((e) => DropdownMenuItem(value: e, child: Text('$e')))
+                  .toList(),
+              onChanged: (v) => setState(() => _servings = v ?? 2),
+            ),
+          ],
+        ),
+        // Optional quick text filters:
+        TextField(
+          controller: _allergensCtl,
+          decoration: const InputDecoration(
+            labelText: 'Allergens (comma-separated)',
+            isDense: true,
+          ),
+          onSubmitted: (_) => setState(() {}),
+        ),
+        TextField(
+          controller: _dislikesCtl,
+          decoration: const InputDecoration(
+            labelText: 'Dislikes (comma-separated)',
+            isDense: true,
+          ),
+          onSubmitted: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 8),
+        const Divider(),
+      ],
+    );
+  }
 
+  Widget _buildRecipeList(BuildContext context, List<Recipe> suggested,
+      List<PantryItemModel> pantryModels) {
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            _buildNoteBanner(),
+            const SizedBox(height: 20),
+            _filtersBar(), // ← add this
+            const SizedBox(height: 8),
+            if (suggested.isEmpty)
+              const Text('No suggestions…')
+            else
+              ...suggested.map(
+                (r) => _buildMealCard(
+                  context: context,
+                  recipe: r, // ✅ use r (the element from the map)
+                  pantryItems: pantryModels,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -285,6 +371,55 @@ class _MealSuggestState extends State<MealSuggest> {
           // 1) Build pantry items from Firestore snapshot (filters expired/consumed inside)
           final pantryItems = mp.MealPlanner.fromSnapshot(pantrySnap.data!);
 
+          final pantryModels = pantrySnap.data!.docs
+              .map((doc) => PantryItemModel.fromFirestore(doc))
+              .toList();
+
+          future:
+          () async {
+            final fs = context.read<FirestoreService>();
+            final householdId = fs.selectedHouseholdId ?? 'demo-household';
+
+            final filters = mp.MealFilters(
+              maxCookMinutes: _maxMinutes,
+              allowMissing: _allowMissing,
+              servings: _servings,
+              allergens: _allergensCtl.text
+                  .split(',')
+                  .map((s) => s.trim())
+                  .where((s) => s.isNotEmpty)
+                  .toList(),
+              dislikes: _dislikesCtl.text
+                  .split(',')
+                  .map((s) => s.trim())
+                  .where((s) => s.isNotEmpty)
+                  .toList(),
+              prioritizeNearExpiry: _nearExpiryFirst,
+            );
+
+            final out = await mp.MealPlanner.suggestOnDemand(
+              householdId: householdId,
+              pantry: pantryItems,
+              filters: filters,
+              maxResults: 12,
+            );
+
+            // Map to UI Recipe
+            return out
+                .map((s) => Recipe(
+                      name: s.name,
+                      imageUrl: s.imageUrl,
+                      servingSize: filters.servings.toString(),
+                      calories: s.calories,
+                      time: s.time,
+                      description: s.description,
+                      ingredients: s.ingredients,
+                      directions: s.directions,
+                      difficulty: s.difficulty,
+                    ))
+                .toList();
+          }();
+
           // Use FirestoreService for the real household id if available
           final fs = context.read<FirestoreService>();
           final householdId = fs.selectedHouseholdId ?? 'demo-household';
@@ -361,11 +496,11 @@ class _MealSuggestState extends State<MealSuggest> {
                           difficulty: s.difficulty,
                         ))
                     .toList();
-                return _buildRecipeList(context, local);
+                return _buildRecipeList(context, local, pantryModels);
               }
 
               final suggested = snap.data ?? const <Recipe>[];
-              return _buildRecipeList(context, suggested);
+              return _buildRecipeList(context, suggested, pantryModels);
             },
           );
         },
@@ -429,6 +564,8 @@ class _MealSuggestState extends State<MealSuggest> {
   Widget _buildMealCard({
     required BuildContext context,
     required Recipe recipe,
+    required List<PantryItemModel> pantryItems,
+    // you can pass pantryItems here if needed later
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -515,6 +652,45 @@ class _MealSuggestState extends State<MealSuggest> {
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      // 👇 ADD BUTTON HERE
+                      TextButton.icon(
+                        onPressed: () async {
+                          final fs = context.read<FirestoreService>();
+                          final hid =
+                              fs.selectedHouseholdId ?? 'demo-household';
+
+                          // TODO: Replace with actual pantryItems variable from your stream
+                          final pantryModels =
+                              pantryItems; // ✅ comes from parameter
+
+                          // pass pantry list if available
+
+                          await fs.addMissingIngredientsToShopping(
+                            householdId: hid,
+                            recipeIngredients: recipe.ingredients,
+                            pantryItems: pantryModels,
+                          );
+
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'Missing ingredients added to Shopping List ✅'),
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.add_shopping_cart,
+                            color: Color(0xFF2E7D32)),
+                        label: const Text(
+                          'Add Missing',
+                          style: TextStyle(
+                            color: Color(0xFF2E7D32),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ],
                   ),
