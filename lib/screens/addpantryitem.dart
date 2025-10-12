@@ -477,7 +477,6 @@ class _AddPantryItemState extends State<AddPantryItem> {
     if (imageUrl == null && _selectedImage != null) return;
 
     final newItem = PantryItemModel(
-      id: '',
       householdId: widget.householdId,
       name: _nameCtrl.text,
       category: _selectedCategory!,

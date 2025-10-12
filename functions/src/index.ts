@@ -1,4 +1,3 @@
-import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onRequest } from "firebase-functions/v2/https";
 import { onDocumentDeleted } from "firebase-functions/v2/firestore"; // Updated for removed functions
 import * as admin from "firebase-admin";
@@ -33,7 +32,8 @@ interface Household {
     name: string;
 }
 
-// Helper function to add or update an in-app notification
+// Helper function to add or update an in-app notification (temporarily commented out for push notification testing)
+/*
 async function addAppNotificationToFirestore(
     userId: string,
     householdId: string,
@@ -83,27 +83,34 @@ async function addAppNotificationToFirestore(
         console.error(`Failed to add/update in-app notification for user ${userId}:`, error);
     }
 }
+*/
 
 // Extracted logic for the daily pantry check
-async function runPantryCheckLogic() {
-    console.log("Executing pantry check logic");
-    const usersSnapshot = await db.collection("users").get();
+async function runPantryCheckLogic(targetUserId?: string) {
+    console.log(`Executing pantry check logic for user: ${targetUserId || 'all users'}`);
+    let usersSnapshot;
+    if (targetUserId) {
+        const userDoc = await db.collection("users").doc(targetUserId).get();
+        if (!userDoc.exists) {
+            console.log(`Target user ${targetUserId} not found. Skipping pantry check.`);
+            return;
+        }
+        usersSnapshot = { docs: [userDoc] };
+    } else {
+        usersSnapshot = await db.collection("users").get();
+    }
 
     for (const userDoc of usersSnapshot.docs) {
         const userId = userDoc.id;
-        const settingsDoc = await db.collection("users").doc(userId).collection("notification_settings").doc("settings").get();
-
+        // Bypass notification settings for testing
         const settings: NotificationSettings = {
             expiredItems: true,
             atRiskItems: true,
-            daysForAtRisk: 3,
-            ...settingsDoc.data(),
+            daysForAtRisk: 7, // Hardcoded to 7 days for testing
         };
+        console.log(`Using hardcoded notification settings for user ${userId}:`, settings);
 
-        if (!settings.expiredItems && !settings.atRiskItems) {
-            console.log(`User ${userId} has disabled all pantry notifications. Skipping.`);
-            continue;
-        }
+        // The check for disabled notifications is removed as settings are hardcoded to true
 
         const userHouseholdsSnapshot = await db.collection("households").where("members", "array-contains", userId).get();
 
@@ -115,6 +122,13 @@ async function runPantryCheckLogic() {
                 const item = { id: itemDoc.id, ...itemDoc.data() } as PantryItem;
                 const now = admin.firestore.Timestamp.now();
                 const expirationDate = item.expirationDate;
+
+                // Skip item if expirationDate is missing or null
+                if (!expirationDate) {
+                    console.warn(`Pantry item ${item.name} (${item.id}) in household ${householdId} is missing an expirationDate. Skipping.`);
+                    continue;
+                }
+
                 const daysUntilExpiry = Math.ceil((expirationDate.toMillis() - now.toMillis()) / (1000 * 60 * 60 * 24));
 
                 let shouldCreatePrompt = false;
@@ -151,8 +165,15 @@ async function runPantryCheckLogic() {
 }
 
 // Extracted logic for processing and sending notifications
-async function processAndSendNotifications() {
-    const promptsSnapshot = await db.collection("notificationPrompts").where("status", "==", "pending_action").get();
+async function processAndSendNotifications(targetUserId?: string) {
+    console.log(`Executing notification sending logic for user: ${targetUserId || 'all users'}`);
+    let promptsQuery = db.collection("notificationPrompts").where("status", "==", "pending_action");
+
+    if (targetUserId) {
+        promptsQuery = promptsQuery.where("userId", "==", targetUserId);
+    }
+
+    const promptsSnapshot = await promptsQuery.get();
 
     if (promptsSnapshot.empty) {
         console.log("No pending prompts to send.");
@@ -253,15 +274,15 @@ async function processAndSendNotifications() {
             try {
                 await messaging.send(message);
                 console.log(`Sent summary notification to user ${userId} for household ${householdId}`);
-                // Add to in-app notification history
-                await addAppNotificationToFirestore(
-                    userId,
-                    householdId,
-                    `[${householdName}] Pantry Alert!`, // Use a concise, consistent title
-                    notificationBody.trim(), // The body contains the full details
-                    "pantry_summary",
-                    message.data,
-                );
+                // In-app notification creation is temporarily disabled for testing push notifications only
+                // await addAppNotificationToFirestore(
+                //     userId,
+                //     householdId,
+                //     `[${householdName}] Pantry Alert!`, // Use a concise, consistent title
+                //     notificationBody.trim(), // The body contains the full details
+                //     "pantry_summary",
+                //     message.data,
+                // );
 
                 // Mark all prompts for this user and household as sent
                 const batch = db.batch();
@@ -317,32 +338,33 @@ export const onPantryItemDelete = onDocumentDeleted("pantryItems/{itemId}", asyn
 
 // 1. dailyPantryCheck Cloud Function
 // Runs every day at 3:00 AM in the specified timezone.
-export const dailyPantryCheck = onSchedule({
-    schedule: "every day 03:00",
-    timeZone: "Asia/Manila",
-}, async (context) => {
-    console.log("Executing dailyPantryCheck trigger");
-    await runPantryCheckLogic();
-});
+// export const dailyPantryCheck = onSchedule({
+//     schedule: "every day 03:00",
+//     timeZone: "Asia/Manila",
+// }, async (context) => {
+//     console.log("Executing dailyPantryCheck trigger");
+//     await runPantryCheckLogic();
+// });
 
 
-// 2. sendReminderNotifications Cloud Function
-// Runs every day at 9:00 AM in the specified timezone.
-export const sendReminderNotifications = onSchedule({
-    schedule: "every day 09:00",
-    timeZone: "Asia/Manila",
-}, async (context) => {
-    console.log("Executing sendReminderNotifications");
-    await processAndSendNotifications();
-    console.log("sendReminderNotifications finished.");
-});
+// // 2. sendReminderNotifications Cloud Function
+// // Runs every day at 9:00 AM in the specified timezone.
+// export const sendReminderNotifications = onSchedule({
+//     schedule: "every day 09:00",
+//     timeZone: "Asia/Manila",
+// }, async (context) => {
+//     console.log("Executing sendReminderNotifications");
+//     await processAndSendNotifications();
+//     console.log("sendReminderNotifications finished.");
+// });
 
 // Temporary HTTP-triggered function for testing notifications
 export const testSendReminderNotifications = onRequest(async (req, res) => {
-    console.log("Executing testSendReminderNotifications via HTTP request");
+    const targetUserId = req.query.userId as string | undefined;
+    console.log(`Executing testSendReminderNotifications via HTTP request for user: ${targetUserId || 'all users'}`);
     try {
-        await processAndSendNotifications();
-        res.status(200).send("Test notifications sent successfully!");
+        await processAndSendNotifications(targetUserId);
+        res.status(200).send(`Test notifications sent successfully for user: ${targetUserId || 'all users'}!`);
     } catch (error) {
         console.error("Error in testSendReminderNotifications:", error);
         res.status(500).send(`Error sending test notifications: ${error}`);
@@ -351,10 +373,11 @@ export const testSendReminderNotifications = onRequest(async (req, res) => {
 
 // Temporary HTTP-triggered function to manually run dailyPantryCheck
 export const testDailyPantryCheck = onRequest(async (req, res) => {
-    console.log("Executing testDailyPantryCheck via HTTP request");
+    const targetUserId = req.query.userId as string | undefined;
+    console.log(`Executing testDailyPantryCheck via HTTP request for user: ${targetUserId || 'all users'}`);
     try {
-        await runPantryCheckLogic();
-        res.status(200).send("Test dailyPantryCheck executed successfully!");
+        await runPantryCheckLogic(targetUserId);
+        res.status(200).send(`Test dailyPantryCheck executed successfully for user: ${targetUserId || 'all users'}!`);
     } catch (error) {
         console.error("Error in testDailyPantryCheck:", error);
         res.status(500).send(`Error executing testDailyPantryCheck: ${error}`);
