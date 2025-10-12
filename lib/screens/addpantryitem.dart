@@ -4,16 +4,13 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
 import 'package:shelf_control/models/pantry_item_model.dart';
 import 'package:shelf_control/models/product_model.dart';
-import 'package:shelf_control/services/firestore_service.dart';
-import 'package:shelf_control/screens/dashboard_page.dart'; // For navigation back to dashboard
+// For navigation back to dashboard
 
 class AddPantryItem extends StatefulWidget {
   final Function(PantryItemModel) onAddItem;

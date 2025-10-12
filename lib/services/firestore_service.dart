@@ -912,7 +912,7 @@ class FirestoreService extends ChangeNotifier {
     final snap = await col.get();
     final pantry = <String, QueryDocumentSnapshot>{};
     for (final d in snap.docs) {
-      final data = d.data() as Map<String, dynamic>;
+      final data = d.data();
       final name = _norm((data['name'] ?? '').toString());
       if (name.isEmpty) continue;
       pantry[name] = d;
@@ -930,11 +930,11 @@ class FirestoreService extends ChangeNotifier {
     final batch = _db.batch();
     for (final want in wants) {
       String? hitKey;
-      pantry.keys.forEach((k) {
+      for (var k in pantry.keys) {
         if (k.contains(want) || want.contains(k)) {
           hitKey ??= k;
         }
-      });
+      }
       if (hitKey == null) continue;
 
       final doc = pantry[hitKey]!;

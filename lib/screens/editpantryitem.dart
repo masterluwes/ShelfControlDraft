@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shelf_control/models/pantry_item_model.dart';
-import 'package:shelf_control/models/product_model.dart'; 
 import 'package:intl/intl.dart';
 import 'dart:io';
 import 'dart:async';
@@ -10,7 +9,6 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
-import 'package:shelf_control/screens/recipe_suggestions_page.dart';
 
 class EditPantryItem extends StatefulWidget {
   final PantryItemModel item;

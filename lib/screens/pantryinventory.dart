@@ -7,7 +7,6 @@ import 'package:shelf_control/services/firestore_service.dart';
 import 'package:shelf_control/screens/pantryitemdetails.dart';
 import 'package:shelf_control/screens/editpantryitem.dart';
 import 'package:provider/provider.dart';
-import 'package:shelf_control/widgets/consume_quantity_bottom_sheet.dart';
 import 'package:shelf_control/models/app_notification_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';

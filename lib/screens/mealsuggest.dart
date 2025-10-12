@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shelf_control/screens/recipedetails.dart';
 import 'package:shelf_control/screens/mealhistory.dart';
-import 'package:shelf_control/services/meal_planner.dart';
+import '../services/meal_planner.dart' as mp;
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import Provider
-
 
 // ===== CONFIG =====
 const double kMinCoverageToShow = 0.5; // 50% pantry coverage
@@ -126,6 +125,27 @@ class MealSuggest extends StatefulWidget {
 class _MealSuggestState extends State<MealSuggest> {
   bool _refreshing = false;
   late FirestoreService _firestoreService; // Declare FirestoreService
+
+  Widget _buildRecipeList(BuildContext context, List<Recipe> suggested) {
+  return SingleChildScrollView(
+    child: Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          _buildNoteBanner(),
+          const SizedBox(height: 20),
+          if (suggested.isEmpty)
+            const Text('No suggestions yet. Add more pantry items!')
+          else
+            ...suggested.map(
+              (r) => _buildMealCard(context: context, recipe: r),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
 
   @override
   void initState() {
@@ -263,47 +283,90 @@ class _MealSuggestState extends State<MealSuggest> {
           }
 
           // 1) Build pantry items from Firestore snapshot (filters expired/consumed inside)
-          final pantryItems = MealPlanner.fromSnapshot(pantrySnap.data!);
+          final pantryItems = mp.MealPlanner.fromSnapshot(pantrySnap.data!);
 
-          // 2) Generate suggestions from pantry (near-expiry prioritized, <=2 missing)
-          final suggestions = MealPlanner.generate(
-            pantry: pantryItems,
-            nearExpiryDays: 5,
-            maxMissing: 2,
-            maxResults: 12,
-          );
+          // Use FirestoreService for the real household id if available
+          final fs = context.read<FirestoreService>();
+          final householdId = fs.selectedHouseholdId ?? 'demo-household';
 
-          // 3) Map to your existing Recipe model (string fields)
-          final suggested = suggestions
-              .map((s) => Recipe(
-                    name: s.name,
-                    imageUrl: s.imageUrl,
-                    servingSize: s.servingSize,
-                    calories: s.calories,
-                    time: s.time,
-                    description: s.description,
-                    ingredients: s.ingredients,
-                    directions: s.directions,
-                    difficulty: s.difficulty, // ✅ dynamically assigned
-                  ))
-              .toList();
+          return FutureBuilder<List<Recipe>>(
+            future: () async {
+              // Try hybrid (Spoonacular + local)
+              final hybrid = await mp.MealPlanner.generateHybrid(
+                householdId: householdId,
+                pantry: pantryItems,
+                apiCount: 10,
+                addNutrition: false,
+              );
 
-          // 4) Build the UI (same layout you already use)
-          return SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  _buildNoteBanner(),
-                  const SizedBox(height: 20),
-                  if (suggested.isEmpty)
-                    const Text('No suggestions yet. Add more pantry items!')
-                  else
-                    ...suggested.map(
-                        (r) => _buildMealCard(context: context, recipe: r)),
-                ],
-              ),
-            ),
+              if (hybrid.isEmpty) {
+                // Fallback: local rule-based
+                final local = mp.MealPlanner.generate(
+                  pantry: pantryItems,
+                  nearExpiryDays: 5,
+                  maxMissing: 2,
+                  maxResults: 10,
+                );
+                return local
+                    .map((s) => Recipe(
+                          name: s.name,
+                          imageUrl: s.imageUrl,
+                          servingSize: s.servingSize,
+                          calories: s.calories,
+                          time: s.time,
+                          description: s.description,
+                          ingredients: s.ingredients,
+                          directions: s.directions,
+                          difficulty: s.difficulty,
+                        ))
+                    .toList();
+              }
+
+              // Map hybrid suggestions to your UI Recipe
+              return hybrid
+                  .map((s) => Recipe(
+                        name: s.name,
+                        imageUrl: s.imageUrl,
+                        servingSize: s.servingSize,
+                        calories: s.calories,
+                        time: s.time,
+                        description: s.description,
+                        ingredients: s.ingredients,
+                        directions: s.directions,
+                        difficulty: s.difficulty,
+                      ))
+                  .toList();
+            }(),
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snap.hasError) {
+                // Graceful fallback to local rule-based if API fails
+                final local = mp.MealPlanner.generate(
+                  pantry: pantryItems,
+                  nearExpiryDays: 5,
+                  maxMissing: 2,
+                  maxResults: 10,
+                )
+                    .map((s) => Recipe(
+                          name: s.name,
+                          imageUrl: s.imageUrl,
+                          servingSize: s.servingSize,
+                          calories: s.calories,
+                          time: s.time,
+                          description: s.description,
+                          ingredients: s.ingredients,
+                          directions: s.directions,
+                          difficulty: s.difficulty,
+                        ))
+                    .toList();
+                return _buildRecipeList(context, local);
+              }
+
+              final suggested = snap.data ?? const <Recipe>[];
+              return _buildRecipeList(context, suggested);
+            },
           );
         },
       ),
