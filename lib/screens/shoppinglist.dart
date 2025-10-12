@@ -670,8 +670,8 @@ class _ShoppinglistState extends State<Shoppinglist> {
       if (guestLists.isEmpty) {
         // Create a default guest shopping list if none exists
         final newGuestList = ShoppingListModel(
-          id: 'guest_shopping_list', // A fixed ID for the guest list
-          householdId: 'guest_household', // Dummy household ID for guests
+          id: firestoreService.userId!, // Use the actual anonymous user ID as list ID
+          householdId: firestoreService.userId!, // Use the actual anonymous user ID
           name: 'My Guest Shopping List',
           createdAt: DateTime.now(),
           items: [],

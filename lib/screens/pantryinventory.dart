@@ -220,13 +220,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         await firestoreService.deletePantryItem(item.id!);
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Deleted "${item.name}"'),
-          action: SnackBarAction(label: 'Undo', onPressed: () {}),
-        ),
-      );
+      // Removed SnackBar to prevent pushing up the FAB
     }
   }
 
@@ -749,7 +743,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Image.network(
-                  item.imageUrl ?? 'https://via.placeholder.com/150', // Placeholder if no image
+                  item.imageUrl ?? 'assets/ShelfControl_Icon.png', // Placeholder if no image
                   width: 44,
                   height: 44,
                   fit: BoxFit.cover,
@@ -769,7 +763,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 4),
-                    Text('Unknown Member', // Changed from brand
+                    Text(item.category, // Display category
                         style: const TextStyle(
                             fontSize: 11, color: Color(0xFF6F6F6F))),
                     const SizedBox(height: 2),
@@ -921,14 +915,10 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             _items = snapshot.data ?? [];
             final view = _filteredAndSorted();
 
-            if (view.isEmpty) {
-              return const Center(child: Text('No pantry items yet. Add some!'));
-            }
-
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_inMultiSelectMode)
+                if (_inMultiSelectMode && !widget.isGuest) // Only show multi-select for registered users
                   _selectionModeTopBar(firestoreService)
                 else ...[
                   _bigTitle(),
@@ -936,11 +926,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                 ],
                 const Divider(height: 1, thickness: 1, color: Color(0xFFE9E1C7)),
                 Expanded(
-                  child: ListView.separated(
-                    itemCount: view.length,
-                    separatorBuilder: (_, __) => Divider(height: 1, thickness: 1, color: sep),
-                    itemBuilder: (_, i) => _dismissibleRow(view, i, firestoreService),
-                  ),
+                  child: view.isEmpty
+                      ? const Center(child: Text('No pantry items match the current filter.'))
+                      : ListView.separated(
+                          itemCount: view.length,
+                          separatorBuilder: (_, __) => Divider(height: 1, thickness: 1, color: sep),
+                          itemBuilder: (_, i) => _dismissibleRow(view, i, firestoreService),
+                        ),
                 ),
               ],
             );
@@ -953,6 +945,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   // ---------- WIDGETS ----------
 
   Widget _selectionModeTopBar(FirestoreService firestoreService) {
+    if (widget.isGuest) return const SizedBox.shrink(); // Hide for guest users
+
     return Container(
       color: headerGreen,
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),

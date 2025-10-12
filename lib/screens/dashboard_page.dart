@@ -110,7 +110,7 @@ class _DashboardPageState extends State<DashboardPage> {
           style: const TextStyle(color: Colors.white),
         ),
         actions: [
-          if (widget.isGuest)
+          if (widget.isGuest) ...[
             IconButton(
               icon: const Icon(Icons.person_add, color: Colors.white),
               onPressed: () {
@@ -119,8 +119,8 @@ class _DashboardPageState extends State<DashboardPage> {
                   MaterialPageRoute(builder: (context) => const CreateAccountPage()),
                 );
               },
-            )
-          else ...[
+            ),
+          ] else ...[
             IconButton(
               splashRadius: 22,
               tooltip: 'Suggest a Meal',
@@ -258,7 +258,7 @@ class _DashboardPageState extends State<DashboardPage> {
             label: 'Add Manually',
             onTap: () {
               final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-              final householdId = widget.isGuest ? 'guest_household' : firestoreService.selectedHouseholdId;
+              final householdId = widget.isGuest ? FirebaseAuth.instance.currentUser?.uid : firestoreService.selectedHouseholdId;
 
               if (!widget.isGuest && householdId == null) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -333,13 +333,17 @@ class _DashboardPageState extends State<DashboardPage> {
               _drawerItem(Icons.restaurant_menu, "Dietary Preferences", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DietaryPreferencesPage()))),
               _drawerItem(Icons.history, "History", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const HistoryScreen()))),
               _drawerItem(Icons.delete, "Waste Tracker", () => Navigator.push(context, MaterialPageRoute(builder: (context) => WasteTrackerPage()))),
+              _drawerItem(Icons.info, "User Guide", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UserGuidePage()))),
+              _drawerItem(Icons.feedback, "Feedback", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FeedbackPage()))),
+              _drawerItem(Icons.description, "Terms and Conditions", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen()))),
+              _drawerItem(Icons.privacy_tip, "Privacy Policy", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()))),
             ] else ...[
               _drawerItem(Icons.person_add, "Create Account", () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const CreateAccountPage()))),
+              _drawerItem(Icons.info, "User Guide", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UserGuidePage()))),
+              _drawerItem(Icons.feedback, "Feedback", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FeedbackPage()))),
+              _drawerItem(Icons.description, "Terms and Conditions", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen()))),
+              _drawerItem(Icons.privacy_tip, "Privacy Policy", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()))),
             ],
-            _drawerItem(Icons.info, "User Guide", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UserGuidePage()))),
-            _drawerItem(Icons.feedback, "Feedback", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FeedbackPage()))),
-            _drawerItem(Icons.description, "Terms and Conditions", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen()))),
-            _drawerItem(Icons.privacy_tip, "Privacy Policy", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()))),
             const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () async {
@@ -597,46 +601,51 @@ class _DashboardHomeState extends State<DashboardHome> {
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
           return Container();
         }
-        final items = snapshot.data!;
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text("Quick Consume", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              ...items.map((itemData) {
-                final pantryItem = PantryItemModel.fromMap(itemData['pantryItem'] as Map<String, dynamic>);
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4.0),
-                  child: Row(
+                final items = snapshot.data!;
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: Text(itemData['productName'], style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
-                      if (pantryItem.qty > 0)
-                        ElevatedButton(
-                          onPressed: () async {
-                            await firestoreService.recordConsumedItem(pantryItem, 1);
-                            if (mounted) setState(() {});
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2E7D32),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      const Text("Quick Consume", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 8),
+                      ...items.map((itemData) {
+                        // Add null check for pantryItem
+                        final Map<String, dynamic>? pantryItemMap = itemData['pantryItem'] as Map<String, dynamic>?;
+                        if (pantryItemMap == null) {
+                          return const SizedBox.shrink(); // Skip if pantryItem is null
+                        }
+                        final pantryItem = PantryItemModel.fromMap(pantryItemMap);
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: Row(
+                            children: [
+                              Expanded(child: Text(itemData['productName'], style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
+                              if (pantryItem.qty > 0)
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    await firestoreService.recordConsumedItem(pantryItem, 1);
+                                    if (mounted) setState(() {});
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2E7D32),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  child: const Text("Consume 1", style: TextStyle(color: Colors.white, fontSize: 12)),
+                                )
+                              else
+                                const Text("Out of Stock", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            ],
                           ),
-                          child: const Text("Consume 1", style: TextStyle(color: Colors.white, fontSize: 12)),
-                        )
-                      else
-                        const Text("Out of Stock", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        );
+                      }).toList(),
                     ],
                   ),
                 );
-              }).toList(),
-            ],
-          ),
-        );
       },
     );
   }

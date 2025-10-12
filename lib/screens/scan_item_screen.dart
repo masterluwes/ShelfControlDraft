@@ -127,7 +127,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       }
 
       final newItem = PantryItemModel(
-        householdId: widget.isGuest ? 'guest_household' : firestoreService.selectedHouseholdId!, // Use a dummy ID for guests
+        householdId: widget.isGuest ? firestoreService.userId! : firestoreService.selectedHouseholdId!, // Use the actual anonymous user ID for guests
         name: product['product_name'] ?? 'Unknown Product',
         category: _selectedCategory,
         imageUrl: product['image_front_url'],

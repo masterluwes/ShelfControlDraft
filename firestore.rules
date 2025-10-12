@@ -15,11 +15,16 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/households/$(hid)).data.members.hasAny([request.auth.uid]);
       }
 
-      // Allow any authenticated user to read household documents.
-      // This is necessary to allow users to query for households by joinCode.
-      // Note: This makes household information, including member lists, readable by any authenticated user.
-      allow read: if request.auth.uid != null;
-      allow create: if request.auth.uid != null; // Allow any authenticated user to create a household
+      // Allow read for individual household documents if the user is a member.
+      // Allow list operations (queries) on households if the query is specifically by joinCode.
+      allow read: if request.auth.uid != null && (
+        isHouseholdMember(householdId) ||
+        (request.method == 'list' && request.query.isConstrainedBy('joinCode'))
+      );
+      allow create: if request.auth.uid != null &&
+                      request.resource.data.members.hasAll([request.auth.uid]) &&
+                      request.resource.data.name is string &&
+                      request.resource.data.name.size() > 0; // Allow authenticated user to create a household with a name and themselves as a member
       allow update: if request.auth.uid != null && isHouseholdMember(householdId) && (
         (
           // Allow a user to add themselves to the members list (only 'members' field can change)
@@ -38,16 +43,20 @@ service cloud.firestore {
         (
           // Allow a household member to update the activeShoppingListId
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeShoppingListId'])
+        ) ||
+        (
+          // Allow a household member to update the household name
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
         )
       );
       allow delete: if request.auth.uid == resource.data.ownerId; // Only owner can delete
     }
 
     // Allow read/write for pantry items within a household
-    match /pantries/{householdId}/pantryItems/{pantryItemId} {
-      allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(householdId)).data.members.hasAny([request.auth.uid]);
-      allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(householdId)).data.members.hasAny([request.auth.uid]);
-      allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(householdId)).data.members.hasAny([request.auth.uid]);
+    match /pantryItems/{pantryItemId} {
+      allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]) && request.auth.token.firebase.sign_in_provider != 'anonymous';
+      allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]) && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
     // Allow authenticated users to read from the local_products_ph collection
@@ -59,15 +68,17 @@ service cloud.firestore {
     match /shoppingLists/{listId} {
       // Simplified read rule for queries: check if the user is a member of the household associated with the shopping list
       allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
-      allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]);
-      allow update: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
-      allow delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      // Deny create, update, delete for anonymous users
+      allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]) && request.auth.token.firebase.sign_in_provider != 'anonymous';
+      allow update: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]) && request.auth.token.firebase.sign_in_provider != 'anonymous';
+      allow delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]) && request.auth.token.firebase.sign_in_provider != 'anonymous';
 
       // Rules for shopping list items subcollection
       match /items/{itemId} {
         allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(get(/databases/$(database)/documents/shoppingLists/$(listId)).data.householdId)).data.members.hasAny([request.auth.uid]);
-        allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(get(/databases/$(database)/documents/shoppingLists/$(listId)).data.householdId)).data.members.hasAny([request.auth.uid]);
-        allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(get(/databases/$(database)/documents/shoppingLists/$(listId)).data.householdId)).data.members.hasAny([request.auth.uid]);
+        // Deny create, update, delete for anonymous users
+        allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(get(/databases/$(database)/documents/shoppingLists/$(listId)).data.householdId)).data.members.hasAny([request.auth.uid]) && request.auth.token.firebase.sign_in_provider != 'anonymous';
+        allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(get(/databases/$(database)/documents/shoppingLists/$(listId)).data.householdId)).data.members.hasAny([request.auth.uid]) && request.auth.token.firebase.sign_in_provider != 'anonymous';
       }
     }
 
@@ -86,9 +97,10 @@ service cloud.firestore {
 
     // Rules for the root-level appNotifications collection
     match /appNotifications/{notificationId} {
-      allow read: if request.auth.uid != null && resource.data.userId == request.auth.uid;
-      allow create: if request.auth.uid != null && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if request.auth.uid != null && resource.data.userId == request.auth.uid;
+      allow read: if request.auth.uid != null;
+      // Deny create, update, delete for anonymous users
+      allow create: if request.auth.uid != null && request.resource.data.userId == request.auth.uid && request.auth.token.firebase.sign_in_provider != 'anonymous';
+      allow update, delete: if request.auth.uid != null && resource.data.userId == request.auth.uid && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
   }
 }

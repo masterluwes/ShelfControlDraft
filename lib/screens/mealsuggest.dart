@@ -5,6 +5,7 @@ import 'package:shelf_control/screens/mealhistory.dart';
 import 'package:shelf_control/services/meal_planner.dart';
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import Provider
+import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
 
 // ===== CONFIG =====
 const double kMinCoverageToShow = 0.5; // 50% pantry coverage
@@ -195,14 +196,8 @@ class _MealSuggestState extends State<MealSuggest> {
 
     // Streams
     final pantryStream = _firestoreService.selectedHouseholdId == null
-        ? FirebaseFirestore.instance
-            .collection('non_existent_pantry_items') // Query a collection that will always be empty
-            .snapshots()
-        : FirebaseFirestore.instance
-            .collection('pantries')
-            .doc(_firestoreService.selectedHouseholdId!)
-            .collection('pantryItems')
-            .snapshots();
+        ? Stream.value(<PantryItemModel>[]) // Return an empty stream of PantryItemModel if no household is selected
+        : _firestoreService.getPantryItemsForHousehold(_firestoreService.selectedHouseholdId!);
 
     return Scaffold(
       backgroundColor: pageBg,
@@ -245,60 +240,71 @@ class _MealSuggestState extends State<MealSuggest> {
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-  stream: pantryStream,
-  builder: (context, pantrySnap) {
-    if (pantrySnap.connectionState == ConnectionState.waiting) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (pantrySnap.hasError) {
-      return Center(child: Text('Error loading pantry: ${pantrySnap.error}'));
-    }
-    if (!pantrySnap.hasData) {
-      return const Center(child: Text('No pantry data.'));
-    }
+      body: StreamBuilder<List<PantryItemModel>>(
+        stream: pantryStream,
+        builder: (context, pantrySnap) {
+          if (pantrySnap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (pantrySnap.hasError) {
+            return Center(child: Text('Error loading pantry: ${pantrySnap.error}'));
+          }
+          if (!pantrySnap.hasData || pantrySnap.data!.isEmpty) {
+            return const Center(child: Text('No pantry items yet. Add some!'));
+          }
 
-    // 1) Build pantry items from Firestore snapshot (filters expired/consumed inside)
-    final pantryItems = MealPlanner.fromSnapshot(pantrySnap.data!);
+          // 1) Directly use pantry items from the stream
+          final pantryItemModels = pantrySnap.data!;
 
-    // 2) Generate suggestions from pantry (near-expiry prioritized, <=2 missing)
-    final suggestions = MealPlanner.generate(
-      pantry: pantryItems,
-      nearExpiryDays: 5,
-      maxMissing: 2,
-      maxResults: 12,
-    );
+          // Convert PantryItemModel to PantryItem (from meal_planner.dart)
+          final pantryItems = pantryItemModels.map((model) {
+            return PantryItem(
+              name: model.name,
+              qty: model.qty,
+              expiryAt: model.expirationDate,
+              consumed: model.status == 'Consumed', // Assuming 'Consumed' status means consumed
+              nearExpiry: false, // This will be computed by MealPlanner.generate if needed, or can be set based on model.status
+            );
+          }).toList();
 
-    // 3) Map to your existing Recipe model (string fields)
-    final suggested = suggestions.map((s) => Recipe(
-      name: s.name,
-      imageUrl: s.imageUrl,
-      servingSize: s.servingSize,
-      calories: s.calories,
-      time: s.time,
-      description: s.description,
-      ingredients: s.ingredients,
-      directions: s.directions,
-    )).toList();
+          // 2) Generate suggestions from pantry (near-expiry prioritized, <=2 missing)
+          final suggestions = MealPlanner.generate(
+            pantry: pantryItems,
+            nearExpiryDays: 5,
+            maxMissing: 2,
+            maxResults: 12,
+          );
 
-    // 4) Build the UI (same layout you already use)
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            _buildNoteBanner(),
-            const SizedBox(height: 20),
-            if (suggested.isEmpty)
-              const Text('No suggestions yet. Add more pantry items!')
-            else
-              ...suggested.map((r) => _buildMealCard(context: context, recipe: r)),
-          ],
-        ),
+          // 3) Map to your existing Recipe model (string fields)
+          final suggested = suggestions.map((s) => Recipe(
+            name: s.name,
+            imageUrl: s.imageUrl,
+            servingSize: s.servingSize,
+            calories: s.calories,
+            time: s.time,
+            description: s.description,
+            ingredients: s.ingredients,
+            directions: s.directions,
+          )).toList();
+
+          // 4) Build the UI (same layout you already use)
+          return SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  _buildNoteBanner(),
+                  const SizedBox(height: 20),
+                  if (suggested.isEmpty)
+                    const Text('No suggestions yet. Add more pantry items!')
+                  else
+                    ...suggested.map((r) => _buildMealCard(context: context, recipe: r)),
+                ],
+              ),
+            ),
+          );
+        },
       ),
-    );
-  },
-),
     );
     
   }

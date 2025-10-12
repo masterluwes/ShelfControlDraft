@@ -1,22 +1,63 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:shelf_control/models/pantry_item_model.dart';
 import 'package:shelf_control/models/shopping_history_item_model.dart';
 import 'package:shelf_control/models/shopping_list_item_model.dart';
 import 'package:shelf_control/models/shopping_list_model.dart';
 import 'package:shelf_control/services/open_food_facts_service.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
+import 'dart:convert'; // For JSON encoding/decoding
+import 'package:uuid/uuid.dart'; // For generating unique IDs
 
 class ShoppingListService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance; // Instantiate FirebaseAuth
   final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService();
+  final Uuid _uuid = const Uuid(); // Instantiate Uuid
 
   // Helper to get a reference to the collections
   CollectionReference get _shoppingLists => _firestore.collection('shoppingLists');
   CollectionReference get _shoppingHistory => _firestore.collection('shoppingHistory');
   CollectionReference get _localProducts => _firestore.collection('local_products_ph');
 
-  // Activate a shopping list
+  static const String _guestShoppingListKey = 'guestShoppingLists';
+
+  // Save guest shopping lists to local storage
+  Future<void> saveGuestShoppingLists(List<ShoppingListModel> lists) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedData = json.encode(lists.map((list) => list.toFirestore()).toList());
+    await prefs.setString(_guestShoppingListKey, encodedData);
+  }
+
+  // Load guest shopping lists from local storage
+  Future<List<ShoppingListModel>> loadGuestShoppingLists() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? encodedData = prefs.getString(_guestShoppingListKey);
+    if (encodedData == null) {
+      return [];
+    }
+    final List<dynamic> decodedData = json.decode(encodedData);
+    return decodedData.map((data) => ShoppingListModel.fromFirestore(data)).toList();
+  }
+
   // Get a single shopping list by ID, including its items from the subcollection
   Future<ShoppingListModel?> getShoppingListById(String listId) async {
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      // For guest users, retrieve from local storage
+      List<ShoppingListModel> guestLists = await loadGuestShoppingLists();
+      return guestLists.firstWhere(
+        (list) => list.id == listId,
+        orElse: () => ShoppingListModel(
+          id: listId,
+          name: '',
+          householdId: '',
+          createdAt: DateTime.now(),
+          items: [],
+          type: 'Manual',
+        ),
+      );
+    }
+
     DocumentSnapshot listDoc = await _shoppingLists.doc(listId).get();
 
     if (listDoc.exists) {
@@ -37,10 +78,22 @@ class ShoppingListService {
 
   // Add an item to a shopping list (now uses subcollection)
   Future<void> addShoppingListItem(String listId, ShoppingListItemModel item) async {
-    CollectionReference itemsRef = _shoppingLists.doc(listId).collection('items');
-    DocumentReference docRef = itemsRef.doc(); // Let Firestore generate the ID
-    item.id = docRef.id; // Assign the generated ID to the item
-    await docRef.set(item.toMap());
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      // For guest users, add to local storage
+      List<ShoppingListModel> guestLists = await loadGuestShoppingLists();
+      int listIndex = guestLists.indexWhere((list) => list.id == listId);
+      if (listIndex != -1) {
+        ShoppingListModel targetList = guestLists[listIndex];
+        ShoppingListItemModel itemWithId = item.copyWith(id: item.id?.isEmpty ?? true ? _uuid.v4() : item.id!);
+        targetList.items.add(itemWithId);
+        await saveGuestShoppingLists(guestLists);
+      }
+    } else {
+      CollectionReference itemsRef = _shoppingLists.doc(listId).collection('items');
+      DocumentReference docRef = itemsRef.doc(); // Let Firestore generate the ID
+      item.id = docRef.id; // Assign the generated ID to the item
+      await docRef.set(item.toMap());
+    }
   }
 
   // Update an item in a shopping list (now uses subcollection)
@@ -48,19 +101,52 @@ class ShoppingListService {
     if (updatedItem.id == null) {
       throw ArgumentError('Updated item must have an ID.');
     }
-    DocumentReference itemRef = _shoppingLists.doc(listId).collection('items').doc(updatedItem.id);
-    await itemRef.update(updatedItem.toMap());
+
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      // For guest users, update in local storage
+      List<ShoppingListModel> guestLists = await loadGuestShoppingLists();
+      int listIndex = guestLists.indexWhere((list) => list.id == listId);
+      if (listIndex != -1) {
+        ShoppingListModel targetList = guestLists[listIndex];
+        int itemIndex = targetList.items.indexWhere((item) => item.id == updatedItem.id);
+        if (itemIndex != -1) {
+          targetList.items[itemIndex] = updatedItem;
+          await saveGuestShoppingLists(guestLists);
+        }
+      }
+    } else {
+      DocumentReference itemRef = _shoppingLists.doc(listId).collection('items').doc(updatedItem.id);
+      await itemRef.update(updatedItem.toMap());
+    }
   }
 
   // Remove an item from a shopping list (now uses subcollection)
   Future<void> removeShoppingListItem(String listId, String itemId) async {
-    DocumentReference itemRef = _shoppingLists.doc(listId).collection('items').doc(itemId);
-    await itemRef.delete();
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      // For guest users, remove from local storage
+      List<ShoppingListModel> guestLists = await loadGuestShoppingLists();
+      int listIndex = guestLists.indexWhere((list) => list.id == listId);
+      if (listIndex != -1) {
+        ShoppingListModel targetList = guestLists[listIndex];
+        targetList.items.removeWhere((item) => item.id == itemId);
+        await saveGuestShoppingLists(guestLists);
+      }
+    } else {
+      DocumentReference itemRef = _shoppingLists.doc(listId).collection('items').doc(itemId);
+      await itemRef.delete();
+    }
   }
 
   // Delete a shopping list
   Future<void> deleteShoppingList(String listId) async {
-    await _shoppingLists.doc(listId).delete();
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      // For guest users, delete from local storage
+      List<ShoppingListModel> guestLists = await loadGuestShoppingLists();
+      guestLists.removeWhere((list) => list.id == listId);
+      await saveGuestShoppingLists(guestLists);
+    } else {
+      await _shoppingLists.doc(listId).delete();
+    }
   }
 
   // Activate a shopping list (optimized using Household's activeShoppingListId)
@@ -98,7 +184,7 @@ class ShoppingListService {
     List<ShoppingListItemModel> suggestions = [];
 
     // Get pantry items
-    Query pantryQuery = _firestore.collection('pantries').doc(householdId).collection('pantryItems');
+    Query pantryQuery = _firestore.collection('pantryItems').where('householdId', isEqualTo: householdId);
     if (lastPantryDocument != null) {
       pantryQuery = pantryQuery.startAfterDocument(lastPantryDocument);
     }

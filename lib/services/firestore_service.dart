@@ -55,8 +55,12 @@ class FirestoreService extends ChangeNotifier {
 
   // Set the initial selected household for a user
   Future<void> setInitialHousehold(String userId) async {
+    print('DEBUG: setInitialHousehold called for userId: $userId');
+    print('DEBUG: Current user is anonymous: ${_auth.currentUser?.isAnonymous ?? false}');
+
     // Try to load from SharedPreferences first
     String? storedHouseholdId = await _loadSelectedHouseholdId();
+    print('DEBUG: Stored household ID from SharedPreferences: $storedHouseholdId');
 
     if (storedHouseholdId != null) {
       // Check if the stored household still exists and the user is a member
@@ -67,6 +71,7 @@ class FirestoreService extends ChangeNotifier {
           householdDoc.data()!['members'].contains(userId)) {
         selectedHouseholdId =
             storedHouseholdId; // Use the setter to update and notify
+        print('DEBUG: Set selectedHouseholdId from stored: $selectedHouseholdId');
         return;
       }
     }
@@ -78,15 +83,33 @@ class FirestoreService extends ChangeNotifier {
         userDoc.data()!['personalHouseholdId'] != null) {
       selectedHouseholdId = userDoc.data()![
           'personalHouseholdId']; // Use the setter to update and notify
+      print('DEBUG: Set selectedHouseholdId from personalHouseholdId: $selectedHouseholdId');
     } else if (_auth.currentUser?.isAnonymous ?? false) {
-      // For anonymous users, set a default guest household ID
-      selectedHouseholdId = 'guest_household';
+      // For anonymous users, their personal household ID is their UID
+      selectedHouseholdId = userId;
+      print('DEBUG: Set selectedHouseholdId for anonymous user: $selectedHouseholdId');
+      // Ensure a personal household is created for anonymous users if it doesn't exist
+      final householdDoc = await _db.collection('households').doc(userId).get();
+      if (!householdDoc.exists) {
+        print('DEBUG: Creating personal household for anonymous user: $userId');
+        await createPersonalHousehold(userId, 'anonymous@guest.com'); // Use a dummy email for anonymous
+      }
+    } else {
+      // For registered users, ensure selectedHouseholdId is set to their personalHouseholdId
+      if (userDoc.exists && userDoc.data() != null && userDoc.data()!['personalHouseholdId'] != null) {
+        selectedHouseholdId = userDoc.data()!['personalHouseholdId'];
+        print('DEBUG: Set selectedHouseholdId for registered user to personalHouseholdId: $selectedHouseholdId');
+      } else {
+        print('DEBUG: Registered user has no personalHouseholdId. This should not happen.');
+      }
     }
+    print('DEBUG: Final selectedHouseholdId after setInitialHousehold: $selectedHouseholdId');
   }
 
-  // Create a personal household for a new user
+  // Create a personal household for a new user (or anonymous user)
   Future<void> createPersonalHousehold(String userId, String userEmail) async {
-    final String householdId = _uuid.v4();
+    // For personal households, the householdId is the userId
+    final String householdId = userId;
     final String joinCode = _uuid
         .v4()
         .substring(0, 6)
@@ -94,7 +117,7 @@ class FirestoreService extends ChangeNotifier {
 
     final Household personalHousehold = Household(
       id: householdId,
-      name: "My Pantry", // Changed to "My Pantry"
+      name: "My Pantry",
       ownerId: userId,
       members: [userId],
       joinCode: joinCode,
@@ -133,8 +156,11 @@ class FirestoreService extends ChangeNotifier {
   // Save guest pantry items to local storage
   Future<void> saveGuestPantryItems(List<PantryItemModel> items) async {
     final prefs = await SharedPreferences.getInstance();
-    final String encodedData = json.encode(items.map((item) => item.toFirestore()).toList());
+    final String encodedData = json.encode(items.map((item) => item.toJson()).toList());
     await prefs.setString(_guestPantryKey, encodedData);
+    print('DEBUG: Saved ${items.length} guest pantry items to SharedPreferences.');
+    print('DEBUG: Encoded guest pantry data: $encodedData');
+    notifyListeners(); // Notify listeners that guest pantry data has changed
   }
 
   // Load guest pantry items from local storage
@@ -142,16 +168,20 @@ class FirestoreService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final String? encodedData = prefs.getString(_guestPantryKey);
     if (encodedData == null) {
+      print('DEBUG: No guest pantry data found in SharedPreferences.');
       return [];
     }
     final List<dynamic> decodedData = json.decode(encodedData);
-    return decodedData.map((data) => PantryItemModel.fromFirestore(data)).toList();
+    final List<PantryItemModel> loadedItems = decodedData.map((data) => PantryItemModel.fromJson(data)).toList();
+    print('DEBUG: Loaded ${loadedItems.length} guest pantry items from SharedPreferences.');
+    print('DEBUG: Decoded guest pantry data: $encodedData');
+    return loadedItems;
   }
 
   // Save guest shopping lists to local storage
   Future<void> saveGuestShoppingLists(List<ShoppingListModel> lists) async {
     final prefs = await SharedPreferences.getInstance();
-    final String encodedData = json.encode(lists.map((list) => list.toFirestore()).toList());
+    final String encodedData = json.encode(lists.map((list) => list.toJson()).toList());
     await prefs.setString(_guestShoppingListKey, encodedData);
   }
 
@@ -163,7 +193,7 @@ class FirestoreService extends ChangeNotifier {
       return [];
     }
     final List<dynamic> decodedData = json.decode(encodedData);
-    return decodedData.map((data) => ShoppingListModel.fromFirestore(data)).toList();
+    return decodedData.map((data) => ShoppingListModel.fromJson(data)).toList();
   }
 
   // Clear all guest data from local storage
@@ -175,7 +205,12 @@ class FirestoreService extends ChangeNotifier {
 
   // Get a stream of pantry items for a specific household
   Stream<List<PantryItemModel>> getPantryItemsForHousehold(String householdId) {
-    return _pantryCol(householdId)
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      return Stream.fromFuture(loadGuestPantryItems());
+    }
+    return _db
+        .collection('pantryItems')
+        .where('householdId', isEqualTo: householdId)
         .orderBy('timestamp', descending: true) // keep if you have this field
         .snapshots()
         .map((snapshot) => snapshot.docs
@@ -188,7 +223,18 @@ class FirestoreService extends ChangeNotifier {
     if (selectedHouseholdId == null) {
       throw Exception("No household selected.");
     }
-    await _pantryCol(selectedHouseholdId!).add(item.toFirestore());
+
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      // For guest users, save to local storage
+      List<PantryItemModel> currentGuestPantry = await loadGuestPantryItems();
+      // Assign a temporary ID for guest items if not already present
+      PantryItemModel itemWithId = item.copyWith(id: item.id?.isEmpty ?? true ? _uuid.v4() : item.id!);
+      currentGuestPantry.add(itemWithId);
+      await saveGuestPantryItems(currentGuestPantry);
+    } else {
+      // For registered users, save to Firestore
+      await _pantryCol(selectedHouseholdId!).add(item.copyWith(timestamp: DateTime.now()).toFirestore());
+    }
   }
 
   // Update an existing pantry item for the currently selected household
@@ -196,9 +242,21 @@ class FirestoreService extends ChangeNotifier {
     if (selectedHouseholdId == null || item.id == null) {
       throw Exception("No household selected or item ID is missing.");
     }
-    await _pantryCol(selectedHouseholdId!)
-        .doc(item.id)
-        .update(item.toFirestore());
+
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      // For guest users, update in local storage
+      List<PantryItemModel> currentGuestPantry = await loadGuestPantryItems();
+      int itemIndex = currentGuestPantry.indexWhere((element) => element.id == item.id);
+      if (itemIndex != -1) {
+        currentGuestPantry[itemIndex] = item;
+        await saveGuestPantryItems(currentGuestPantry);
+      }
+    } else {
+      // For registered users, update in Firestore
+      await _pantryCol(selectedHouseholdId!)
+          .doc(item.id)
+          .update(item.copyWith(timestamp: DateTime.now()).toFirestore());
+    }
   }
 
   // --- Shopping List Methods ---
@@ -206,6 +264,10 @@ class FirestoreService extends ChangeNotifier {
   // Get a stream of shopping lists for a specific household
   Stream<List<ShoppingListModel>> getShoppingListsForHousehold(
       String householdId) {
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      // For guest users, return a stream from local storage
+      return Stream.fromFuture(loadGuestShoppingLists());
+    }
     return _db
         .collection('shoppingLists')
         .where('householdId', isEqualTo: householdId)
@@ -388,43 +450,50 @@ class FirestoreService extends ChangeNotifier {
       throw Exception("No household selected.");
     }
 
-    // Get the item details before deleting/updating
-    final itemDoc = await _pantryCol(selectedHouseholdId!).doc(itemId).get();
-    if (!itemDoc.exists) {
-      return; // Item doesn't exist
-    }
-    final item = PantryItemModel.fromFirestore(itemDoc);
-
-    // Determine productId from local_products_ph if barcode is available
-    String? productId;
-    if (item.barcode != null && item.barcode!.isNotEmpty) {
-      final productQuery = await _db
-          .collection('local_products_ph')
-          .where('barcode', isEqualTo: item.barcode)
-          .limit(1)
-          .get();
-      if (productQuery.docs.isNotEmpty) {
-        productId = productQuery.docs.first.id;
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      // For guest users, delete from local storage
+      List<PantryItemModel> currentGuestPantry = await loadGuestPantryItems();
+      currentGuestPantry.removeWhere((element) => element.id == itemId);
+      await saveGuestPantryItems(currentGuestPantry);
+    } else {
+      // Get the item details before deleting/updating
+      final itemDoc = await _pantryCol(selectedHouseholdId!).doc(itemId).get();
+      if (!itemDoc.exists) {
+        return; // Item doesn't exist
       }
+      final item = PantryItemModel.fromFirestore(itemDoc);
+
+      // Determine productId from local_products_ph if barcode is available
+      String? productId;
+      if (item.barcode != null && item.barcode!.isNotEmpty) {
+        final productQuery = await _db
+            .collection('local_products_ph')
+            .where('barcode', isEqualTo: item.barcode)
+            .limit(1)
+            .get();
+        if (productQuery.docs.isNotEmpty) {
+          productId = productQuery.docs.first.id;
+        }
+      }
+
+      // Update the status to 'Deleted'
+      await _pantryCol(selectedHouseholdId!).doc(itemId).update({
+        'status': 'Deleted',
+        'deletedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Add a record to the shopping history for the deletion
+      final historyItem = ShoppingHistoryItemModel(
+        householdId: selectedHouseholdId!,
+        productId: productId, // Use the fetched productId
+        productName: item.name,
+        category: item.category,
+        quantity: item.qty, // Log the quantity that was deleted
+        purchaseDate: DateTime.now(), // Represents deletion date
+        actionType: 'Deleted', // Set action type to 'Deleted'
+      );
+      await _db.collection('shoppingHistory').add(historyItem.toFirestore());
     }
-
-    // Update the status to 'Deleted'
-    await _pantryCol(selectedHouseholdId!).doc(itemId).update({
-      'status': 'Deleted',
-      'deletedAt': FieldValue.serverTimestamp(),
-    });
-
-    // Add a record to the shopping history for the deletion
-    final historyItem = ShoppingHistoryItemModel(
-      householdId: selectedHouseholdId!,
-      productId: productId, // Use the fetched productId
-      productName: item.name,
-      category: item.category,
-      quantity: item.qty, // Log the quantity that was deleted
-      purchaseDate: DateTime.now(), // Represents deletion date
-      actionType: 'Deleted', // Set action type to 'Deleted'
-    );
-    await _db.collection('shoppingHistory').add(historyItem.toFirestore());
   }
 
   // Record consumed items
@@ -437,40 +506,55 @@ class FirestoreService extends ChangeNotifier {
       return; // Nothing to consume
     }
 
-    // First, update the original item's quantity in the pantry
-    if (item.qty > consumedQty) {
-      await _pantryCol(selectedHouseholdId!).doc(item.id).update({
-        'qty': item.qty - consumedQty,
-      });
-    } else {
-      // If all available quantity is consumed, delete the item from the pantry
-      await _pantryCol(selectedHouseholdId!).doc(item.id).delete();
-    }
-
-    // Determine productId from local_products_ph if barcode is available
-    String? productId;
-    if (item.barcode != null && item.barcode!.isNotEmpty) {
-      final productQuery = await _db
-          .collection('local_products_ph')
-          .where('barcode', isEqualTo: item.barcode)
-          .limit(1)
-          .get();
-      if (productQuery.docs.isNotEmpty) {
-        productId = productQuery.docs.first.id;
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      // For guest users, update in local storage
+      List<PantryItemModel> currentGuestPantry = await loadGuestPantryItems();
+      int itemIndex = currentGuestPantry.indexWhere((element) => element.id == item.id);
+      if (itemIndex != -1) {
+        PantryItemModel existingItem = currentGuestPantry[itemIndex];
+        if (existingItem.qty > consumedQty) {
+          currentGuestPantry[itemIndex] = existingItem.copyWith(qty: existingItem.qty - consumedQty);
+        } else {
+          currentGuestPantry.removeAt(itemIndex);
+        }
+        await saveGuestPantryItems(currentGuestPantry);
       }
-    }
+    } else {
+      // First, update the original item's quantity in the pantry
+      if (item.qty > consumedQty) {
+        await _pantryCol(selectedHouseholdId!).doc(item.id).update({
+          'qty': item.qty - consumedQty,
+        });
+      } else {
+        // If all available quantity is consumed, delete the item from the pantry
+        await _pantryCol(selectedHouseholdId!).doc(item.id).delete();
+      }
 
-    // Add a record to the shopping history
-    final historyItem = ShoppingHistoryItemModel(
-      householdId: selectedHouseholdId!,
-      productId: productId, // Use the fetched productId
-      productName: item.name,
-      category: item.category,
-      quantity: consumedQty,
-      purchaseDate: DateTime.now(), // Represents consumption date
-      actionType: 'Consumed', // Set action type to 'Consumed'
-    );
-    await _db.collection('shoppingHistory').add(historyItem.toFirestore());
+      // Determine productId from local_products_ph if barcode is available
+      String? productId;
+      if (item.barcode != null && item.barcode!.isNotEmpty) {
+        final productQuery = await _db
+            .collection('local_products_ph')
+            .where('barcode', isEqualTo: item.barcode)
+            .limit(1)
+            .get();
+        if (productQuery.docs.isNotEmpty) {
+          productId = productQuery.docs.first.id;
+        }
+      }
+
+      // Add a record to the shopping history
+      final historyItem = ShoppingHistoryItemModel(
+        householdId: selectedHouseholdId!,
+        productId: productId, // Use the fetched productId
+        productName: item.name,
+        category: item.category,
+        quantity: consumedQty,
+        purchaseDate: DateTime.now(), // Represents consumption date
+        actionType: 'Consumed', // Set action type to 'Consumed'
+      );
+      await _db.collection('shoppingHistory').add(historyItem.toFirestore());
+    }
   }
 
   // Clean up old shopping history items (e.g., older than 30 days)
@@ -608,6 +692,14 @@ class FirestoreService extends ChangeNotifier {
     });
   }
 
+  // Update a household's name
+  Future<void> updateHouseholdName(String householdId, String newName) async {
+    await _db.collection('households').doc(householdId).update({
+      'name': newName,
+    });
+    notifyListeners(); // Notify listeners of the change
+  }
+
   // Update a user's FCM token
   Future<void> updateUserFCMToken(String userId, String token) async {
     await _db.collection('users').doc(userId).set({
@@ -670,10 +762,7 @@ class FirestoreService extends ChangeNotifier {
   }
 
   CollectionReference<Map<String, dynamic>> _pantryCol(String householdId) {
-    return _db
-        .collection('pantries')
-        .doc(householdId)
-        .collection('pantryItems');
+    return _db.collection('pantryItems');
   }
 
   // Get frequently consumed items for a household

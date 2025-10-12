@@ -20,14 +20,17 @@ class ShoppingListModel {
     this.isActive = false, // Default to false
   });
 
-  // Factory constructor to create a ShoppingListModel from a Firestore document
+  // Factory constructor to create a ShoppingListModel from a Firestore document or a Map
   factory ShoppingListModel.fromFirestore(DocumentSnapshot doc) {
     Map data = doc.data() as Map<String, dynamic>;
     return ShoppingListModel(
       id: doc.id,
       householdId: data['householdId'] ?? '',
       name: data['name'] ?? '',
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      // Handle both Timestamp and String for createdAt
+      createdAt: (data['createdAt'] is Timestamp)
+          ? (data['createdAt'] as Timestamp).toDate()
+          : (data['createdAt'] is String ? DateTime.tryParse(data['createdAt']) ?? DateTime.now() : DateTime.now()),
       items: (data['items'] as List<dynamic>?)
               ?.map((itemMap) => ShoppingListItemModel.fromMap(itemMap as Map<String, dynamic>))
               .toList() ??
@@ -40,14 +43,43 @@ class ShoppingListModel {
   // Method to convert a ShoppingListModel to a Firestore document
   Map<String, dynamic> toFirestore() {
     return {
+      'id': id,
       'householdId': householdId,
       'name': name,
       'createdAt': Timestamp.fromDate(createdAt),
       'items': items.map((item) => item.toMap()).toList(),
       'type': type,
       'isActive': isActive,
-      'timestamp': FieldValue.serverTimestamp(), // Add a timestamp for creation/last update
     };
+  }
+
+  // Method to convert a ShoppingListModel to a JSON-encodable map for local storage
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'householdId': householdId,
+      'name': name,
+      'createdAt': createdAt.toIso8601String(),
+      'items': items.map((item) => item.toMap()).toList(),
+      'type': type,
+      'isActive': isActive,
+    };
+  }
+
+  // Factory constructor to create a ShoppingListModel from a JSON-decoded map for local storage
+  factory ShoppingListModel.fromJson(Map<String, dynamic> json) {
+    return ShoppingListModel(
+      id: json['id'],
+      householdId: json['householdId'] ?? '',
+      name: json['name'] ?? '',
+      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : DateTime.now(),
+      items: (json['items'] as List<dynamic>?)
+              ?.map((itemMap) => ShoppingListItemModel.fromMap(itemMap as Map<String, dynamic>))
+              .toList() ??
+          [],
+      type: json['type'] ?? 'Manual',
+      isActive: json['isActive'] ?? false,
+    );
   }
 
   // Method to create a copy of the current object with updated fields

@@ -26,6 +26,7 @@ class PantryItemModel {
   String? notes; // New field for notes
   String? storageLocation; // New field for storage location
   final double? price;
+  DateTime? timestamp; // New field for creation/update timestamp
 
   PantryItemModel({
     this.id,
@@ -52,7 +53,8 @@ class PantryItemModel {
     this.deletedAt, // Add deletedAt to constructor
     this.notes, // Add notes to constructor
     this.storageLocation, // Add storageLocation to constructor
-    this.price
+    this.price,
+    this.timestamp, // Add timestamp to constructor
   });
 
   // Factory constructor to create a PantryItemModel from a Firestore document
@@ -84,6 +86,7 @@ class PantryItemModel {
       notes: data['notes'], // Add notes to fromFirestore
       storageLocation: data['storageLocation'], // Add storageLocation to fromFirestore
       price: (data['price'] as num?)?.toDouble(),
+      timestamp: (data['timestamp'] as Timestamp?)?.toDate(), // Add timestamp to fromFirestore
     );
   }
 
@@ -114,13 +117,15 @@ class PantryItemModel {
       notes: data['notes'],
       storageLocation: data['storageLocation'],
       price: (data['price'] as num?)?.toDouble(),
+      timestamp: (data['timestamp'] is Timestamp) ? (data['timestamp'] as Timestamp).toDate() : (data['timestamp'] is String ? DateTime.tryParse(data['timestamp']) : null),
     );
   }
 
   // Method to convert a PantryItemModel to a Firestore document
   Map<String, dynamic> toFirestore() {
     return {
-      'householdId': householdId, // Add householdId to toFirestore
+      'id': id, // Include ID for local storage updates
+      'householdId': householdId,
       'name': name,
       'category': category,
       'imageUrl': imageUrl,
@@ -129,23 +134,87 @@ class PantryItemModel {
       'barcode': barcode,
       'quantityUnit': quantityUnit,
       'nutritionFacts': nutritionFacts,
-      'nutrition': nutrition, // Add nutrition to toFirestore
+      'nutrition': nutrition,
       'shelfLifeDays': shelfLifeDays,
       'shelfLifeWeeks': shelfLifeWeeks,
       'shelfLifeMonths': shelfLifeMonths,
       'manufacturedDate': manufacturedDate != null ? Timestamp.fromDate(manufacturedDate!) : null,
       'expirationDate': expirationDate != null ? Timestamp.fromDate(expirationDate!) : null,
-      'netWeight': netWeight, // Add netWeight to toFirestore
-      'selected': selected, // Add selected to toFirestore
-      'status': status, // Add status to toFirestore
-      'consumedAt': consumedAt != null ? Timestamp.fromDate(consumedAt!) : null, // Add consumedAt to toFirestore
-      'wastedAt': wastedAt != null ? Timestamp.fromDate(wastedAt!) : null, // Add wastedAt to toFirestore
-      'deletedAt': deletedAt != null ? Timestamp.fromDate(deletedAt!) : null, // Add deletedAt to toFirestore
-      'notes': notes, // Add notes to toFirestore
-      'storageLocation': storageLocation, // Add storageLocation to toFirestore
+      'netWeight': netWeight,
+      'selected': selected,
+      'status': status,
+      'consumedAt': consumedAt != null ? Timestamp.fromDate(consumedAt!) : null,
+      'wastedAt': wastedAt != null ? Timestamp.fromDate(wastedAt!) : null,
+      'deletedAt': deletedAt != null ? Timestamp.fromDate(deletedAt!) : null,
+      'notes': notes,
+      'storageLocation': storageLocation,
       'price': price,
-      'timestamp': FieldValue.serverTimestamp(), // Add a timestamp for creation
+      'timestamp': timestamp != null ? Timestamp.fromDate(timestamp!) : FieldValue.serverTimestamp(), // Add timestamp
     };
+  }
+
+  // Method to convert a PantryItemModel to a JSON-encodable map for local storage
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'householdId': householdId,
+      'name': name,
+      'category': category,
+      'imageUrl': imageUrl,
+      'qty': qty,
+      'expiresText': expiresText,
+      'barcode': barcode,
+      'quantityUnit': quantityUnit,
+      'nutritionFacts': nutritionFacts,
+      'nutrition': nutrition,
+      'shelfLifeDays': shelfLifeDays,
+      'shelfLifeWeeks': shelfLifeWeeks,
+      'shelfLifeMonths': shelfLifeMonths,
+      'manufacturedDate': manufacturedDate?.toIso8601String(),
+      'expirationDate': expirationDate?.toIso8601String(),
+      'netWeight': netWeight,
+      'selected': selected,
+      'status': status,
+      'consumedAt': consumedAt?.toIso8601String(),
+      'wastedAt': wastedAt?.toIso8601String(),
+      'deletedAt': deletedAt?.toIso8601String(),
+      'notes': notes,
+      'storageLocation': storageLocation,
+      'price': price,
+      'timestamp': timestamp?.toIso8601String(), // Add timestamp
+    };
+  }
+
+  // Factory constructor to create a PantryItemModel from a JSON-decoded map for local storage
+  factory PantryItemModel.fromJson(Map<String, dynamic> json) {
+    return PantryItemModel(
+      id: json['id'],
+      householdId: json['householdId'] ?? '',
+      name: json['name'] ?? '',
+      category: json['category'] ?? 'Uncategorized',
+      imageUrl: json['imageUrl'],
+      qty: json['qty'] ?? 1,
+      expiresText: json['expiresText'],
+      barcode: json['barcode'],
+      quantityUnit: json['quantityUnit'],
+      nutritionFacts: json['nutritionFacts'] != null ? Map<String, dynamic>.from(json['nutritionFacts']) : null,
+      nutrition: json['nutrition'],
+      shelfLifeDays: json['shelfLifeDays'],
+      shelfLifeWeeks: json['shelfLifeWeeks'],
+      shelfLifeMonths: json['shelfLifeMonths'],
+      manufacturedDate: json['manufacturedDate'] != null ? DateTime.tryParse(json['manufacturedDate']) : null,
+      expirationDate: json['expirationDate'] != null ? DateTime.tryParse(json['expirationDate']) : null,
+      netWeight: json['netWeight'],
+      selected: json['selected'] ?? false,
+      status: json['status'] ?? 'Available',
+      consumedAt: json['consumedAt'] != null ? DateTime.tryParse(json['consumedAt']) : null,
+      wastedAt: json['wastedAt'] != null ? DateTime.tryParse(json['wastedAt']) : null,
+      deletedAt: json['deletedAt'] != null ? DateTime.tryParse(json['deletedAt']) : null,
+      notes: json['notes'],
+      storageLocation: json['storageLocation'],
+      price: (json['price'] as num?)?.toDouble(),
+      timestamp: json['timestamp'] != null ? DateTime.tryParse(json['timestamp']) : null, // Add timestamp
+    );
   }
 
   // Method to create a copy of the current object with updated fields
@@ -175,6 +244,7 @@ class PantryItemModel {
     String? notes,
     String? storageLocation,
     double? price,
+    DateTime? timestamp, // Add timestamp to copyWith
   }) {
     return PantryItemModel(
       id: id ?? this.id,
@@ -202,6 +272,7 @@ class PantryItemModel {
       notes: notes ?? this.notes,
       storageLocation: storageLocation ?? this.storageLocation,
       price: price ?? this.price,
+      timestamp: timestamp ?? this.timestamp, // Copy timestamp
     );
   }
 }

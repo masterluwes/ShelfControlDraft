@@ -462,6 +462,17 @@ class _AddPantryItemState extends State<AddPantryItem> {
       return;
     }
 
+    if (widget.isGuest) {
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+      List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
+      if (currentGuestPantry.length >= 10) { // Assuming a limit of 10 items for guests
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Guest users are limited to 10 pantry items. Please register to add more.')));
+        return;
+      }
+    }
+
     String? imageUrl = await _uploadImageToFirebase();
     if (imageUrl == null && _selectedImage != null) return;
 

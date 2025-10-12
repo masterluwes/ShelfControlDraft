@@ -120,7 +120,8 @@ class _HouseholdSetupPageState extends State<HouseholdSetupPage> {
             // Handle error, maybe log it and show an error page or go to login
             return const WelcomePage();
           }
-          return const DashboardPage();
+          final bool isGuestUser = FirebaseAuth.instance.currentUser?.isAnonymous ?? false;
+          return DashboardPage(isGuest: isGuestUser);
         }
         return const Scaffold(
           body: Center(

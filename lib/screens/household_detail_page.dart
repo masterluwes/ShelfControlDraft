@@ -272,11 +272,30 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
             ),
             const SizedBox(width: 20),
             ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _householdName = controller.text.trim();
-                });
-                Navigator.pop(context);
+              onPressed: () async {
+                final newName = controller.text.trim();
+                if (newName.isNotEmpty) {
+                  try {
+                    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+                    await firestoreService.updateHouseholdName(widget.household.id, newName);
+                    if (!mounted) return;
+                    setState(() {
+                      _householdName = newName;
+                    });
+                    Navigator.pop(context);
+                  } catch (e) {
+                    // Handle error, e.g., show a snackbar
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to update household name: ${e.toString()}')),
+                    );
+                  }
+                } else {
+                  // Optionally show an error if the name is empty
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Household name cannot be empty.')),
+                  );
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: _green,
@@ -433,7 +452,7 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                         style: TextStyle(color: Colors.black),
                       ),
                     ),
-                  if (widget.household.ownerId == _currentUserId) // Only owner can delete
+                  if (widget.household.ownerId == _currentUserId && !widget.household.isPersonal) // Only owner can delete, and not for personal households
                     const PopupMenuItem(
                       value: "delete",
                       child: Text(
