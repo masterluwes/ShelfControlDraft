@@ -68,7 +68,7 @@ class RecipeSuggestionsPage extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
-                'Recipes for "${itemName}"',
+                'Recipes for "$itemName"',
                 style: TextStyle(
                   color: headerGreen,
                   fontWeight: FontWeight.w800,
@@ -81,7 +81,7 @@ class RecipeSuggestionsPage extends StatelessWidget {
               child: recipes.isEmpty
                   ? Center(
                       child: Text(
-                        'No recipe suggestions found for "${itemName}".',
+                        'No recipe suggestions found for "$itemName".',
                         style: const TextStyle(fontSize: 16, color: Colors.black54),
                         textAlign: TextAlign.center,
                       ),

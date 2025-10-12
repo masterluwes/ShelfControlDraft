@@ -9,23 +9,23 @@ android {
     namespace = "com.example.shelfcontrol"
 
     // Let Flutter control these to avoid version mismatches
-    compileSdk = 36
-    ndkVersion = "27.0.12077973"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
         isCoreLibraryDesugaringEnabled = true // Enable core library desugaring
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
     }
 
     defaultConfig {
         applicationId = "com.example.shelfcontrol"
 
         // KTS syntax: use assignments, not minSdkVersion(...)
-        minSdkVersion = flutter.minSdkVersion
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
 
         versionCode = flutter.versionCode

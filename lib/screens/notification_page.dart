@@ -458,10 +458,10 @@ class _NotificationPageState extends State<NotificationPage> {
               ),
             Expanded(
               child: notifications.isEmpty
-                  ? Center(
+                  ? const Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
-                        children: const [
+                        children: [
                           Icon(
                             Icons.notifications_off,
                             size: 80,
