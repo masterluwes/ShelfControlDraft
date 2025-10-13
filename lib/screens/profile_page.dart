@@ -631,7 +631,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         onPressed: _showDeleteAccountDialog,
                         child: const Text(
                           "Delete Account",
-                          style: TextStyle(color: deleteRed, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: mediumGrey, fontWeight: FontWeight.normal),
                         ),
                       ),
                     ],

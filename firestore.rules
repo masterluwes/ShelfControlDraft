@@ -1,10 +1,16 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow users to manage their own user document
+    // Allow users to manage their own user document and settings subcollection
     match /users/{userId} {
-      allow read, update, delete: if request.auth.uid == userId;
+      allow read: if request.auth.uid != null;
+      allow update, delete: if request.auth.uid == userId;
       allow create: if request.auth.uid != null;
+
+      // Allow users to read their own settings/preferences
+      match /settings/{settingId} {
+        allow read: if request.auth.uid == userId;
+      }
     }
 
     // Allow read/write for household documents
@@ -18,34 +24,31 @@ service cloud.firestore {
       // Allow list operations (queries) on households if the query is specifically by joinCode.
       allow read: if request.auth.uid != null && (
         isHouseholdMember(householdId) ||
-        (request.method == 'list' && request.query.isConstrainedBy('joinCode'))
+        request.method == 'list'
       );
       allow create: if request.auth.uid != null &&
                       request.resource.data.members.hasAll([request.auth.uid]) &&
                       request.resource.data.name is string &&
                       request.resource.data.name.size() > 0; // Allow authenticated user to create a household with a name and themselves as a member
-      allow update: if request.auth.uid != null && isHouseholdMember(householdId) && (
-        (
-          // Allow a user to add themselves to the members list (only 'members' field can change)
-          request.resource.data.members.size() == resource.data.members.size() + 1 &&
-          request.resource.data.members.hasAll(resource.data.members.concat([request.auth.uid])) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
-        ) ||
-        (
-          // Allow a user to remove themselves from the members list (only 'members' field can change)
+      allow update: if request.auth.uid != null && (
+        // Condition 1: An existing member updates activeShoppingListId or name
+        (isHouseholdMember(householdId) && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeShoppingListId']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        )) ||
+        // Condition 2: An existing member removes themselves from the members list
+        (isHouseholdMember(householdId) &&
           resource.data.members.hasAll([request.auth.uid]) && // User was a member
           request.resource.data.members.size() == resource.data.members.size() - 1 && // One member removed
           !request.resource.data.members.hasAny([request.auth.uid]) && // Current user is no longer a member
           resource.data.members.hasAll(request.resource.data.members) && // All other members are still there
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']) // Only members field changed
         ) ||
-        (
-          // Allow a household member to update the activeShoppingListId
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeShoppingListId'])
-        ) ||
-        (
-          // Allow a household member to update the household name
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        // Condition 3: A non-member adds themselves to the members list
+        (!isHouseholdMember(householdId) &&
+          request.resource.data.members.size() == resource.data.members.size() + 1 &&
+          request.resource.data.members.hasAll(resource.data.members.concat([request.auth.uid])) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
         )
       );
       allow delete: if request.auth.uid == resource.data.ownerId; // Only owner can delete
@@ -104,6 +107,12 @@ service cloud.firestore {
       allow read, update, delete: if request.auth.uid != null && resource.data.userId == request.auth.uid;
       // Users can create notifications for themselves
       allow create: if request.auth.uid != null && request.resource.data.userId == request.auth.uid;
+    }
+
+
+    // Allow authenticated users to create feedback documents
+    match /feedback/{feedbackId} {
+      allow create: if request.auth.uid != null;
     }
   }
 }

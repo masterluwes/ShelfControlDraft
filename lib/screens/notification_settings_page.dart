@@ -274,7 +274,7 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       },
                     ),
                     SwitchListTile(
-                      title: const Text('"At risk" Items'),
+                      title: const Text('Approaching Expiry ("At Risk")'),
                       value: atRiskItems,
                       activeThumbColor: const Color(0xFF2E7D32),
                       activeTrackColor: const Color(0xFF81C784),
@@ -293,35 +293,42 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         _updateSetting("didYouConsumePrompts", val);
                       },
                     ),
-                    SwitchListTile(
-                      title: const Text("App Updates"),
-                      value: appUpdates,
-                      activeThumbColor: const Color(0xFF2E7D32),
-                      activeTrackColor: const Color(0xFF81C784),
-                      onChanged: (val) {
-                        setState(() => appUpdates = val);
-                        _updateSetting("appUpdates", val);
-                      },
-                    ),
-                    SwitchListTile(
-                      title: const Text("Item Recommendations"),
-                      value: itemRecommendations,
-                      activeThumbColor: const Color(0xFF2E7D32),
-                      activeTrackColor: const Color(0xFF81C784),
-                      onChanged: (val) {
-                        setState(() => itemRecommendations = val);
-                        _updateSetting("itemRecommendations", val);
-                      },
-                    ),
-                    SwitchListTile(
-                      title: const Text("Tips and Suggestions"),
-                      value: tipsSuggestions,
-                      activeThumbColor: const Color(0xFF2E7D32),
-                      activeTrackColor: const Color(0xFF81C784),
-                      onChanged: (val) {
-                        setState(() => tipsSuggestions = val);
-                        _updateSetting("tipsSuggestions", val);
-                      },
+                    Visibility(
+                      visible: false,
+                      child: Column(
+                        children: [
+                          SwitchListTile(
+                            title: const Text("App Updates"),
+                            value: appUpdates,
+                            activeThumbColor: const Color(0xFF2E7D32),
+                            activeTrackColor: const Color(0xFF81C784),
+                            onChanged: (val) {
+                              setState(() => appUpdates = val);
+                              _updateSetting("appUpdates", val);
+                            },
+                          ),
+                          SwitchListTile(
+                            title: const Text("Item Recommendations"),
+                            value: itemRecommendations,
+                            activeThumbColor: const Color(0xFF2E7D32),
+                            activeTrackColor: const Color(0xFF81C784),
+                            onChanged: (val) {
+                              setState(() => itemRecommendations = val);
+                              _updateSetting("itemRecommendations", val);
+                            },
+                          ),
+                          SwitchListTile(
+                            title: const Text("Tips and Suggestions"),
+                            value: tipsSuggestions,
+                            activeThumbColor: const Color(0xFF2E7D32),
+                            activeTrackColor: const Color(0xFF81C784),
+                            onChanged: (val) {
+                              setState(() => tipsSuggestions = val);
+                              _updateSetting("tipsSuggestions", val);
+                            },
+                          ),
+                        ],
+                      ),
                     ),
 
                     const Divider(height: 30, thickness: 1.5),
@@ -332,7 +339,7 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         child: Text(
-                          "Number of Days for 'At Risk' Items\n$daysForAtRisk day(s)",
+                          "Notify for 'At Risk' items within:\n$daysForAtRisk day(s) of expiry",
                           style: const TextStyle(
                             color: Color(0xFF2E7D32),
                             fontWeight: FontWeight.bold,

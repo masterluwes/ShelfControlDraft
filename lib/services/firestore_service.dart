@@ -16,10 +16,13 @@ import 'dart:convert'; // For JSON encoding/decoding
 // import 'package:fuzzywuzzy/fuzzywuzzy.dart'; // Removed fuzzywuzzy
 import 'package:shelf_control/models/user_prefs_model.dart';
 import 'package:shelf_control/services/normalization.dart';
+import 'package:firebase_storage/firebase_storage.dart'; // Import Firebase Storage
+import 'dart:io'; // For File type
 
 class FirestoreService extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance; // Instantiate Firebase Storage
   final Uuid _uuid = const Uuid(); // Instantiate Uuid
   
 
@@ -45,9 +48,8 @@ class FirestoreService extends ChangeNotifier {
   Future<List<PantryItemModel>> getPantryForHousehold(
       String householdId) async {
     final snap = await FirebaseFirestore.instance
-        .collection('households')
-        .doc(householdId)
-        .collection('pantryItems')
+        .collection('pantryItems') // Query top-level pantryItems collection
+        .where('householdId', isEqualTo: householdId) // Filter by householdId
         .get();
 
     // If your model has a factory like fromFirestore(DocumentSnapshot):
@@ -781,6 +783,69 @@ class FirestoreService extends ChangeNotifier {
     }
   }
 
+  // Record wasted items
+  Future<void> recordWastedItem(PantryItemModel item, int wastedQty) async {
+    if (selectedHouseholdId == null) {
+      throw Exception("No household selected.");
+    }
+
+    if (wastedQty <= 0) {
+      return; // Nothing to waste
+    }
+
+    if (_auth.currentUser?.isAnonymous ?? false) {
+      // For guest users, update in local storage
+      List<PantryItemModel> currentGuestPantry = await loadGuestPantryItems();
+      int itemIndex =
+          currentGuestPantry.indexWhere((element) => element.id == item.id);
+      if (itemIndex != -1) {
+        PantryItemModel existingItem = currentGuestPantry[itemIndex];
+        if (existingItem.qty > wastedQty) {
+          currentGuestPantry[itemIndex] =
+              existingItem.copyWith(qty: existingItem.qty - wastedQty);
+        } else {
+          currentGuestPantry.removeAt(itemIndex);
+        }
+        await saveGuestPantryItems(currentGuestPantry);
+      }
+    } else {
+      // First, update the original item's quantity in the pantry
+      if (item.qty > wastedQty) {
+        await _pantryCol(selectedHouseholdId!).doc(item.id).update({
+          'qty': item.qty - wastedQty,
+        });
+      } else {
+        // If all available quantity is wasted, delete the item from the pantry
+        await _pantryCol(selectedHouseholdId!).doc(item.id).delete();
+      }
+
+      // Determine productId from local_products_ph if barcode is available
+      String? productId;
+      if (item.barcode != null && item.barcode!.isNotEmpty) {
+        final productQuery = await _db
+            .collection('local_products_ph')
+            .where('barcode', isEqualTo: item.barcode)
+            .limit(1)
+            .get();
+        if (productQuery.docs.isNotEmpty) {
+          productId = productQuery.docs.first.id;
+        }
+      }
+
+      // Add a record to the shopping history
+      final historyItem = ShoppingHistoryItemModel(
+        householdId: selectedHouseholdId!,
+        productId: productId, // Use the fetched productId
+        productName: item.name,
+        category: item.category,
+        quantity: wastedQty,
+        purchaseDate: DateTime.now(), // Represents wastage date
+        actionType: 'Wasted', // Set action type to 'Wasted'
+      );
+      await _db.collection('shoppingHistory').add(historyItem.toFirestore());
+    }
+  }
+
   // Clean up old shopping history items (e.g., older than 30 days)
   Future<void> cleanUpShoppingHistoryItems(String householdId) async {
     final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
@@ -1242,5 +1307,38 @@ class FirestoreService extends ChangeNotifier {
         .where('isRead', isEqualTo: false)
         .snapshots()
         .map((snapshot) => snapshot.docs.length);
+  }
+
+  // --- Feedback Methods ---
+
+  // Upload a file to Firebase Storage and return its download URL
+  Future<String?> uploadFile(File file, String path) async {
+    try {
+      final ref = _storage.ref().child(path);
+      final uploadTask = ref.putFile(file);
+      final snapshot = await uploadTask.whenComplete(() {});
+      return await snapshot.ref.getDownloadURL();
+    } catch (e) {
+      print('Error uploading file: $e');
+      return null;
+    }
+  }
+
+  // Add feedback to Firestore
+  Future<void> addFeedback({
+    required String userId,
+    required int rating,
+    required String category,
+    required String comments,
+    String? fileUrl,
+  }) async {
+    await _db.collection('feedback').add({
+      'userId': userId,
+      'rating': rating,
+      'category': category,
+      'comments': comments,
+      'fileUrl': fileUrl,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
   }
 }

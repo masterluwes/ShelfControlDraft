@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shelf_control/services/firestore_service.dart';
+import 'dart:io';
 
 class FeedbackPage extends StatefulWidget {
   const FeedbackPage({super.key});
@@ -26,10 +31,24 @@ class _FeedbackPageState extends State<FeedbackPage> {
     'Other',
   ];
 
+  File? _pickedFile; // To store the selected image file
+  bool _isSubmitting = false; // To manage loading state
+
   @override
   void dispose() {
     _comments.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickFile() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+
+    if (image != null) {
+      setState(() {
+        _pickedFile = File(image.path);
+      });
+    }
   }
 
   @override
@@ -205,15 +224,12 @@ class _FeedbackPageState extends State<FeedbackPage> {
                     _sectionLabel('Attach Files (Optional)'),
                     const SizedBox(height: 8),
                     UploadTile(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'File picker not implemented in this demo.',
-                            ),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                      onTap: _pickFile,
+                      fileName: _pickedFile?.path.split('/').last, // Display file name
+                      onClear: () {
+                        setState(() {
+                          _pickedFile = null;
+                        });
                       },
                     ),
 
@@ -232,14 +248,18 @@ class _FeedbackPageState extends State<FeedbackPage> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        onPressed: _handleSubmit,
-                        child: const Text(
-                          'Submit',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
-                        ),
+                        onPressed: _isSubmitting ? null : _handleSubmit,
+                        child: _isSubmitting
+                            ? const CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              )
+                            : const Text(
+                                'Submit',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                ),
+                              ),
                       ),
                     ),
 
@@ -267,14 +287,78 @@ class _FeedbackPageState extends State<FeedbackPage> {
     );
   }
 
-  void _handleSubmit() {
-    final ratingLabels = ['Excellent', 'Good', 'Okay', 'Fair', 'Poor'];
-    final chosenRating = _rating != null ? ratingLabels[_rating!] : 'No rating';
-    final cat = _category ?? 'No category';
-    final msg = _comments.text.trim().isEmpty
-        ? 'No comments'
-        : '“${_comments.text.trim()}”';
+  void _handleSubmit() async {
+    if (_rating == null || _category == null || _comments.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please provide a rating, category, and comments.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('User not logged in. Cannot submit feedback.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      setState(() {
+        _isSubmitting = false;
+      });
+      return;
+    }
+
+    String? fileUrl;
+    if (_pickedFile != null) {
+      final fileName = 'feedback/${userId}_${DateTime.now().millisecondsSinceEpoch}_${_pickedFile!.path.split('/').last}';
+      fileUrl = await firestoreService.uploadFile(_pickedFile!, fileName);
+    }
+
+    try {
+      await firestoreService.addFeedback(
+        userId: userId,
+        rating: _rating!,
+        category: _category!,
+        comments: _comments.text.trim(),
+        fileUrl: fileUrl,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Feedback submitted successfully!'),
+          backgroundColor: headerGreen,
+        ),
+      );
+
+      // Clear form
+      setState(() {
+        _rating = null;
+        _category = null;
+        _comments.clear();
+        _pickedFile = null;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to submit feedback: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isSubmitting = false;
+      });
+    }
   }
 }
 
@@ -446,8 +530,16 @@ class CommentsBox extends StatelessWidget {
 }
 
 class UploadTile extends StatelessWidget {
-  const UploadTile({super.key, required this.onTap});
+  const UploadTile({
+    super.key,
+    required this.onTap,
+    this.fileName,
+    this.onClear,
+  });
+
   final VoidCallback onTap;
+  final String? fileName;
+  final VoidCallback? onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -457,22 +549,43 @@ class UploadTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          width: 140,
+          width: 180, // Increased width to accommodate file name
           height: 80,
           decoration: BoxDecoration(
             color: const Color(0xFFF6F0D8),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFFE9E1C5)),
           ),
-          child: const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.cloud_upload_outlined, color: Colors.black54),
-                SizedBox(height: 6),
-                Text('Upload Files', style: TextStyle(fontSize: 12)),
-              ],
-            ),
+          child: Center(
+            child: fileName != null
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 12.0),
+                          child: Text(
+                            fileName!,
+                            style: const TextStyle(fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      if (onClear != null)
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: onClear,
+                        ),
+                    ],
+                  )
+                : const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.cloud_upload_outlined, color: Colors.black54),
+                      SizedBox(height: 6),
+                      Text('Upload Files', style: TextStyle(fontSize: 12)),
+                    ],
+                  ),
           ),
         ),
       ),

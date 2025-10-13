@@ -263,8 +263,8 @@ class _HouseholdPageState extends State<HouseholdPage> {
         backgroundColor: const Color(0xFF2E7D32),
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
-          "Groups", // Changed from "Household Groups" to "Groups"
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          "Groups",
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         actions: [
           PopupMenuButton<String>(

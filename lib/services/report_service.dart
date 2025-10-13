@@ -182,354 +182,13 @@ class WasteReportService {
     // 3) Create the document with the theme (so we’re NOT using Helvetica)
     final doc = pw.Document(theme: theme);
 
-    // ---------- Cover ----------
-    // ===== SINGLE, LINEAR PAGE (header → summary → categories → insights → recommendations) =====
     doc.addPage(
-      pw.Page(
-        pageTheme: _pageTheme(theme), // keep your existing _pageTheme() signature
-        build: (ctx) {
-          // --- local helpers (scoped to this build) to keep code minimal ---
-          pw.Widget spacer(double h) => pw.SizedBox(height: h);
-
-          // Weekly Summary table rows (weight row only if > 0)
-          final summaryRows = <List<String>>[
-            [
-              'Total Wasted Items',
-              '${stats.totalWastedItems}',
-              'Items marked as wasted in this period'
-            ],
-            [
-              'Waste Percentage',
-              '${stats.wastePercent.toStringAsFixed(1)}%',
-              'Relative to all items leaving pantry'
-            ],
-            [
-              'Total Cost of Waste',
-              _money.format(stats.totalWasteCost),
-              'Estimated financial loss'
-            ],
-          ];
-          if (stats.totalWasteWeightKg > 0) {
-            summaryRows.add([
-              'Total Generated Waste',
-              '${stats.totalWasteWeightKg.toStringAsFixed(2)} kg',
-              'Estimated discarded weight'
-            ]);
-          }
-          summaryRows.add([
-            'Efficiency Rate',
-            '${stats.efficiencyRate.toStringAsFixed(1)}%',
-            'Consumed vs wasted ratio'
-          ]);
-
-          // Category Breakdown rows (sorted by highest cost). Keep it short to fit one page.
-          final catValues = stats.categoryRows.values.toList()
-            ..sort((a, b) => b.totalCost.compareTo(a.totalCost));
-          final topCats = catValues.take(6).toList(); // trim to 6 rows max
-
-          // Per-category “top item” (by cost then qty), if we have item rows
-          String topItemFor(String cat) {
-            final items =
-                stats.itemWasteRows.where((r) => r.category == cat).toList();
-            if (items.isEmpty) return '-';
-            items.sort((a, b) => (b.cost ?? 0).compareTo(a.cost ?? 0));
-            return items.first.itemName;
-          }
-
-          final categoryRows = topCats
-              .map((r) => <String>[
-                    r.category,
-                    topItemFor(r.category),
-                    r.itemsWasted.toString(),
-                    _money.format(r.totalCost),
-                  ])
-              .toList();
-
-          // Bullet list builder (no new class helpers)
-          pw.Widget bullets(List<String> lines, {double fontSize = 10}) {
-            if (lines.isEmpty) {
-              return pw.Text('No data available for this section.',
-                  style: pw.TextStyle(fontSize: fontSize));
-            }
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: lines.map((t) {
-                return pw.Padding(
-                  padding: const pw.EdgeInsets.only(bottom: 3),
-                  child: pw.Row(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('• ', style: pw.TextStyle(fontSize: fontSize)),
-                      pw.Expanded(
-                          child: pw.Text(t,
-                              style: pw.TextStyle(fontSize: fontSize))),
-                    ],
-                  ),
-                );
-              }).toList(),
-            );
-          }
-
-          // Keep insights/recommendations short to ensure single page
-          final compactInsights = stats.behavioralInsights.take(3).toList();
-          final compactRecs =
-              _computeActionableRecommendations(stats).take(4).toList();
-
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              // Header
-              _header(title: 'SHELFCONTROL WASTE TRACKER REPORT'),
-              spacer(8),
-              pw.Text('Household: ${stats.householdName}',
-                  style: const pw.TextStyle(fontSize: 12)),
-              pw.Text(
-                  'Week: ${_date.format(stats.weekStart)} – ${_date.format(stats.weekEnd)}',
-                  style: const pw.TextStyle(fontSize: 12)),
-              pw.Text('Generated: ${_dateTime.format(stats.generatedAt)}',
-                  style:
-                      pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
-
-              // Weekly Summary
-              spacer(12),
-              pw.Text('Weekly Summary',
-                  style: pw.TextStyle(
-                      fontSize: 12, fontWeight: pw.FontWeight.bold)),
-              spacer(6),
-              pw.Table.fromTextArray(
-                headers: const ['Metric', 'Value', 'Description'],
-                headerStyle: pw.TextStyle(
-                    fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                headerDecoration:
-                    const pw.BoxDecoration(color: PdfColors.blue),
-                cellStyle: const pw.TextStyle(fontSize: 10),
-                columnWidths: {
-                  0: const pw.FlexColumnWidth(1.6),
-                  1: const pw.FlexColumnWidth(1.0),
-                  2: const pw.FlexColumnWidth(2.2),
-                },
-                data: summaryRows,
-              ),
-
-              // Category Breakdown (trimmed)
-              spacer(12),
-              pw.Text('Category Breakdown',
-                  style: pw.TextStyle(
-                      fontSize: 12, fontWeight: pw.FontWeight.bold)),
-              spacer(6),
-              pw.Table.fromTextArray(
-                headers: const [
-                  'Category',
-                  'Specific Item',
-                  'Items Wasted',
-                  'Total Cost (₱)'
-                ],
-                headerStyle: pw.TextStyle(
-                    fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                headerDecoration:
-                    const pw.BoxDecoration(color: PdfColors.indigo),
-                cellStyle: const pw.TextStyle(fontSize: 10),
-                columnWidths: {
-                  0: const pw.FlexColumnWidth(1.5),
-                  1: const pw.FlexColumnWidth(2.0),
-                  2: const pw.FlexColumnWidth(1.0),
-                  3: const pw.FlexColumnWidth(1.2),
-                },
-                data: categoryRows,
-              ),
-
-              // Behavioral Insights
-              spacer(12),
-              pw.Text('Behavioral Insights',
-                  style: pw.TextStyle(
-                      fontSize: 12, fontWeight: pw.FontWeight.bold)),
-              spacer(4),
-              bullets(compactInsights, fontSize: 10),
-
-              // Recommendations
-              spacer(8),
-              pw.Text('Recommendations (Next Week)',
-                  style: pw.TextStyle(
-                      fontSize: 12, fontWeight: pw.FontWeight.bold)),
-              spacer(4),
-              bullets(compactRecs, fontSize: 10),
-
-              // (Optional) If you want a tiny note at the bottom:
-              // spacer(8),
-              // pw.Text('Tip: Re-check expiry dates every weekend and move “at-risk” items to the front.',
-              //   style: pw.TextStyle(fontSize: 9, color: pw.PdfColors.grey700)),
-            ],
-          );
-        },
-      ),
-    );
-
-// -------- PAGE 2: Condensed tables (only if data exists) --------
-    final hasCategories = stats.categoryRows.isNotEmpty;
-    final hasItems = stats.itemWasteRows.isNotEmpty;
-
-    if (hasCategories || hasItems) {
-      doc.addPage(
-        pw.Page(
-          pageTheme: _pageTheme(theme),
-          build: (ctx) {
-            final content = <pw.Widget>[];
-
-            if (hasCategories) {
-              final rows = stats.categoryRows.values.toList()
-                ..sort((a, b) => b.totalCost.compareTo(a.totalCost));
-              content.addAll([
-                _header(title: 'Category Breakdown'),
-                pw.SizedBox(height: 8),
-                pw.Table.fromTextArray(
-                  headers: const ['Category', 'Qty', 'Cost', 'Share'],
-                  headerStyle: pw.TextStyle(
-                      fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                  headerDecoration:
-                      const pw.BoxDecoration(color: PdfColors.blue),
-                  cellStyle: const pw.TextStyle(fontSize: 9),
-                  columnWidths: {
-                    0: const pw.FlexColumnWidth(2.0),
-                    1: const pw.FlexColumnWidth(0.9),
-                    2: const pw.FlexColumnWidth(1.3),
-                    3: const pw.FlexColumnWidth(0.9),
-                  },
-                  data: rows
-                      .map((r) => [
-                            r.category,
-                            r.itemsWasted.toString(),
-                            _money.format(r.totalCost),
-                            r.sharePercent == null
-                                ? '-'
-                                : '${r.sharePercent!.toStringAsFixed(1)}%',
-                          ])
-                      .toList(),
-                ),
-              ]);
-              content.add(pw.SizedBox(height: 10));
-            }
-
-            if (hasItems) {
-              final items = stats.itemWasteRows.toList()
-                ..sort((a, b) => (b.cost ?? 0).compareTo(a.cost ?? 0));
-              final top = items.take(6).toList(); // limit to top 6
-
-              content.addAll([
-                pw.Text('Top Items Wasted',
-                    style: pw.TextStyle(
-                        fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 6),
-                pw.Table.fromTextArray(
-                  headers: const ['Category', 'Item', 'Qty', 'Cost'],
-                  headerStyle: pw.TextStyle(
-                      fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                  headerDecoration:
-                      const pw.BoxDecoration(color: PdfColors.indigo),
-                  cellStyle: const pw.TextStyle(fontSize: 9),
-                  columnWidths: {
-                    0: const pw.FlexColumnWidth(1.3),
-                    1: const pw.FlexColumnWidth(2.2),
-                    2: const pw.FlexColumnWidth(0.7),
-                    3: const pw.FlexColumnWidth(1.2),
-                  },
-                  data: top
-                      .map((r) => [
-                            r.category,
-                            r.itemName,
-                            r.quantity.toString(),
-                            r.cost == null ? '-' : _money.format(r.cost),
-                          ])
-                      .toList(),
-                ),
-              ]);
-            }
-
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: content,
-            );
-          },
-        ),
-      );
-    }
-
-    // ---------- Category Table ----------
-    doc.addPage(
-      pw.Page(
+      pw.MultiPage(
         pageTheme: _pageTheme(theme),
-        build: (ctx) {
-          final rows = stats.categoryRows.values.toList()
-            ..sort((a, b) => b.totalCost.compareTo(a.totalCost));
-
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              _header(title: 'Category Breakdown'),
-              pw.SizedBox(height: 12),
-              pw.Table.fromTextArray(
-                headers: const ['Category', 'Items Wasted', 'Cost', 'Share'],
-                data: rows
-                    .map((r) => [
-                          r.category,
-                          r.itemsWasted.toString(),
-                          _money.format(r.totalCost),
-                          r.sharePercent == null
-                              ? '-'
-                              : '${r.sharePercent!.toStringAsFixed(1)}%',
-                        ])
-                    .toList(),
-                headerStyle: pw.TextStyle(
-                    fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.blue),
-                cellStyle: const pw.TextStyle(fontSize: 10),
-                cellAlignment: pw.Alignment.centerLeft,
-                columnWidths: {
-                  0: const pw.FlexColumnWidth(2.2),
-                  1: const pw.FlexColumnWidth(1.2),
-                  2: const pw.FlexColumnWidth(1.6),
-                  3: const pw.FlexColumnWidth(1.0),
-                },
-              ),
-              pw.SizedBox(height: 16),
-              pw.Text(
-                'Top items wasted',
-                style:
-                    pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.SizedBox(height: 8),
-              _topItemsTable(stats),
-            ],
-          );
-        },
-      ),
-    );
-
-    // ---------- Insights & Actions ----------
-    final actionable = _computeActionableRecommendations(stats);
-    doc.addPage(
-      pw.Page(
-        pageTheme: _pageTheme(theme),
-        build: (ctx) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              _header(title: 'Behavioral Insights'),
-              pw.SizedBox(height: 8),
-              _bullets(stats.behavioralInsights),
-              pw.SizedBox(height: 16),
-              _header(title: 'Recommendations (Do These Next Week)'),
-              pw.SizedBox(height: 8),
-              _bullets(actionable),
-              pw.SizedBox(height: 16),
-              pw.Text(
-                'Tip: Re-check expiry dates every weekend and move “at-risk” items to the front. '
-                'Use FIFO (First-In, First-Out) for Dairy and Snacks.',
-                style:
-                    const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
-              ),
-            ],
-          );
-        },
+        header: (context) => _header(title: 'SHELFCONTROL WASTE TRACKER REPORT'),
+        build: (context) => [
+          _buildReportBody(stats),
+        ],
       ),
     );
 
@@ -540,20 +199,21 @@ class WasteReportService {
 
   pw.PageTheme _pageTheme(pw.ThemeData theme) => pw.PageTheme(
         theme: theme,
-        margin: const pw.EdgeInsets.all(28),
+        margin: const pw.EdgeInsets.all(24),
         textDirection: pw.TextDirection.ltr,
       );
 
   pw.Widget _header({required String title}) => pw.Container(
-        padding: const pw.EdgeInsets.only(bottom: 6),
+        padding: const pw.EdgeInsets.only(bottom: 4),
+        margin: const pw.EdgeInsets.only(bottom: 10),
         decoration: const pw.BoxDecoration(
           border: pw.Border(
-            bottom: pw.BorderSide(color: PdfColors.grey300, width: 1),
+            bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
           ),
         ),
         child: pw.Text(
           title,
-          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+          style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
         ),
       );
 
@@ -698,17 +358,81 @@ class WasteReportService {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: lines.map((t) {
         return pw.Padding(
-          padding: const pw.EdgeInsets.only(bottom: 6),
+          padding: const pw.EdgeInsets.only(bottom: 4),
           child: pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text('•  ', style: const pw.TextStyle(fontSize: 11)),
+              pw.Text('•  ', style: const pw.TextStyle(fontSize: 9)),
               pw.Expanded(
-                  child: pw.Text(t, style: const pw.TextStyle(fontSize: 11))),
+                  child: pw.Text(t, style: const pw.TextStyle(fontSize: 9))),
             ],
           ),
         );
       }).toList(),
+    );
+  }
+
+  pw.Widget _buildReportBody(WasteWeeklyStats stats) {
+    pw.Widget spacer(double h) => pw.SizedBox(height: h);
+
+    final summaryRows = <List<String>>[
+      ['Total Wasted Items', '${stats.totalWastedItems}', 'Items marked as wasted'],
+      ['Waste Percentage', '${stats.wastePercent.toStringAsFixed(1)}%', 'Relative to all items leaving pantry'],
+      ['Total Cost of Waste', _money.format(stats.totalWasteCost), 'Estimated financial loss'],
+      ['Efficiency Rate', '${stats.efficiencyRate.toStringAsFixed(1)}%', 'Consumed vs wasted ratio'],
+    ];
+
+    final catValues = stats.categoryRows.values.toList()
+      ..sort((a, b) => b.totalCost.compareTo(a.totalCost));
+    final topCats = catValues.take(5).toList();
+
+    final categoryRows = topCats.map((r) => <String>[
+      r.category,
+      r.itemsWasted.toString(),
+      _money.format(r.totalCost),
+    ]).toList();
+
+    final compactInsights = stats.behavioralInsights.take(2).toList();
+    final compactRecs = _computeActionableRecommendations(stats).take(3).toList();
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text('Household: ${stats.householdName}', style: const pw.TextStyle(fontSize: 11)),
+        pw.Text('Week: ${_date.format(stats.weekStart)} – ${_date.format(stats.weekEnd)}', style: const pw.TextStyle(fontSize: 11)),
+        pw.Text('Generated: ${_dateTime.format(stats.generatedAt)}', style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+        spacer(10),
+        pw.Text('Weekly Summary', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+        spacer(5),
+        pw.Table.fromTextArray(
+          headers: const ['Metric', 'Value', 'Description'],
+          headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
+          headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey),
+          cellStyle: const pw.TextStyle(fontSize: 8),
+          columnWidths: {
+            0: const pw.FlexColumnWidth(1.5),
+            1: const pw.FlexColumnWidth(0.8),
+            2: const pw.FlexColumnWidth(2.0),
+          },
+          data: summaryRows,
+        ),
+        spacer(10),
+        pw.Text('Top Wasted Categories', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+        spacer(5),
+        pw.Table.fromTextArray(
+          headers: const ['Category', 'Items Wasted', 'Total Cost (₱)'],
+          headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
+          headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo),
+          cellStyle: const pw.TextStyle(fontSize: 8),
+          data: categoryRows,
+        ),
+        spacer(10),
+        pw.Text('Insights & Recommendations', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+        spacer(4),
+        _bullets(compactInsights),
+        spacer(4),
+        _bullets(compactRecs),
+      ],
     );
   }
 

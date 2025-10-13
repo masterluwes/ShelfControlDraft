@@ -26,6 +26,7 @@ import 'package:shelf_control/screens/waste_tracker_page.dart';
 import 'package:shelf_control/screens/create_account_page.dart';
 import 'package:shelf_control/screens/mealsuggest.dart';
 import 'package:shelf_control/screens/dietary_preference_page.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class DashboardPage extends StatefulWidget {
   final int initialIndex;
@@ -42,6 +43,7 @@ class _DashboardPageState extends State<DashboardPage> {
   int _unreadNotificationsCount = 0;
   bool _isSnoozed = false;
   bool _isMealSuggestActive = false;
+  late PackageInfo _packageInfo = PackageInfo(appName: 'Unknown', packageName: 'Unknown', version: 'Unknown', buildNumber: 'Unknown'); // Initialize with default values
 
   late FirestoreService _firestoreService;
   User? _currentUser;
@@ -50,6 +52,7 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
+    _initPackageInfo();
 
     _pages = [
       DashboardHome(isGuest: widget.isGuest),
@@ -72,6 +75,15 @@ class _DashboardPageState extends State<DashboardPage> {
       _firestoreService = Provider.of<FirestoreService>(context, listen: false);
       _currentUser = FirebaseAuth.instance.currentUser;
       _listenForNotifications();
+    }
+  }
+
+  Future<void> _initPackageInfo() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _packageInfo = info;
+      });
     }
   }
 
@@ -369,6 +381,14 @@ class _DashboardPageState extends State<DashboardPage> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.black, shape: const StadiumBorder()),
               child: Text(widget.isGuest ? "Exit Guest Mode" : "Log Out", style: const TextStyle(color: Colors.white)),
             ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.center,
+              child: Text(
+                'Version: ${_packageInfo.version}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ),
           ],
         ),
       ),
@@ -449,7 +469,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                       }
                       return Container(
                         height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 8), // Adjusted padding
                         decoration: BoxDecoration(color: const Color(0xFF2E7D32), borderRadius: BorderRadius.circular(6)),
                         child: DropdownButton<String>(
                           value: selectedHousehold?.id,
@@ -463,6 +483,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                           underline: Container(),
                           style: const TextStyle(color: Colors.white, fontSize: 14),
                           iconEnabledColor: Colors.white,
+                          isExpanded: true, // Ensure it takes available width
                         ),
                       );
                     },
@@ -513,8 +534,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                 else
                   _buildNoDataDashboard(),
                 const SizedBox(height: 16),
-                if (!widget.isGuest && firestoreService.selectedHouseholdId != null)
-                  _buildQuickConsumeWidget(firestoreService),
+                // Quick Consume is now integrated into the Expiring Soon card
               ],
             ),
           ),
@@ -524,20 +544,38 @@ class _DashboardHomeState extends State<DashboardHome> {
   }
 
   Widget _buildDataDashboard(List<PantryItemModel> items) {
-    final now = DateTime.now();
-    final weekAgo = now.subtract(const Duration(days: 7));
-    final wastedThisWeek = items.where((i) => i.status == 'wasted' && i.wastedAt != null && i.wastedAt!.isAfter(weekAgo)).length;
-    final consumedThisWeek = items.where((i) => i.status == 'consumed' && i.consumedAt != null && i.consumedAt!.isAfter(weekAgo)).length;
-    final denom = wastedThisWeek + consumedThisWeek;
-    final wastePct = denom == 0 ? 0 : ((wastedThisWeek / denom) * 100).round();
+    final currentMoment = DateTime.now();
+    final sevenDaysAgo = currentMoment.subtract(const Duration(days: 7));
+
+    // Filter items that have left the pantry this week (wasted or consumed)
+    final itemsOutThisWeek = items.where((i) =>
+        (i.status == 'wasted' && i.wastedAt != null && i.wastedAt!.isAfter(sevenDaysAgo)) ||
+        (i.status == 'consumed' && i.consumedAt != null && i.consumedAt!.isAfter(sevenDaysAgo))
+    ).toList();
+
+    final wastedThisWeek = itemsOutThisWeek.where((i) => i.status == 'wasted').length;
+    final consumedThisWeek = itemsOutThisWeek.where((i) => i.status == 'consumed').length;
+
+    final totalOutflowThisWeek = wastedThisWeek + consumedThisWeek;
+    final wastePct = totalOutflowThisWeek == 0 ? 0 : ((wastedThisWeek / totalOutflowThisWeek) * 100).round();
     final usageCount = consumedThisWeek;
+
     const restockThreshold = 1;
-    final lowStockCount = items.where((i) => (i.qty) <= restockThreshold).length;
-    final totalConsumed = items.where((i) => i.status == 'consumed').length;
-    final totalWasted = items.where((i) => i.status == 'wasted').length;
-    final effDenom = totalConsumed + totalWasted;
-    final efficiencyPct = effDenom == 0 ? 100 : ((totalConsumed / effDenom) * 100).round();
-    final expiringSoonCount = items.where((i) => i.expirationDate != null && i.expirationDate!.isAfter(now) && i.expirationDate!.difference(now).inDays <= 7).length;
+    final lowStockCount = items.where((i) => i.qty <= restockThreshold && i.status != 'Deleted' && i.status != 'Consumed').length;
+
+    final totalConsumedAllTime = items.where((i) => i.status == 'consumed').length;
+    final totalWastedAllTime = items.where((i) => i.status == 'wasted').length;
+    final totalOutflowAllTime = totalConsumedAllTime + totalWastedAllTime;
+    final efficiencyPct = totalOutflowAllTime == 0 ? 0 : ((totalConsumedAllTime / totalOutflowAllTime) * 100).round();
+
+    final expiringSoonItems = items.where((i) =>
+        i.expirationDate != null &&
+        i.expirationDate!.isAfter(currentMoment) &&
+        i.expirationDate!.difference(currentMoment).inDays <= 7 &&
+        i.status != 'Deleted' && i.status != 'Consumed'
+    ).toList();
+    final expiringSoonCount = expiringSoonItems.length;
+
     final String suggestionText = () {
       if (wastePct >= 30) return "Waste is high this week — try smaller purchases or prioritize near-expiry items.";
       if (lowStockCount > 0) return "You have $lowStockCount low-stock items — consider restocking essentials.";
@@ -558,7 +596,13 @@ class _DashboardHomeState extends State<DashboardHome> {
             _metricCard(icon: Icons.bar_chart, label: "Usage", value: "$usageCount", sublabel: "consumed in last 7 days"),
             _metricCard(icon: Icons.shopping_cart, label: "Restock", value: "$lowStockCount", sublabel: "low-stock items (≤1)"),
             _metricCard(icon: Icons.insights, label: "Efficiency", value: "$efficiencyPct%", sublabel: "consumed vs wasted (all-time)"),
-            _metricCard(icon: Icons.access_alarm, label: "Expiring Soon", value: "$expiringSoonCount", sublabel: "within 7 days"),
+            _metricCard(
+              icon: Icons.access_alarm,
+              label: "Expiring Soon",
+              value: "$expiringSoonCount",
+              sublabel: "within 7 days",
+              child: _buildExpiringSoonQuickConsume(expiringSoonItems), // Pass expiring items for quick consume
+            ),
             _tipCard(icon: Icons.lightbulb, tipText: suggestionText),
           ],
         ),
@@ -592,66 +636,51 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
-  Widget _buildQuickConsumeWidget(FirestoreService firestoreService) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: firestoreService.getFrequentlyConsumedItems(firestoreService.selectedHouseholdId!),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const CircularProgressIndicator();
-        }
-        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-          return Container();
-        }
-                final items = snapshot.data!;
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("Quick Consume", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      ...items.map((itemData) {
-                        // Add null check for pantryItem
-                        final Map<String, dynamic>? pantryItemMap = itemData['pantryItem'] as Map<String, dynamic>?;
-                        if (pantryItemMap == null) {
-                          return const SizedBox.shrink(); // Skip if pantryItem is null
-                        }
-                        final pantryItem = PantryItemModel.fromMap(pantryItemMap);
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4.0),
-                          child: Row(
-                            children: [
-                              Expanded(child: Text(itemData['productName'], style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
-                              if (pantryItem.qty > 0)
-                                ElevatedButton(
-                                  onPressed: () async {
-                                    await firestoreService.recordConsumedItem(pantryItem, 1);
-                                    if (mounted) setState(() {});
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF2E7D32),
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                    minimumSize: Size.zero,
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  child: const Text("Consume 1", style: TextStyle(color: Colors.white, fontSize: 12)),
-                                )
-                              else
-                                const Text("Out of Stock", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                            ],
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                );
-      },
+  Widget _buildExpiringSoonQuickConsume(List<PantryItemModel> expiringItems) {
+    if (expiringItems.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    // Sort by expiration date to show the most urgent first
+    expiringItems.sort((a, b) => a.expirationDate!.compareTo(b.expirationDate!));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 16, thickness: 1, color: Colors.black12),
+        const Text("Quick Consume", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(height: 8),
+        ...expiringItems.take(2).map((item) { // Show top 2 expiring items
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4.0),
+            child: Row(
+              children: [
+                Expanded(child: Text(item.name, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                if (item.qty > 0)
+                  ElevatedButton(
+                    onPressed: () async {
+                      await firestoreService.recordConsumedItem(item, 1);
+                      if (mounted) setState(() {}); // Refresh dashboard
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E7D32),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text("Consume 1", style: TextStyle(color: Colors.white, fontSize: 10)),
+                  )
+                else
+                  const Text("Out of Stock", style: TextStyle(color: Colors.grey, fontSize: 10)),
+              ],
+            ),
+          );
+        }).toList(),
+      ],
     );
   }
 
-  Widget _metricCard({required IconData icon, required String label, required String value, String? sublabel}) {
+  Widget _metricCard({required IconData icon, required String label, required String value, String? sublabel, Widget? child}) {
     return Container(
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
       padding: const EdgeInsets.all(16),
@@ -666,6 +695,10 @@ class _DashboardHomeState extends State<DashboardHome> {
           if (sublabel != null) ...[
             const SizedBox(height: 2),
             Text(sublabel, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+          ],
+          if (child != null) ...[
+            const SizedBox(height: 10),
+            child,
           ],
         ],
       ),

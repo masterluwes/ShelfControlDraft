@@ -2,6 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:shelf_control/services/weather_service.dart';
 import 'package:shelf_control/services/tips_rules.dart';
 
+// --- NEW DATA MODEL ---
+// A placeholder class to represent a full pantry item's data.
+class PantryItem {
+  final String name;
+  final String category;
+  final double quantity; // e.g., 2 pieces
+  final double price; // e.g., ₱ 50.00
+  final double netWeight; // e.g., 0.5 kg (using double for simplicity)
+  final String weightUnit; // e.g., 'pcs', 'kg', 'L'
+  final int daysUntilExpiration;
+  // NOTE: In a real app, this would also have an 'imageUrl' or 'imagePath'
+
+  PantryItem({
+    required this.name,
+    required this.category,
+    this.quantity = 0,
+    this.price = 0.0,
+    this.netWeight = 0.0,
+    this.weightUnit = 'pcs',
+    this.daysUntilExpiration = 0,
+  });
+}
+// -----------------------
+
+// --- Color Helpers (Unchanged) ---
+
 Color _levelColor(WeatherLevel lvl) {
   switch (lvl) {
     case WeatherLevel.red:
@@ -34,6 +60,8 @@ String _levelLabel(WeatherLevel lvl) {
       return "BLUE";
   }
 }
+
+// --- Weather Alert Banner (Unchanged) ---
 
 class WeatherAlertBanner extends StatefulWidget {
   final WeatherAlert alert;
@@ -71,12 +99,10 @@ class _WeatherAlertBannerState extends State<WeatherAlertBanner> {
         border: Border.all(color: strip.withOpacity(0.35), width: 1),
       ),
       child: Row(
-        // ❌ don't stretch vertically; parent Column doesn't give a fixed height
-        // crossAxisAlignment: CrossAxisAlignment.stretch,  // <-- remove this
-        crossAxisAlignment: CrossAxisAlignment.start, // <-- use start/center
-        mainAxisSize: MainAxisSize.min, // <-- let content size height
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // left colored strip; let it size naturally with content
+          // left colored strip
           Container(
             width: 6,
             decoration: BoxDecoration(
@@ -94,8 +120,7 @@ class _WeatherAlertBannerState extends State<WeatherAlertBanner> {
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize:
-                    MainAxisSize.min, // <-- don't claim infinite height
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   // top row
                   Row(
@@ -171,7 +196,7 @@ class _WeatherAlertBannerState extends State<WeatherAlertBanner> {
                     firstChild: const SizedBox.shrink(),
                     secondChild: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min, // <-- important
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           widget.alert.body,
@@ -238,31 +263,534 @@ class _WeatherAlertBannerState extends State<WeatherAlertBanner> {
   }
 }
 
-// Your original TipDetailPage, unchanged.
+// --- Tip Detail Page (UPDATED TO MATCH SCREENSHOT) ---
+
 class TipDetailPage extends StatelessWidget {
   final String title;
+  final String subtitle;
   final String details;
 
-  const TipDetailPage({super.key, required this.title, required this.details});
+  const TipDetailPage({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.details,
+  });
+
+  /// This helper function parses a block of text into styled widgets.
+  /// It assumes that a heading is a single line ending in a period or colon,
+  /// followed by a body paragraph. Sections are separated by double newlines.
+  List<Widget> _buildDetailWidgets() {
+    final List<Widget> widgets = [];
+    final tipSections = details.split('\n\n');
+
+    for (var section in tipSections) {
+      if (section.trim().isEmpty) continue;
+
+      int separatorIndex = section.indexOf('. ');
+      if (separatorIndex == -1) {
+        separatorIndex = section.indexOf(': ');
+      }
+
+      String heading;
+      String body;
+
+      if (separatorIndex != -1 && !section.startsWith('•')) {
+        heading = section.substring(0, separatorIndex + 1);
+        body = section.substring(separatorIndex + 2);
+      } else {
+        heading = '';
+        body = section;
+      }
+
+      if (heading.isNotEmpty) {
+        widgets.add(
+          Text(
+            heading.trim(),
+            style: const TextStyle(
+              fontSize: 16.5,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+              height: 1.5,
+            ),
+          ),
+        );
+        widgets.add(const SizedBox(height: 4));
+      }
+
+      widgets.add(
+        Text(
+          body.trim(),
+          style: const TextStyle(
+            fontSize: 16.5,
+            color: Colors.black87,
+            height: 1.5,
+          ),
+        ),
+      );
+      widgets.add(const SizedBox(height: 24));
+    }
+    return widgets;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBE6),
+      extendBody: true,
+      backgroundColor: const Color(0xFFFFFDF2), // Light cream background
       appBar: AppBar(
         backgroundColor: const Color(0xFF2E7D32),
-        title: Text(title, style: const TextStyle(color: Colors.white)),
+        elevation: 0,
+        // The title in the app bar is optional as it's shown in the body
+        title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Text(
-            details,
-            style: const TextStyle(
-              fontSize: 16,
-              color: Colors.black87,
-              height: 1.5,
+          // Add enough padding at the bottom to ensure content isn't hidden by the footer image
+          padding: EdgeInsets.fromLTRB(24, 24, 24, 200 + MediaQuery.of(context).padding.bottom),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 17,
+                  color: Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 32),
+              // Use the helper to build the structured content
+              ..._buildDetailWidgets(),
+            ],
+          ),
+        ),
+      ),
+      // --- FOOTER IMPLEMENTATION FROM SCREENSHOT ---
+      bottomNavigationBar: IgnorePointer(
+        child: SizedBox(
+          height: 180 + MediaQuery.of(context).padding.bottom,
+          child: Image.asset(
+            'assets/footer1e27d32-trans.png', // <-- REPLACE WITH YOUR IMAGE PATH
+            width: double.infinity,
+            fit: BoxFit.cover,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+// --- Item Tips Detail Page (WITH FOOTER) ---
+
+class ItemTipsDetailPage extends StatelessWidget {
+  final PantryItem item;
+  final WeatherAlert? alert;
+
+  const ItemTipsDetailPage({
+    super.key,
+    required this.item,
+    this.alert,
+  });
+
+  IconData _getIconForItem(String itemName) {
+    switch (itemName.toLowerCase()) {
+      case 'apples':
+        return Icons.apple;
+      case 'lettuce':
+        return Icons.eco;
+      case 'chicken':
+      case 'pork':
+      case 'beef':
+        return Icons.kebab_dining;
+      case 'salmon':
+      case 'tuna':
+        return Icons.set_meal;
+      case 'milk':
+        return Icons.opacity;
+      case 'cheese':
+        return Icons.icecream_outlined;
+      case 'rice':
+        return Icons.rice_bowl;
+      case 'bread':
+        return Icons.breakfast_dining_outlined;
+      default:
+        return Icons.fastfood;
+    }
+  }
+
+  // --- NEW ---
+  // Helper to provide detailed, structured text for different tip types
+  String _getTipDetails(String tipType, PantryItem item) {
+    switch (tipType) {
+      case 'Food Preservation Tips':
+        // Example for dairy/milk to match the screenshot
+        if (item.category.toLowerCase() == 'dairy') {
+          return '''
+Avoid the door. The refrigerator door is the warmest part of the fridge. It's best to store milk and other dairy products on the main shelves where the temperature is more consistent.
+
+Keep it cold. Dairy products should be stored in the refrigerator at or below 40°F (4°C). This helps to slow down the growth of bacteria and keep your dairy fresh for longer.
+
+Keep it in the original container. This helps to protect it from light, which can degrade some vitamins, and from absorbing odors from other foods.
+
+Use within a week. Once opened, milk is typically good for about seven days.
+
+Rotate your dairy. When you buy new dairy products, place them behind the older ones in your fridge. This will help you to use up the older products before they expire. This is known as the FIFO (First-In, First-Out) method and it's a great way to reduce food waste.
+''';
+        }
+        // Fallback for other items
+        return 'Food preservation tips specific to ${item.name}, like optimal temperature, humidity, and location for storage.';
+
+      case 'Waste Reduction Tips':
+        return 'Waste reduction ideas for ${item.name}, such as recipes for browning fruit or staling bread.';
+      case 'Food Labeling & Definitions':
+        return 'Definitions of common labels like "Best By" and "Use By" as they apply to products like ${item.name}.';
+      default:
+        return 'No details available for this topic.';
+    }
+  }
+  // -----------
+
+
+  @override
+  Widget build(BuildContext context) {
+    final weatherLevel = alert?.level ?? WeatherLevel.green;
+    
+    final allDynamicTips = TipsRules.adviceFor(item.category, item.name, weatherLevel);
+    final currentSuggestion = allDynamicTips.isNotEmpty ? allDynamicTips.first : null;
+
+    String getExpirationText(int days) {
+      if (days < 0) return 'Expired ${days.abs()} days ago';
+      if (days == 0) return 'Expires today!';
+      if (days == 1) return 'Expires in 1 day';
+      return 'Expires in $days days';
+    }
+
+    Color getExpirationColor(int days) {
+      if (days <= 0) return const Color(0xFFD32F2F); // Red
+      if (days <= 3) return const Color(0xFFF9A825); // Amber
+      return const Color(0xFF2E7D32); // Green
+    }
+
+    final expirationDays = item.daysUntilExpiration;
+    final expColor = getExpirationColor(expirationDays);
+
+    return Scaffold(
+      extendBody: true,
+      backgroundColor: const Color(0xFF2E7D32),
+      body: Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top + 10,
+              bottom: 10,
+              left: 10,
+              right: 16,
+            ),
+            child: Row(
+              children: [
+                InkWell(
+                  onTap: () => Navigator.pop(context),
+                  child: const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: Icon(Icons.arrow_back, color: Colors.white, size: 24),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Smart Tips and Suggestions',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFFBE6),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(0),
+                  topRight: Radius.circular(0),
+                ),
+              ),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  bottom: 180 + MediaQuery.of(context).padding.bottom,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                      color: Colors.grey.shade300, width: 1),
+                                ),
+                                child: Icon(
+                                  _getIconForItem(item.name),
+                                  size: 40,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.name,
+                                      style: const TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: expColor.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(999),
+                                        border: Border.all(
+                                            color: expColor.withOpacity(0.3)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.schedule,
+                                              size: 16, color: expColor),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            getExpirationText(expirationDays),
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: expColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: const Color(0xFFC8E6C9),
+                                width: 1.0,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                Column(
+                                  children: [
+                                    const Text('Quantity',
+                                        style: TextStyle(fontSize: 12, color: Colors.black54)),
+                                    Text(item.quantity.toStringAsFixed(0),
+                                        style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF222222))),
+                                  ],
+                                ),
+                                Column(
+                                  children: [
+                                    const Text('Item Price',
+                                        style: TextStyle(fontSize: 12, color: Colors.black54)),
+                                    Text('₱ ${item.price.toStringAsFixed(2)}',
+                                        style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF222222))),
+                                  ],
+                                ),
+                                Column(
+                                  children: [
+                                    const Text('Net weight',
+                                        style: TextStyle(fontSize: 12, color: Colors.black54)),
+                                    Text(
+                                        '${item.netWeight.toStringAsFixed(1)} ${item.weightUnit}',
+                                        style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF222222))),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
+                      child: Text(
+                        'Smart Suggestions',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+
+                    // Smart Suggestions List
+                    _buildSuggestionCard(
+                      context,
+                      item: item,
+                      title: 'Current Suggestion (Weather)',
+                      subtitle: currentSuggestion?.subtitle ??
+                          'Weather-based tips for optimal food storage.',
+                      details: currentSuggestion?.details ??
+                          'No specific weather tip for this item right now.',
+                      icon: Icons.light_mode,
+                    ),
+                    _buildSuggestionCard(
+                      context,
+                      item: item,
+                      title: 'Food Preservation Tips',
+                      subtitle: 'How to extend freshness & store items properly?',
+                      icon: Icons.recycling,
+                    ),
+                    _buildSuggestionCard(
+                      context,
+                      item: item,
+                      title: 'Waste Reduction Tips',
+                      subtitle: 'Discover recipes & ideas to use up your food',
+                      icon: Icons.eco,
+                    ),
+                    _buildSuggestionCard(
+                      context,
+                      item: item,
+                      title: 'Food Labeling & Definitions',
+                      subtitle:
+                          'Understand common food terms & what they mean.',
+                      icon: Icons.label,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: IgnorePointer(
+        child: SizedBox(
+          height: 180 + MediaQuery.of(context).padding.bottom,
+          child: Image.asset(
+            'assets/footer1e27d32-trans.png', // <-- REPLACE WITH YOUR IMAGE PATH
+            width: double.infinity,
+            fit: BoxFit.cover,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuggestionCard(
+    BuildContext context, {
+    required PantryItem item,
+    required String title,
+    required String subtitle,
+    String? details, // Make details optional for dynamic fetching
+    required IconData icon,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TipDetailPage(
+                  title: title,
+                  subtitle: subtitle,
+                  // Use the provided details, or fetch dynamically based on title and item
+                  details: details ?? _getTipDetails(title, item),
+                ),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(16.0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 28, color: const Color(0xFF2E7D32)),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios,
+                    size: 16, color: Colors.grey),
+              ],
             ),
           ),
         ),
@@ -271,7 +799,10 @@ class TipDetailPage extends StatelessWidget {
   }
 }
 
-// Your TipsPage class with the updated item-specific logic.
+// ------------------------------------
+// --- TipsPage Class (Unchanged) ---
+// ------------------------------------
+
 class TipsPage extends StatefulWidget {
   const TipsPage({super.key});
 
@@ -280,7 +811,7 @@ class TipsPage extends StatefulWidget {
 }
 
 class _TipsPageState extends State<TipsPage> {
-  // --- DATA ---
+  // --- DATA (Unchanged) ---
   WeatherAlert? _alert;
   bool _loadingWeather = true;
   String? _error;
@@ -291,55 +822,108 @@ class _TipsPageState extends State<TipsPage> {
     _loadWeather();
   }
 
-// TEMP: local loader that sets a GREEN alert so page compiles even
-// if you haven’t created WeatherService yet.
-// When you’re ready to go live, replace this with the version that
-// calls WeatherService (I’ll show that below).
   Future<void> _loadWeather() async {
-  try {
-    final pos = await WeatherService.instance.getPosition(); // may return emulator defaults
-
-    // 🧭 If GPS is outside PH (e.g., Mountain View), force Metro Manila fallback
-    if (!WeatherService.isInPhilippines(pos.latitude, pos.longitude)) {
-      final alert = await WeatherService.instance.fetchAlertForDefaultPH();
+    try {
+      final pos = await WeatherService.instance.getPosition();
+      if (!WeatherService.isInPhilippines(pos.latitude, pos.longitude)) {
+        final alert = await WeatherService.instance.fetchAlertForDefaultPH();
+        if (!mounted) return;
+        setState(() {
+          _alert = alert;
+          _error = null;
+          _loadingWeather = false;
+        });
+        return;
+      }
+      final alert =
+          await WeatherService.instance.fetchAlert(pos: pos, areaName: '');
       if (!mounted) return;
       setState(() {
         _alert = alert;
         _error = null;
         _loadingWeather = false;
       });
-      return;
+    } catch (e) {
+      try {
+        final alert = await WeatherService.instance.fetchAlertForDefaultPH();
+        if (!mounted) return;
+        setState(() {
+          _alert = alert;
+          _error = null;
+        });
+      } catch (e2) {
+        if (!mounted) return;
+        setState(() {
+          _error = 'Unable to load weather: $e2';
+        });
+      }
+    } finally {
+      if (mounted) _loadingWeather = false;
     }
-
-    // Otherwise, use the precise local coordinates
-    final alert = await WeatherService.instance.fetchAlert(pos: pos, areaName: '');
-    if (!mounted) return;
-    setState(() {
-      _alert = alert;
-      _error = null;
-      _loadingWeather = false;
-    });
-  } catch (e) {
-    // Location denied/off or other failure -> Metro Manila fallback
-    try {
-      final alert = await WeatherService.instance.fetchAlertForDefaultPH();
-      if (!mounted) return;
-      setState(() {
-        _alert = alert;
-        _error = null;
-      });
-    } catch (e2) {
-      if (!mounted) return;
-      setState(() {
-        _error = 'Unable to load weather: $e2';
-      });
-    }
-  } finally {
-    if (mounted) _loadingWeather = false;
   }
-}
 
-  // UPDATED: Added 'Salmon' and 'Tuna' to the 'Fish' category in the pantry.
+  final Map<String, PantryItem> _dummyPantryData = {
+    'Chicken': PantryItem(
+      name: 'Chicken',
+      category: 'Meat',
+      quantity: 1.0,
+      price: 150.00,
+      netWeight: 1.2,
+      weightUnit: 'kg',
+      daysUntilExpiration: 2,
+    ),
+    'Salmon': PantryItem(
+      name: 'Salmon',
+      category: 'Fish',
+      quantity: 2.0,
+      price: 350.50,
+      netWeight: 0.5,
+      weightUnit: 'kg',
+      daysUntilExpiration: 1,
+    ),
+    'Tuna': PantryItem(
+      name: 'Tuna',
+      category: 'Fish',
+      quantity: 5.0,
+      price: 45.00,
+      netWeight: 0.18,
+      weightUnit: 'kg',
+      daysUntilExpiration: 365,
+    ),
+    'Milk': PantryItem(
+      name: 'Milk',
+      category: 'Dairy',
+      quantity: 1.0,
+      price: 85.00,
+      netWeight: 1.0,
+      weightUnit: 'L',
+      daysUntilExpiration: 5,
+    ),
+    'Apples': PantryItem(
+      name: 'Apples',
+      category: 'Produce',
+      quantity: 6.0,
+      price: 120.00,
+      netWeight: 0.9,
+      weightUnit: 'kg',
+      daysUntilExpiration: 0,
+    ),
+    'Bread': PantryItem(
+      name: 'Bread',
+      category: 'Grains',
+      quantity: 1.0,
+      price: 75.00,
+      netWeight: 0.45,
+      weightUnit: 'kg',
+      daysUntilExpiration: -1,
+    ),
+    'Pork': PantryItem(name: 'Pork', category: 'Meat', daysUntilExpiration: 3, netWeight: 1.5, weightUnit: 'kg'),
+    'Beef': PantryItem(name: 'Beef', category: 'Meat', daysUntilExpiration: 4, netWeight: 0.8, weightUnit: 'kg'),
+    'Cheese': PantryItem(name: 'Cheese', category: 'Dairy', daysUntilExpiration: 15, netWeight: 0.3, weightUnit: 'kg'),
+    'Lettuce': PantryItem(name: 'Lettuce', category: 'Produce', daysUntilExpiration: 2, netWeight: 0.2, weightUnit: 'kg'),
+    'Rice': PantryItem(name: 'Rice', category: 'Grains', daysUntilExpiration: 730, netWeight: 5.0, weightUnit: 'kg'),
+  };
+
   final Map<String, List<String>> pantryItems = {
     'Meat': ['Chicken', 'Pork', 'Beef'],
     'Fish': ['Salmon', 'Tuna'],
@@ -364,177 +948,10 @@ class _TipsPageState extends State<TipsPage> {
   String selectedCategory = 'General';
 
   final Map<String, Map<String, List<Map<String, dynamic>>>> allTips = {
-    // 'General': {
-    //   'General': [
-    //     {
-    //       'title': 'Know your food labels',
-    //       'subtitle':
-    //           'Not sure what "Best Before" really means? Read labels the right way.',
-    //       'details':
-    //           'Food labels provide important info like expiry dates, storage instructions, and nutritional values. "Best Before" = quality; "Use By" = safety.',
-    //       'icon': Icons.label_important_outline,
-    //     },
-    //     {
-    //       'title': 'How to store items properly',
-    //       'subtitle':
-    //           'Keep your food fresh for longer! Find out where and how to store each item.',
-    //       'details':
-    //           'Proper storage prevents spoilage. Keep potatoes in a cool dark place, bread in a breadbox, leafy greens in the fridge with a damp paper towel.',
-    //       'icon': Icons.inventory_2_outlined,
-    //     },
-    //     {
-    //       'title': 'Nutrition facts check!',
-    //       'subtitle':
-    //           'Want to know what’s in your food? Quickly check the nutrition info.',
-    //       'details':
-    //           'Checking nutrition facts helps you make informed choices. Compare sugar, sodium, and fats to choose healthier options.',
-    //       'icon': Icons.fact_check_outlined,
-    //     },
-    //     {
-    //       'title': 'Reduce food waste',
-    //       'subtitle':
-    //           'Small changes make a big difference. Try these simple tips to waste less.',
-    //       'details':
-    //           'Plan meals, store food properly, and use leftovers creatively. Donate excess food where possible.',
-    //       'icon': Icons.recycling_outlined,
-    //     },
-    //   ],
-    // },
-    'Meat': {
-      'Chicken': [
-        {
-          'title': 'Storing Raw Chicken',
-          'subtitle': 'Refrigerate at 40°F (4°C) or below on the bottom shelf.',
-          'details':
-              'Always store raw chicken on the bottom shelf of your fridge to prevent juices from dripping onto other foods. Cook or freeze within 2 days.',
-          'icon': Icons.kitchen,
-        },
-      ],
-      'Pork': [
-        {
-          'title': 'Safe Pork Temperature',
-          'subtitle': 'Cook to an internal temperature of 145°F (63°C).',
-          'details':
-              'For safety and quality, cook pork chops, roasts, and tenderloins to an internal temperature of 145°F, then allow it to rest for three minutes before carving or consuming.',
-          'icon': Icons.thermostat,
-        },
-      ],
-      'Beef': [
-        {
-          'title': 'Resting Your Steak',
-          'subtitle': 'Let steak rest after cooking for a juicier result.',
-          'details':
-              'After cooking, let your steak rest on a cutting board for 5-10 minutes before slicing. This allows the juices to redistribute throughout the meat, making it more tender and flavorful.',
-          'icon': Icons.timer_outlined,
-        },
-      ],
-    },
-    // UPDATED: Added a new 'Fish' category with tips for each item.
-    'Fish': {
-      'Salmon': [
-        {
-          'title': 'Fresh Salmon Guide',
-          'subtitle': 'Look for vibrant, moist flesh and a mild ocean scent.',
-          'details':
-              'Fresh salmon should have a bright, deep orange or pink color and firm flesh that springs back when pressed. Avoid any pieces with a strong "fishy" odor or brown spots.',
-          'icon': Icons.remove_red_eye_outlined,
-        },
-        {
-          'title': 'Storing Fresh Salmon',
-          'subtitle': 'Use within 2 days or freeze for longer storage.',
-          'details':
-              'Store fresh salmon in the coldest part of your refrigerator, ideally on a bed of ice. If you don\'t plan to cook it within two days, wrap it tightly in plastic wrap and then foil, and place it in the freezer.',
-          'icon': Icons.ac_unit,
-        },
-      ],
-      'Tuna': [
-        {
-          'title': 'Storing Canned Tuna',
-          'subtitle': 'Keep unopened cans in a cool, dark pantry.',
-          'details':
-              'Unopened canned tuna is shelf-stable for several years. Once opened, transfer any leftover tuna to an airtight container and store it in the refrigerator for up to 3-4 days.',
-          'icon': Icons.inventory,
-        },
-      ],
-    },
-    'Dairy': {
-      
-    },
-    'Produce': {
-      'Apples': [
-        {
-          'title': 'Storing Apples',
-          'subtitle': 'Keep apples in the crisper drawer of your fridge.',
-          'details':
-              'Refrigerating apples helps them stay crisp and fresh for weeks. Keep them separate from other produce, as they release ethylene gas that can speed up ripening.',
-          'icon': Icons.apple,
-        },
-      ],
-      'Lettuce': [
-        {
-          'title': 'Keep Lettuce Crisp',
-          'subtitle': 'Store lettuce with a paper towel to absorb moisture.',
-          'details':
-              'Wash and dry your lettuce leaves thoroughly. Store them in a container or sealed bag with a dry paper towel to absorb excess water, which helps prevent wilting.',
-          'icon': Icons.eco,
-        },
-      ],
-    },
-    'Grains': {
-      'Rice': [
-        {
-          'title': 'Store Rice Airtight',
-          'subtitle': 'Protect rice from pests and moisture.',
-          'details':
-              'Transfer rice from its original packaging to an airtight container. Store it in a cool, dark, and dry place like a pantry to maintain its quality.',
-          'icon': Icons.rice_bowl,
-        },
-      ],
-      'Bread': [
-        {
-          'title': 'Best Way to Store Bread',
-          'subtitle':
-              'Keep bread at room temperature in a breadbox or paper bag.',
-          'details':
-              'Refrigerating bread can cause it to go stale faster. For long-term storage, slice it and store it in the freezer in a well-sealed bag.',
-          'icon': Icons.breakfast_dining_outlined,
-        },
-      ],
-    },
   };
-
-  // --- BUILD METHOD & HELPERS ---
 
   @override
   Widget build(BuildContext context) {
-    // Temporary demo alert so you can see the layout now:
-    if (_loadingWeather) {
-      const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        child: LinearProgressIndicator(minHeight: 3),
-      );
-    } else if (_alert != null)
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          WeatherAlertBanner(alert: _alert!, initiallyExpanded: false),
-          if (_error != null)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 6),
-              child: Text(
-                'Showing advisory with fallback info.',
-                style: TextStyle(fontSize: 11.5, color: Colors.black54),
-              ),
-            ),
-        ],
-      );
-    else
-      const SizedBox.shrink();
-
-    // (Optional) tiny note if we fell back due to an error, but DO NOT block the banner
-
-    // Final safety — shouldn’t happen because we set a fallback above
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -550,7 +967,6 @@ class _TipsPageState extends State<TipsPage> {
           ),
         ),
 
-        // Weather banner area
         if (_loadingWeather)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -597,194 +1013,142 @@ class _TipsPageState extends State<TipsPage> {
     );
   }
 
-  /// Builds the main content area based on the selected category.
   Widget _buildBodyContent() {
     if (selectedCategory == 'General') {
       final generalTips = allTips['General']?['General'] ?? [];
-      return ListView.separated(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-        itemCount: generalTips.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final tip = generalTips[index];
-          return _buildTipCard(
+      if (generalTips.isEmpty) {
+        return _buildItemNavigationList([
+          _buildTipCard(
             context,
-            title: tip['title'] as String,
-            subtitle: tip['subtitle'] as String,
-            details: tip['details'] as String,
-            icon: tip['icon'] as IconData,
-          );
-        },
+            title: 'Know your food labels',
+            subtitle: 'Read labels the right way: "Best Before" vs "Use By".',
+            details:
+                'Food labels provide important info like expiry dates, storage instructions, and nutritional values. "Best Before" = quality; "Use By" = safety.',
+            icon: Icons.label_important_outline,
+          ),
+          _buildTipCard(
+            context,
+            title: 'How to store items properly',
+            subtitle: 'Keep your food fresh for longer! Find out where to store each item.',
+            details:
+                'Proper storage prevents spoilage. Keep potatoes in a cool dark place, bread in a breadbox, leafy greens in the fridge with a damp paper towel.',
+            icon: Icons.inventory_2_outlined,
+          ),
+          _buildTipCard(
+            context,
+            title: 'Reduce food waste',
+            subtitle:
+                'Small changes make a big difference. Try these simple tips to waste less.',
+            details:
+                'Plan meals, store food properly, and use leftovers creatively. Donate excess food where possible.',
+            icon: Icons.recycling_outlined,
+          ),
+        ]);
+      }
+      return _buildItemNavigationList(
+        generalTips
+            .map((tip) => _buildTipCard(
+                  context,
+                  title: tip['title'] as String,
+                  subtitle: tip['subtitle'] as String,
+                  details: tip['details'] as String,
+                  icon: tip['icon'] as IconData,
+                ))
+            .toList(),
       );
     }
 
-    // For specific categories, get the items from the pantry.
     final availableItems = pantryItems[selectedCategory] ?? [];
 
     if (availableItems.isEmpty) {
       return _buildEmptyState();
     }
 
-    // MODIFIED: Use a ListView.separated for better spacing between item cards.
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
       itemCount: availableItems.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 16),
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final itemName = availableItems[index];
-        final weatherLevel = _alert?.level ?? WeatherLevel.green;
+        final itemData = _dummyPantryData[itemName] ??
+            PantryItem(
+              name: itemName,
+              category: selectedCategory,
+            );
 
-        // Dynamic, weather-aware tips
-        final dynamicTips =
-            TipsRules.adviceFor(selectedCategory, itemName, weatherLevel);
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Card(
-            elevation: 0,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(_getIconForItem(itemName), size: 22),
-                      const SizedBox(width: 8),
-                      Text(
-                        itemName,
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: dynamicTips.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (_, i) {
-                      final tip = dynamicTips[i];
-                      return _buildTipCard(
-                        context,
-                        title: tip.title,
-                        subtitle: tip.subtitle,
-                        details: tip.details,
-                        icon: tip.icon,
-                      );
-                    },
-                  ),
-                ],
+        return _buildItemNavigationCard(
+          context,
+          itemName: itemName,
+          icon: _getIconForItem(itemName),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ItemTipsDetailPage(
+                  item: itemData,
+                  alert: _alert,
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  /// NEW WIDGET: Builds a card for a single pantry item, containing its name and tips.
-  /// This matches the format of the last generated UI.
-  Widget _buildItemCard(String itemName, List<Map<String, dynamic>> tips) {
-    return Card(
-      elevation: 2,
-      shadowColor: Colors.black.withOpacity(0.1),
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Item Header
-            Row(
-              children: [
-                // A placeholder for an item icon, you can customize this
-                Icon(
-                  _getIconForItem(itemName), // Helper to get a matching icon
-                  color: const Color(0xFF2E7D32),
-                  size: 28,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    itemName,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-                const Icon(
-                  Icons.arrow_forward_ios,
-                  color: Colors.grey,
-                  size: 16,
-                ),
-              ],
-            ),
-            const Divider(height: 24, thickness: 1),
+  Widget _buildItemNavigationList(List<Widget> children) {
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+      itemCount: children.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) => children[index],
+    );
+  }
 
-            // Tips Section
-            const Text(
-              'Tips & Suggestions',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.black54,
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Create a Column of clickable tip rows for the current item.
-            Column(
-              children: tips.map((tip) {
-                return InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TipDetailPage(
-                          title: tip['title'] as String,
-                          details: tip['details'] as String,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
-                    child: Row(
-                      children: [
-                        Icon(
-                          tip['icon'] as IconData,
-                          color: Colors.green[700],
-                          size: 22,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            tip['subtitle'] as String,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+  Widget _buildItemNavigationCard(
+    BuildContext context, {
+    required String itemName,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: Colors.grey.shade300, width: 1),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Icon(icon, color: const Color(0xFF2E7D32), size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  itemName,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
                   ),
-                );
-              }).toList(),
-            ),
-          ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_ios,
+                color: Colors.grey,
+                size: 16,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// A helper widget to show when no items are in the pantry for a category.
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -813,8 +1177,6 @@ class _TipsPageState extends State<TipsPage> {
       ),
     );
   }
-
-  // --- Unchanged Helper Widgets ---
 
   Widget _buildCategoryChip(
     BuildContext context, {
@@ -889,7 +1251,11 @@ class _TipsPageState extends State<TipsPage> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => TipDetailPage(title: title, details: details),
+              builder: (_) => TipDetailPage(
+                title: title, 
+                subtitle: subtitle, 
+                details: details,
+              ),
             ),
           );
         },
@@ -930,7 +1296,6 @@ class _TipsPageState extends State<TipsPage> {
     );
   }
 
-  // NEW HELPER: Provides a relevant icon for the item name.
   IconData _getIconForItem(String itemName) {
     switch (itemName.toLowerCase()) {
       case 'apples':
@@ -956,7 +1321,7 @@ class _TipsPageState extends State<TipsPage> {
       case 'bread':
         return Icons.breakfast_dining_outlined;
       default:
-        return Icons.fastfood; // A generic fallback icon
+        return Icons.fastfood;
     }
   }
 }

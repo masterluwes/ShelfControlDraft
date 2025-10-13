@@ -829,17 +829,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   // Mark as wasted
   Future<void> _markAsWasted(PantryItemModel item, FirestoreService firestoreService) async {
     if (item.id != null) {
-      if (widget.isGuest) {
-        List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
-        int itemIndex = currentGuestPantry.indexWhere((element) => element.id == item.id);
-        if (itemIndex != -1) {
-          PantryItemModel updatedItem = item.copyWith(status: 'Wasted', wastedAt: DateTime.now());
-          currentGuestPantry[itemIndex] = updatedItem;
-          await firestoreService.saveGuestPantryItems(currentGuestPantry);
-        }
-      } else {
-        await firestoreService.markAsWasted(item);
-      }
+      await firestoreService.recordWastedItem(item, item.qty);
       if (!mounted) return;
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1019,13 +1009,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   }
 
   Widget _bigTitle() {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(12, 12, 12, 6),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12), // Adjusted padding to match Dashboard
       child: Text('Pantry Inventory',
           style: TextStyle(
-              color: Color(0xFF20451F),
+              color: headerGreen, // Changed to headerGreen
               fontSize: 24,
-              fontWeight: FontWeight.w900)),
+              fontWeight: FontWeight.bold)), // Changed to FontWeight.bold
     );
   }
 
