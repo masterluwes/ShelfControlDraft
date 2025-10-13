@@ -13,9 +13,6 @@ import 'package:shelf_control/models/user_prefs_model.dart';
 import 'package:shelf_control/models/suggested_recipe.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-final _svc = RecipeSuggestService(
-  SpoonacularClient(dotenv.env['SPOONACULAR_KEY'] ?? ''),
-);
 
 // ===== CONFIG =====
 const double kMinCoverageToShow = 0.5; // 50% pantry coverage
@@ -135,10 +132,7 @@ class _MealSuggestState extends State<MealSuggest> {
   bool _refreshing = false;
   late FirestoreService _firestoreService; // Declare FirestoreService
 
-  final _svc = RecipeSuggestService(
-  SpoonacularClient(dotenv.env['SPOONACULAR_KEY'] ?? ''),
-);
-
+  late final RecipeSuggestService _svc;
   late FirestoreService _firestore;
   List<SuggestedRecipe> _recipes = [];
 
@@ -154,6 +148,9 @@ class _MealSuggestState extends State<MealSuggest> {
   void initState() {
     super.initState();
     _firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    _svc = RecipeSuggestService(
+      SpoonacularClient(dotenv.env['SPOONACULAR_KEY'] ?? ''),
+    );
   }
 
   @override
