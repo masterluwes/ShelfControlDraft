@@ -40,6 +40,44 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
   DateTime? _manufacturedDate;
   DateTime? _expirationDate;
 
+  // Define default shelf lives for categories (in days)
+  final Map<String, int> _categoryShelfLives = {
+    'Bakery': 7,
+    'Beverages': 180,
+    'Canned Goods': 730, // 2 years
+    'Condiments': 365, // 1 year
+    'Dairy': 21,
+    'Dry Goods': 365, // 1 year
+    'Snacks': 90,
+    'Other': 30, // Default for uncategorized
+  };
+
+  // Define specific shelf lives for subcategories (in days)
+  final Map<String, int> _subcategoryShelfLives = {
+    'Milk': 10,
+    'Yogurt': 14,
+    'Cheese': 60,
+    'Bread': 5,
+    'Pastries': 3,
+    'Juice': 30,
+    'Soda': 180,
+    'Coffee': 365,
+    'Tea': 730,
+    'Canned Vegetables': 730,
+    'Canned Fruits': 730,
+    'Canned Meat': 730,
+    'Ketchup': 365,
+    'Mayonnaise': 180,
+    'Mustard': 365,
+    'Pasta': 730,
+    'Rice': 730,
+    'Flour': 180,
+    'Sugar': 730,
+    'Chips': 60,
+    'Cookies': 90,
+    'Crackers': 90,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -114,6 +152,22 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     }
   }
 
+  // Helper function to get expiration date based on category and manufactured date
+  DateTime _getExpirationDateForCategory(String category, DateTime manufacturedDate) {
+    int shelfLifeDays = _categoryShelfLives[category] ?? _categoryShelfLives['Other']!;
+
+    // Check for subcategory specific shelf life
+    // This is a simplified approach; a more robust solution might involve
+    // more sophisticated category matching or a dedicated category service.
+    for (var subcategoryEntry in _subcategoryShelfLives.entries) {
+      if (category.toLowerCase().contains(subcategoryEntry.key.toLowerCase())) {
+        shelfLifeDays = subcategoryEntry.value;
+        break;
+      }
+    }
+    return manufacturedDate.add(Duration(days: shelfLifeDays));
+  }
+
   Future<void> _fetchProductDetails(String barcode, FirestoreService firestoreService) async {
     final product = await _openFoodFactsService.fetchProductByBarcode(barcode);
     if (!mounted) return;
@@ -126,27 +180,63 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         return;
       }
 
+      // Extract category from product data
+      String detectedCategory = 'Other'; // Default to 'Other'
+      if (product['categories_tags'] != null && product['categories_tags'] is List && product['categories_tags'].isNotEmpty) {
+        // categories_tags often look like "en:dairy-products", so we extract the last part
+        String rawCategory = product['categories_tags'][0].toString();
+        detectedCategory = rawCategory.split(':').last.replaceAll('-', ' ').capitalize();
+        // Map to our predefined categories if necessary
+        if (!_categoryShelfLives.keys.contains(detectedCategory)) {
+          // Simple mapping for common categories
+          if (detectedCategory.contains('milk') || detectedCategory.contains('yogurt') || detectedCategory.contains('cheese')) {
+            detectedCategory = 'Dairy';
+          } else if (detectedCategory.contains('bread') || detectedCategory.contains('pastries')) {
+            detectedCategory = 'Bakery';
+          } else if (detectedCategory.contains('beverages') || detectedCategory.contains('juice') || detectedCategory.contains('soda')) {
+            detectedCategory = 'Beverages';
+          } else if (detectedCategory.contains('canned')) {
+            detectedCategory = 'Canned Goods';
+          } else if (detectedCategory.contains('condiments') || detectedCategory.contains('sauce')) {
+            detectedCategory = 'Condiments';
+          } else if (detectedCategory.contains('dry goods') || detectedCategory.contains('pasta') || detectedCategory.contains('rice') || detectedCategory.contains('flour')) {
+            detectedCategory = 'Dry Goods';
+          } else if (detectedCategory.contains('snacks') || detectedCategory.contains('chips') || detectedCategory.contains('cookies')) {
+            detectedCategory = 'Snacks';
+          } else {
+            detectedCategory = 'Other';
+          }
+        }
+      }
+
+      // Set manufactured date to now if not provided by API (OpenFoodFacts usually doesn't provide it)
+      DateTime manufacturedDate = DateTime.now();
+      // Calculate expiration date based on category shelf life
+      DateTime expirationDate = _getExpirationDateForCategory(detectedCategory, manufacturedDate);
+
       final newItem = PantryItemModel(
         householdId: widget.isGuest ? firestoreService.userId! : firestoreService.selectedHouseholdId!, // Use the actual anonymous user ID for guests
         name: product['product_name'] ?? 'Unknown Product',
-        category: _selectedCategory,
+        category: detectedCategory, // Set the detected category
         imageUrl: product['image_front_url'],
         qty: 1,
         barcode: barcode,
         quantityUnit: product['quantity'],
         nutritionFacts: product['nutriments'] is Map ? Map<String, dynamic>.from(product['nutriments']) : null,
-        // Re-adding shelf-life and date fields
-        shelfLifeDays: null, // Will be set by user in sheet
+        shelfLifeDays: _categoryShelfLives[detectedCategory], // Store default shelf life
         shelfLifeWeeks: null,
         shelfLifeMonths: null,
-        manufacturedDate: null,
-        expirationDate: null,
-        netWeight: null, // Will be set by user in sheet
+        manufacturedDate: manufacturedDate,
+        expirationDate: expirationDate,
+        netWeight: product['quantity'], // Use product['quantity'] as initial netWeight
       );
 
       setState(() {
         _scannedItems.add(newItem);
         _currentItemIndex = _scannedItems.length - 1;
+        _selectedCategory = detectedCategory; // Update _selectedCategory for the UI
+        _manufacturedDate = manufacturedDate; // Update manufacturedDate for UI
+        _expirationDate = expirationDate; // Update expirationDate for UI
         _updateControllersForItem(_currentItemIndex);
       });
 
@@ -476,7 +566,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                         ),
-                                        items: <String>['Uncategorized', 'Beverages', 'Condiments', 'Herbs/Spices', 'Canned Goods', 'Dairy', 'Produce', 'Meat', 'Snacks']
+                                        items: <String>['Bakery', 'Beverages', 'Canned Goods', 'Condiments', 'Dairy', 'Dry Goods', 'Snacks', 'Other']
                                             .map<DropdownMenuItem<String>>((String value) {
                                           return DropdownMenuItem<String>(
                                             value: value,

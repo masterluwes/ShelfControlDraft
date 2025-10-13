@@ -271,10 +271,10 @@ class ShoppingListService {
     List<ShoppingListItemModel> budgetList = [];
     double currentCost = 0;
     int itemsAdded = 0;
-    final List<String> excludedCategories = ['frozen', 'vegetable', 'fruit', 'meat'];
+    final List<String> excludedCategories = []; // No specific categories to exclude based on the new list
 
     // Fetch a diverse pool of products, excluding specified categories
-    Query productsQuery = _localProducts.where('category', whereNotIn: excludedCategories);
+    Query productsQuery = _localProducts; // Removed whereNotIn as there are no specific exclusions
 
     QuerySnapshot productsSnapshot = await productsQuery.limit(fetchLimit).get();
 
@@ -347,7 +347,7 @@ class ShoppingListService {
     int fetchLimit = 200, // Fetch a larger pool of items to ensure enough healthy options
   }) async {
     List<ShoppingListItemModel> healthyList = [];
-    final List<String> healthyCategories = ['Dairy', 'Bakery', 'Dry Goods']; // Prioritized healthy categories
+    final List<String> healthyCategories = ['Dairy', 'Bakery', 'Dry Goods', 'Beverages', 'Canned Goods', 'Condiments', 'Snacks', 'Other']; // All categories are now considered for healthy options
 
     // Step 1: Query _localProducts_ph for items within healthy categories
     QuerySnapshot productsSnapshot = await _localProducts

@@ -64,7 +64,7 @@ class _AddPantryItemState extends State<AddPantryItem> {
 
   String? _selectedCategory;
   final List<String> _categories = <String>[
-    'Beverages', 'Canned Goods', 'Condiments', 'Dairy', 'Dry Goods', 'Snacks', 'Frozen', 'Produce', 'Other',
+    'Bakery', 'Beverages', 'Canned Goods', 'Condiments', 'Dairy', 'Dry Goods', 'Snacks', 'Other',
   ];
 
   String _selectedUnit = 'lbs';
@@ -87,19 +87,29 @@ class _AddPantryItemState extends State<AddPantryItem> {
 
   // Define default shelf lives for categories in days based on research
   final Map<String, int> _categoryShelfLives = {
+    'Bakery': 7, // 1 week
     'Beverages': 270, // 9 months (general, UHT milk/juice longer, fresh juice shorter)
     'Canned Goods': 730, // 2 years
     'Condiments': 365, // 12 months (unopened)
     'Dairy': 14, // 2 weeks (for refrigerated items like milk, yogurt)
     'Dry Goods': 547, // 18 months (rice, pasta, flour)
     'Snacks': 180, // 6 months
-    'Frozen': 365, // 1 year
-    'Produce': 7, // 1 week
     'Other': 180, // 6 months
   };
 
   // More granular shelf lives for specific subcategories/keywords
   final Map<String, Map<String, int>> _subcategoryShelfLives = {
+    'Bakery': {
+      'bread': 7,
+      'cake': 7,
+      'pastries': 7,
+      'buns': 7,
+      'muffin': 7,
+      'donut': 3,
+      'pandesal': 7,
+      'ensaymada': 7,
+      'mamon': 7,
+    },
     'Dairy': {
       'fresh milk': 7,
       'powdered milk': 270, // 9 months
@@ -142,10 +152,6 @@ class _AddPantryItemState extends State<AddPantryItem> {
       'chocolates': 270, // 9 months
       'biscuits': 180, // 6 months
       'packed fudge bars': 180, // 6 months
-      'mamon': 7, // 1 week
-      'donut': 3, // 3 days
-      'pandesal': 7, // 1 week
-      'ensaymada': 7, // 1 week
     }
   };
 
@@ -227,17 +233,16 @@ class _AddPantryItemState extends State<AddPantryItem> {
     itemName = itemName.toLowerCase();
 
     final Map<String, List<String>> categoryKeywords = {
+      'Bakery': ['bread', 'cake', 'pastries', 'baking needs', 'buns', 'muffin', 'donut', 'pandesal', 'ensaymada', 'mamon'],
       'Dairy': ['milk', 'yogurt', 'cheese', 'butter', 'margarine', 'spread', 'cream', 'eggs', 'evaporada', 'condensada'],
       'Beverages': ['coffee', 'tea', 'juice', 'soda', 'water', 'chocolate drink', 'malt', 'drink', 'softdrink', 'powdered drink'],
       'Canned Goods': ['canned', 'beans', 'soup', 'tuna', 'sardines', 'corned beef', 'meat loaf', 'luncheon meat', 'fruit cocktail'],
       'Dry Goods': ['rice', 'pasta', 'flour', 'cereal', 'grains', 'seeds', 'oil', 'legumes', 'beans', 'soup mix', 'broth', 'noodles', 'sago', 'oats', 'oatmeal', 'sugar'],
       'Snacks': [
         'chips', 'crackers', 'cookies', 'nuts', 'candies', 'chocolates', 'biscuits', 'dips', 'wafer', 'bar', 'pastillas', 'polvoron',
-        'bread', 'cake', 'pastries', 'baking needs', 'buns', 'muffin', 'donut', 'pandesal', 'ensaymada', 'packed fudge bars', 'mamon'
+        'packed fudge bars'
       ],
       'Condiments': ['vinegar', 'soy sauce', 'ketchup', 'mustard', 'dressing', 'sauce', 'spices', 'powder', 'salt', 'bbq', 'seasoning', 'garlic bits', 'bagoong', 'chili', 'patis', 'fish sauce'],
-      'Frozen': ['ice cream', 'frozen', 'meat', 'fish', 'vegetables', 'fries', 'nuggets'],
-      'Produce': ['fruit', 'vegetable', 'apple', 'banana', 'orange', 'potato', 'onion', 'garlic', 'tomato', 'lettuce'],
       'Other': [],
     };
 

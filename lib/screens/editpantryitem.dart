@@ -59,25 +59,34 @@ class _EditPantryItemState extends State<EditPantryItem> {
   Timer? _debounce; // For autocomplete debouncing
 
   final List<String> _categories = <String>[
-    'Beverages', 'Canned Goods', 'Dairy', 'Dry Goods', 'Snacks',
-    'Condiments', 'Frozen', 'Produce', 'Other',
+    'Bakery', 'Beverages', 'Canned Goods', 'Condiments', 'Dairy', 'Dry Goods', 'Snacks', 'Other',
   ];
 
   // Define default shelf lives for categories in days based on research
   final Map<String, int> _categoryShelfLives = {
-    'Beverages': 270,
-    'Canned Goods': 730,
-    'Condiments': 365,
-    'Dairy': 14,
-    'Dry Goods': 547,
-    'Snacks': 180,
-    'Frozen': 365,
-    'Produce': 7,
-    'Other': 180,
+    'Bakery': 7, // 1 week
+    'Beverages': 270, // 9 months (general, UHT milk/juice longer, fresh juice shorter)
+    'Canned Goods': 730, // 2 years
+    'Condiments': 365, // 12 months (unopened)
+    'Dairy': 14, // 2 weeks (for refrigerated items like milk, yogurt)
+    'Dry Goods': 547, // 18 months (rice, pasta, flour)
+    'Snacks': 180, // 6 months
+    'Other': 180, // 6 months
   };
 
   // More granular shelf lives for specific subcategories/keywords
   final Map<String, Map<String, int>> _subcategoryShelfLives = {
+    'Bakery': {
+      'bread': 7,
+      'cake': 7,
+      'pastries': 7,
+      'buns': 7,
+      'muffin': 7,
+      'donut': 3,
+      'pandesal': 7,
+      'ensaymada': 7,
+      'mamon': 7,
+    },
     'Dairy': {
       'fresh milk': 7, 'powdered milk': 270, 'cheese': 60, 'yogurt': 21, 'butter': 90, 'eggs': 30,
     },
@@ -91,7 +100,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
       'rice': 730, 'pasta': 730, 'flour': 180, 'cereal': 180, 'oil': 365, 'beans': 730, 'sugar': 1825,
     },
     'Snacks': {
-      'chips': 90, 'crackers': 180, 'cookies': 180, 'chocolates': 270, 'biscuits': 180, 'packed fudge bars': 180, 'mamon': 7, 'donut': 3, 'pandesal': 7, 'ensaymada': 7,
+      'chips': 90, 'crackers': 180, 'cookies': 180, 'chocolates': 270, 'biscuits': 180, 'packed fudge bars': 180,
     }
   };
 
@@ -187,11 +196,12 @@ class _EditPantryItemState extends State<EditPantryItem> {
   String? _suggestCategoryFromName(String itemName) {
     itemName = itemName.toLowerCase();
     final Map<String, List<String>> categoryKeywords = {
+      'Bakery': ['bread', 'cake', 'pastries', 'baking needs', 'buns', 'muffin', 'donut', 'pandesal', 'ensaymada', 'mamon'],
       'Dairy': ['milk', 'yogurt', 'cheese', 'butter', 'margarine', 'spread', 'cream', 'eggs', 'evaporada', 'condensada'],
       'Beverages': ['coffee', 'tea', 'juice', 'soda', 'water', 'chocolate drink', 'malt', 'drink', 'softdrink', 'powdered drink'],
       'Canned Goods': ['canned', 'beans', 'soup', 'tuna', 'sardines', 'corned beef', 'meat loaf', 'luncheon meat', 'fruit cocktail'],
       'Dry Goods': ['rice', 'pasta', 'flour', 'cereal', 'grains', 'seeds', 'oil', 'legumes', 'beans', 'soup mix', 'broth', 'noodles', 'sago', 'oats', 'oatmeal', 'sugar'],
-      'Snacks': ['chips', 'crackers', 'cookies', 'nuts', 'candies', 'chocolates', 'biscuits', 'dips', 'wafer', 'bar', 'pastillas', 'polvoron', 'bread', 'cake', 'pastries', 'baking needs', 'buns', 'muffin', 'donut', 'pandesal', 'ensaymada', 'packed fudge bars', 'mamon'],
+      'Snacks': ['chips', 'crackers', 'cookies', 'nuts', 'candies', 'chocolates', 'biscuits', 'dips', 'wafer', 'bar', 'pastillas', 'polvoron', 'packed fudge bars'],
       'Condiments': ['vinegar', 'soy sauce', 'ketchup', 'mustard', 'dressing', 'sauce', 'spices', 'powder', 'salt', 'bbq', 'seasoning', 'garlic bits', 'bagoong', 'chili', 'patis', 'fish sauce'],
       'Other': [],
     };

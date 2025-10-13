@@ -67,12 +67,104 @@ class _ShoppinglistState extends State<Shoppinglist> {
     'Other',
   ];
 
+  // Define default shelf lives for categories in days based on research
+  final Map<String, int> _categoryShelfLives = {
+    'Bakery': 7, // 1 week
+    'Beverages': 270, // 9 months (general, UHT milk/juice longer, fresh juice shorter)
+    'Canned Goods': 730, // 2 years
+    'Condiments': 365, // 12 months (unopened)
+    'Dairy': 14, // 2 weeks (for refrigerated items like milk, yogurt)
+    'Dry Goods': 547, // 18 months (rice, pasta, flour)
+    'Snacks': 180, // 6 months
+    'Other': 180, // 6 months
+  };
+
+  // More granular shelf lives for specific subcategories/keywords
+  final Map<String, Map<String, int>> _subcategoryShelfLives = {
+    'Bakery': {
+      'bread': 7,
+      'cake': 7,
+      'pastries': 7,
+      'buns': 7,
+      'muffin': 7,
+      'donut': 3,
+      'pandesal': 7,
+      'ensaymada': 7,
+      'mamon': 7,
+    },
+    'Dairy': {
+      'fresh milk': 7,
+      'powdered milk': 270, // 9 months
+      'cheese': 60, // 2 months (hard cheese, softer cheese shorter)
+      'yogurt': 21, // 3 weeks
+      'butter': 90, // 3 months
+      'eggs': 30, // 1 month
+    },
+    'Beverages': {
+      'fresh juice': 7,
+      'uht milk': 270, // 9 months
+      'coffee': 365, // 12 months (unopened)
+      'tea': 730, // 2 years
+      'soda': 180, // 6 months
+      'water': 730, // 2 years
+    },
+    'Condiments': {
+      'vinegar': 730, // 2 years
+      'soy sauce': 365, // 1 year
+      'ketchup': 365, // 1 year
+      'mustard': 365, // 1 year
+      'dressing': 180, // 6 months
+      'spices': 730, // 2 years
+      'powder': 730, // 2 years
+      'salt': 1825, // 5 years
+    },
+    'Dry Goods': {
+      'rice': 730, // 2 years
+      'pasta': 730, // 2 years
+      'flour': 180, // 6 months
+      'cereal': 180, // 6 months
+      'oil': 365, // 1 year
+      'beans': 730, // 2 years (dried)
+      'sugar': 1825, // 5 years
+    },
+    'Snacks': {
+      'chips': 90, // 3 months
+      'crackers': 180, // 6 months
+      'cookies': 180, // 6 months
+      'chocolates': 270, // 9 months
+      'biscuits': 180, // 6 months
+      'packed fudge bars': 180, // 6 months
+    }
+  };
+
   @override
   void initState() {
     super.initState();
     _firestoreService = Provider.of<FirestoreService>(context, listen: false);
     _householdId = _firestoreService.selectedHouseholdId;
     _setupStreams();
+  }
+
+  DateTime? _getExpirationDateForCategory(String category, String itemName, DateTime manufacturedDate) {
+    int? shelfLife = _categoryShelfLives[category];
+    itemName = itemName.toLowerCase();
+
+    if (_subcategoryShelfLives.containsKey(category)) {
+      final subcategoryMap = _subcategoryShelfLives[category]!;
+      for (final subcategoryEntry in subcategoryMap.entries) {
+        final subcategoryKeyword = subcategoryEntry.key;
+        final subcategorySpecificShelfLife = subcategoryEntry.value;
+        if (itemName.contains(subcategoryKeyword)) {
+          shelfLife = subcategorySpecificShelfLife;
+          break;
+        }
+      }
+    }
+
+    if (shelfLife != null) {
+      return manufacturedDate.add(Duration(days: shelfLife));
+    }
+    return null;
   }
 
   @override
@@ -152,6 +244,13 @@ class _ShoppinglistState extends State<Shoppinglist> {
         .where('netWeight', isEqualTo: item.netWeight)
         .get();
 
+    final DateTime manufacturedDate = DateTime.now();
+    final DateTime? expirationDate = _getExpirationDateForCategory(
+      item.category ?? 'Other',
+      item.name,
+      manufacturedDate,
+    );
+
     PantryItemModel newPantryItem = PantryItemModel(
       id: _uuid.v4(), // Generate new ID for new pantry item
       householdId: _householdId!,
@@ -161,7 +260,8 @@ class _ShoppinglistState extends State<Shoppinglist> {
       quantityUnit: item.netWeight, // Keep this for consistency
       netWeight: item.netWeight, // Ensure netWeight is saved
       price: item.unitPrice, // Ensure price is saved
-      expirationDate: null, // Expiration date is not available from shopping list item
+      expirationDate: expirationDate,
+      manufacturedDate: manufacturedDate,
       barcode: null,
       status: 'Available',
       nutrition: item.nutrition,
@@ -171,11 +271,12 @@ class _ShoppinglistState extends State<Shoppinglist> {
       final existingPantryItem = PantryItemModel.fromFirestore(existingPantryItemsSnapshot.docs.first);
 
       // If expiration dates are different, add as a new item. Otherwise, combine quantities.
-      // Since shopping list items don't have expiration dates, we'll assume they should combine
-      // if no expiration date is present on the existing item, or if we're not tracking it.
       // For simplicity, if a duplicate is found, we combine quantities.
       final updatedPantryItem = existingPantryItem.copyWith(
         qty: existingPantryItem.qty + item.quantity,
+        // If the existing item doesn't have an expiration date, or if the new item has one, update it.
+        expirationDate: existingPantryItem.expirationDate ?? expirationDate,
+        manufacturedDate: existingPantryItem.manufacturedDate ?? manufacturedDate,
       );
       await firestoreService.db.collection('pantryItems').doc(existingPantryItem.id).update(updatedPantryItem.toFirestore());
       _showTopSnack("Item quantity updated in pantry!");

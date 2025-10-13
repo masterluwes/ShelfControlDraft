@@ -54,12 +54,12 @@ class _ListItemsPageState extends State<ListItemsPage> {
 
   // Categories (same set as Shoppinglist)
   final List<String> _categories = const [
+    'Bakery',
     'Beverages',
-    'Baked Goods',
-    'Condiments',
     'Canned Goods',
+    'Condiments',
     'Dairy',
-    'Produce',
+    'Dry Goods',
     'Snacks',
     'Other',
   ];
@@ -1085,20 +1085,22 @@ class _ListItemsPageState extends State<ListItemsPage> {
 /// ===== Icon helpers (name-aware → category fallback) =====
 IconData _iconForCategory(String category) {
   switch (category) {
+    case 'Bakery':
+      return Icons.cake;
     case 'Beverages':
       return Icons.local_drink;
-    case 'Baked Goods':
-      return Icons.bakery_dining;
-    case 'Condiments':
-      return Icons.kitchen;
     case 'Canned Goods':
       return Icons.inventory_2;
+    case 'Condiments':
+      return Icons.kitchen;
     case 'Dairy':
       return Icons.icecream;
-    case 'Produce':
-      return Icons.eco;
+    case 'Dry Goods':
+      return Icons.grain;
     case 'Snacks':
       return Icons.fastfood;
+    case 'Other':
+      return Icons.category;
     default:
       return Icons.category;
   }
@@ -1106,15 +1108,13 @@ IconData _iconForCategory(String category) {
 
 IconData _iconForName(String name, String category) {
   final n = name.toLowerCase();
-  if (n.contains('orange') && n.contains('juice')) return Icons.local_drink;
-  if (n.contains('water')) return Icons.water_drop;
-  if (n.contains('milk')) return Icons.local_drink;
-  if (n.contains('bread') || n.contains('loaf')) return Icons.bakery_dining;
-  if (n.contains('mayo') || n.contains('mayonnaise')) return Icons.kitchen;
-  if (n.contains('ketchup') || n.contains('sauce')) return Icons.kitchen;
-  if (n.contains('canned')) return Icons.inventory_2;
-  if (n.contains('chips') || n.contains('snack')) return Icons.fastfood;
-  if (n.contains('egg')) return Icons.egg;
+  if (n.contains('bread') || n.contains('cake') || n.contains('pastry') || n.contains('muffin') || n.contains('donut')) return Icons.cake;
+  if (n.contains('milk') || n.contains('yogurt') || n.contains('cheese') || n.contains('butter') || n.contains('egg')) return Icons.icecream;
+  if (n.contains('juice') || n.contains('soda') || n.contains('water') || n.contains('coffee') || n.contains('tea')) return Icons.local_drink;
+  if (n.contains('canned') || n.contains('soup') || n.contains('tuna') || n.contains('sardines')) return Icons.inventory_2;
+  if (n.contains('ketchup') || n.contains('mustard') || n.contains('sauce') || n.contains('spices') || n.contains('salt')) return Icons.kitchen;
+  if (n.contains('rice') || n.contains('pasta') || n.contains('flour') || n.contains('cereal') || n.contains('oil')) return Icons.grain;
+  if (n.contains('chips') || n.contains('crackers') || n.contains('cookies') || n.contains('chocolate')) return Icons.fastfood;
   return _iconForCategory(category);
 }
 
