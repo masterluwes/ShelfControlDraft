@@ -1,9 +1,14 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirestoreService _firestoreService; // Add FirestoreService dependency
+
+  AuthService(this._firestoreService); // Initialize FirestoreService in constructor
 
   Future<UserCredential> signInWithEmailAndPassword(String email, String password) async {
+    await _firestoreService.clearSelectedHouseholdId(); // Clear old household ID on login
     return await _auth.signInWithEmailAndPassword(email: email, password: password);
   }
 
@@ -12,6 +17,7 @@ class AuthService {
   }
 
   Future<UserCredential> createUserWithEmailAndPassword(String email, String password) async {
+    await _firestoreService.clearSelectedHouseholdId(); // Clear old household ID on new user creation
     UserCredential userCredential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
     // Send email verification
     if (userCredential.user != null && !userCredential.user!.emailVerified) {
@@ -36,6 +42,7 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    await _firestoreService.clearSelectedHouseholdId(); // Clear household ID on logout
     await _auth.signOut();
   }
 }

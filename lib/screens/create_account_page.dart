@@ -7,6 +7,7 @@ import 'package:shelf_control/models/shopping_list_model.dart'; // Import Shoppi
 import 'package:shelf_control/screens/privacy_policy_screen.dart';
 import 'package:shelf_control/screens/terms_and_conditions_screen.dart';
 import 'package:shelf_control/screens/login_page.dart';
+import 'package:provider/provider.dart'; // Import Provider
 
 class CreateAccountPage extends StatefulWidget {
   const CreateAccountPage({super.key});
@@ -33,8 +34,16 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
   String? _termsError;
 
   final RegExp _emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-  final AuthService _authService = AuthService();
-  final FirestoreService _firestoreService = FirestoreService(); // Instantiate FirestoreService
+  late AuthService _authService; // Declare as late
+  late FirestoreService _firestoreService; // Declare as late
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize AuthService and FirestoreService here, after context is available
+    _firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    _authService = AuthService(_firestoreService);
+  }
 
   void _validateAndSubmit() async {
     setState(() {

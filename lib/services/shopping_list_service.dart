@@ -40,7 +40,7 @@ class ShoppingListService {
     return decodedData.map((data) => ShoppingListModel.fromFirestore(data)).toList();
   }
 
-  // Get a single shopping list by ID, including its items from the subcollection
+  // Get a single shopping list by ID, including its items from the array
   Future<ShoppingListModel?> getShoppingListById(String listId) async {
     if (_auth.currentUser?.isAnonymous ?? false) {
       // For guest users, retrieve from local storage
@@ -61,25 +61,14 @@ class ShoppingListService {
     DocumentSnapshot listDoc = await _shoppingLists.doc(listId).get();
 
     if (listDoc.exists) {
-      // Fetch items from the subcollection
-      QuerySnapshot itemsSnapshot = await _shoppingLists.doc(listId).collection('items').get();
-      List<ShoppingListItemModel> items = itemsSnapshot.docs
-          .map((doc) => ShoppingListItemModel.fromFirestore(doc))
-          .toList();
-
-      // Create ShoppingListModel from the main document, then add the fetched items
-      ShoppingListModel shoppingList = ShoppingListModel.fromFirestore(listDoc);
-      shoppingList.items = items; // Assign the fetched items
-
-      return shoppingList;
+      return ShoppingListModel.fromFirestore(listDoc);
     }
     return null;
   }
 
-  // Add an item to a shopping list (now uses subcollection)
+  // Add an item to a shopping list (now uses array within the document)
   Future<void> addShoppingListItem(String listId, ShoppingListItemModel item) async {
     if (_auth.currentUser?.isAnonymous ?? false) {
-      // For guest users, add to local storage
       List<ShoppingListModel> guestLists = await loadGuestShoppingLists();
       int listIndex = guestLists.indexWhere((list) => list.id == listId);
       if (listIndex != -1) {
@@ -89,21 +78,21 @@ class ShoppingListService {
         await saveGuestShoppingLists(guestLists);
       }
     } else {
-      CollectionReference itemsRef = _shoppingLists.doc(listId).collection('items');
-      DocumentReference docRef = itemsRef.doc(); // Let Firestore generate the ID
-      item.id = docRef.id; // Assign the generated ID to the item
-      await docRef.set(item.toMap());
+      DocumentReference listRef = _shoppingLists.doc(listId);
+      ShoppingListItemModel itemWithId = item.copyWith(id: item.id?.isEmpty ?? true ? _uuid.v4() : item.id!);
+      await listRef.update({
+        'items': FieldValue.arrayUnion([itemWithId.toMap()])
+      });
     }
   }
 
-  // Update an item in a shopping list (now uses subcollection)
+  // Update an item in a shopping list (now uses array within the document)
   Future<void> updateShoppingListItem(String listId, ShoppingListItemModel updatedItem) async {
     if (updatedItem.id == null) {
       throw ArgumentError('Updated item must have an ID.');
     }
 
     if (_auth.currentUser?.isAnonymous ?? false) {
-      // For guest users, update in local storage
       List<ShoppingListModel> guestLists = await loadGuestShoppingLists();
       int listIndex = guestLists.indexWhere((list) => list.id == listId);
       if (listIndex != -1) {
@@ -115,25 +104,34 @@ class ShoppingListService {
         }
       }
     } else {
-      DocumentReference itemRef = _shoppingLists.doc(listId).collection('items').doc(updatedItem.id);
-      await itemRef.update(updatedItem.toMap());
+      DocumentReference listRef = _shoppingLists.doc(listId);
+      DocumentSnapshot listDoc = await listRef.get();
+      if (listDoc.exists) {
+        ShoppingListModel shoppingList = ShoppingListModel.fromFirestore(listDoc);
+        int itemIndex = shoppingList.items.indexWhere((item) => item.id == updatedItem.id);
+        if (itemIndex != -1) {
+          shoppingList.items[itemIndex] = updatedItem;
+          await listRef.update({'items': shoppingList.items.map((e) => e.toMap()).toList()});
+        }
+      }
     }
   }
 
-  // Remove an item from a shopping list (now uses subcollection)
-  Future<void> removeShoppingListItem(String listId, String itemId) async {
+  // Remove an item from a shopping list (now uses array within the document)
+  Future<void> removeShoppingListItem(String listId, ShoppingListItemModel itemToRemove) async {
     if (_auth.currentUser?.isAnonymous ?? false) {
-      // For guest users, remove from local storage
       List<ShoppingListModel> guestLists = await loadGuestShoppingLists();
       int listIndex = guestLists.indexWhere((list) => list.id == listId);
       if (listIndex != -1) {
         ShoppingListModel targetList = guestLists[listIndex];
-        targetList.items.removeWhere((item) => item.id == itemId);
+        targetList.items.removeWhere((item) => item.id == itemToRemove.id);
         await saveGuestShoppingLists(guestLists);
       }
     } else {
-      DocumentReference itemRef = _shoppingLists.doc(listId).collection('items').doc(itemId);
-      await itemRef.delete();
+      DocumentReference listRef = _shoppingLists.doc(listId);
+      await listRef.update({
+        'items': FieldValue.arrayRemove([itemToRemove.toMap()])
+      });
     }
   }
 
@@ -174,6 +172,17 @@ class ShoppingListService {
     await batch.commit();
   }
 
+  // Stream all shopping lists for a given household
+  Stream<List<ShoppingListModel>> streamShoppingLists(String householdId) {
+    return _shoppingLists
+        .where('householdId', isEqualTo: householdId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => ShoppingListModel.fromFirestore(doc))
+            .toList());
+  }
+
   // Generate Hassle-Free Suggestions with Pagination and Limit
   Future<List<ShoppingListItemModel>> generateHassleFreeSuggestions(
       String householdId, {
@@ -202,24 +211,25 @@ class ShoppingListService {
     // Logic for suggestions
     // 1. Out of Stock, Expired, Low Stock from pantry
     for (var item in pantryItems) {
-      if (item.qty <= 0 || item.status == 'Consumed' || (item.expirationDate != null && item.expirationDate!.isBefore(DateTime.now()))) {
-        // Fetch nutriScore and save it to local_products_ph if not present
-        String? nutriScore = await _openFoodFactsService.getNutriScore(item.name);
-        if (nutriScore != null) {
-          // Assuming there's a way to link pantry item to local_products_ph or create a new entry
-          // For now, we'll just add it to the ShoppingListItemModel
-          // In a real scenario, you might want to update the local_products_ph collection
-        }
+      String? status;
+      if (item.qty > 0 && item.qty <= 2) { // Example threshold for "low stock"
+        status = 'Low on stock';
+      } else if (item.qty <= 0 || item.status == 'Consumed' || (item.expirationDate != null && item.expirationDate!.isBefore(DateTime.now()))) {
+        status = 'Out of stock';
+      }
 
+      if (status != null) {
+        final scores = await _openFoodFactsService.getNutriAndEcoScore(item.name);
         suggestions.add(ShoppingListItemModel(
-          id: _firestore.collection('temp').doc().id, // Assign unique ID
+          id: _firestore.collection('temp').doc().id,
           name: item.name,
-          // brand: item.brand, // Removed as PantryItemModel does not have a brand field
           netWeight: item.netWeight,
           category: item.category,
-          unitPrice: 0, // Will need to fetch price
+          unitPrice: 0,
           quantity: 1,
-          nutrition: nutriScore, // Add nutrition
+          nutrition: scores?['nutriScore'],
+          ecoscore: scores?['ecoscore'],
+          suggestionStatus: status, // Set the status here
         ));
       }
     }
@@ -228,22 +238,16 @@ class ShoppingListService {
     for (var item in historyItems) {
       bool inPantry = pantryItems.any((pantryItem) => pantryItem.name == item.productName);
       if (!inPantry) {
-        // Fetch nutriScore and save it to local_products_ph if not present
-        String? nutriScore = await _openFoodFactsService.getNutriScore(item.productName);
-        if (nutriScore != null) {
-          // Assuming there's a way to link history item to local_products_ph or create a new entry
-          // For now, we'll just add it to the ShoppingListItemModel
-          // In a real scenario, you might want to update the local_products_ph collection
-        }
-
+        final scores = await _openFoodFactsService.getNutriAndEcoScore(item.productName);
         suggestions.add(ShoppingListItemModel(
-          id: _firestore.collection('temp').doc().id, // Assign unique ID
+          id: _firestore.collection('temp').doc().id,
           name: item.productName,
-          // brand: item.brand, // Removed as ShoppingHistoryItemModel does not have a brand field
           category: item.category,
-          unitPrice: 0, // Will need to fetch price
+          unitPrice: 0,
           quantity: 1,
-          nutrition: nutriScore, // Add nutrition
+          nutrition: scores?['nutriScore'],
+          ecoscore: scores?['ecoscore'],
+          suggestionStatus: 'Out of stock', // History items are considered out of stock
         ));
       }
     }
@@ -259,34 +263,20 @@ class ShoppingListService {
 
   // Generate Budget Friendly List with Randomization and Category Balancing
   Future<List<ShoppingListItemModel>> generateBudgetFriendlyList(
-      String householdId,
-      double budgetAmount, {
-        int? numberOfItems,
-        int fetchLimit = 100, // Fetch a larger pool of items
-      }) async {
+    String householdId,
+    double budgetAmount, {
+    int? numberOfItems,
+    int fetchLimit = 100, // Fetch a larger pool of items
+  }) async {
     List<ShoppingListItemModel> budgetList = [];
     double currentCost = 0;
     int itemsAdded = 0;
-    final Map<String, int> categoryCounts = {}; // To track category diversity
+    final List<String> excludedCategories = ['frozen', 'vegetable', 'fruit', 'meat'];
 
-    // Generate a random starting point for the query
-    String randomStartId = _firestore.collection('temp').doc().id;
+    // Fetch a diverse pool of products, excluding specified categories
+    Query productsQuery = _localProducts.where('category', whereNotIn: excludedCategories);
 
-    // Fetch a diverse pool of products using a randomized query
-    QuerySnapshot productsSnapshot = await _localProducts
-        .orderBy(FieldPath.documentId)
-        .startAfter([randomStartId])
-        .limit(fetchLimit)
-        .get();
-
-    // If not enough items are fetched, try fetching from the beginning
-    if (productsSnapshot.docs.length < fetchLimit / 2) {
-      final secondSnapshot = await _localProducts
-          .orderBy(FieldPath.documentId)
-          .limit(fetchLimit - productsSnapshot.docs.length)
-          .get();
-      productsSnapshot.docs.addAll(secondSnapshot.docs);
-    }
+    QuerySnapshot productsSnapshot = await productsQuery.limit(fetchLimit).get();
 
     List<ShoppingListItemModel> productPool = productsSnapshot.docs.map((doc) {
       var data = doc.data() as Map<String, dynamic>;
@@ -303,92 +293,138 @@ class ShoppingListService {
       );
     }).where((item) => item.unitPrice > 0).toList(); // Filter out items with no price
 
-    // Shuffle the product pool for randomization
-    productPool.shuffle();
-
-    // Define a dynamic max price for a single item based on the budget
-    // No single item should exceed 30% of the total budget or a fixed realistic max (e.g., ₱500), whichever is lower.
-    final double maxItemPrice = (budgetAmount * 0.3).clamp(0, 500);
-
-    // Iterate through the shuffled pool to build the budget list
-    for (var item in productPool) {
-      if (numberOfItems != null && itemsAdded >= numberOfItems) {
-        break;
+    // Group products by category
+    Map<String, List<ShoppingListItemModel>> productsByCategory = {};
+    for (var product in productPool) {
+      if (!productsByCategory.containsKey(product.category)) {
+        productsByCategory[product.category!] = [];
       }
-
-      // Ensure item price is within a reasonable range and fits the remaining budget
-      if (item.unitPrice <= maxItemPrice && (currentCost + item.unitPrice) <= budgetAmount) {
-        // Simple category balancing: try to add items from less represented categories
-        // This is a basic heuristic and can be refined.
-        final String category = item.category ?? 'Other';
-        if (categoryCounts.containsKey(category) && categoryCounts[category]! >= 2) {
-          // Skip if we already have 2 items from this category, try to find another category
-          continue;
-        }
-
-        budgetList.add(item);
-        currentCost += item.unitPrice;
-        itemsAdded++;
-        categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
-      }
+      productsByCategory[product.category]!.add(product);
     }
 
-    // If the budget is not fully utilized and we still need more items,
-    // or if we didn't reach the desired number of items,
-    // we can try to add more items without strict category balancing,
-    // or allow slightly higher priced items if the remaining budget is large.
-    // For now, we'll keep it simple to avoid excessive reads.
-    // The current approach prioritizes diversity and staying within budget.
+    // Shuffle each category list and the list of categories
+    productsByCategory.values.forEach((list) => list.shuffle());
+    List<String> categories = productsByCategory.keys.toList()..shuffle();
+
+    // Define a dynamic max price for a single item based on the budget
+    final double maxItemPrice = (budgetAmount * 0.3).clamp(0, 500);
+
+    // Iterate through categories to ensure diversity
+    while ((numberOfItems == null || itemsAdded < numberOfItems!) && categories.isNotEmpty) {
+      for (int i = 0; i < categories.length; i++) {
+        String category = categories[i];
+        List<ShoppingListItemModel> categoryProducts = productsByCategory[category]!;
+
+        if (categoryProducts.isNotEmpty) {
+          ShoppingListItemModel item = categoryProducts.removeAt(0);
+
+          if (item.unitPrice <= maxItemPrice && (currentCost + item.unitPrice) <= budgetAmount) {
+            budgetList.add(item);
+            currentCost += item.unitPrice;
+            itemsAdded++;
+            if (numberOfItems != null && itemsAdded >= numberOfItems) {
+              break;
+            }
+          }
+        }
+
+        // If a category is exhausted, remove it
+        if (categoryProducts.isEmpty) {
+          categories.removeAt(i);
+          i--; // Adjust index after removal
+        }
+      }
+    }
 
     return budgetList;
   }
 
 
-  // Generate Healthy Option List with Pagination
+  // Generate Healthy Option List with Randomization and Category Balancing
   Future<List<ShoppingListItemModel>> generateHealthyOptionList(
-      String householdId, {
-        int? numberOfItems,
-        DocumentSnapshot? lastDocument, // For pagination
-        int limit = 20, // Default limit for pagination
-      }) async {
-    Query query = _localProducts
-        .where('nutriScore', whereIn: ['a', 'b', 'c', 'A', 'B', 'C']); // Case-insensitive check
-
-    if (lastDocument != null) {
-      query = query.startAfterDocument(lastDocument);
-    }
-
-    QuerySnapshot productsSnapshot = await query.limit(limit).get();
-
+    String householdId, {
+    int numberOfItems = 15, // Default to 15 items, can be overridden
+    int fetchLimit = 200, // Fetch a larger pool of items to ensure enough healthy options
+  }) async {
     List<ShoppingListItemModel> healthyList = [];
+    final List<String> healthyCategories = ['Dairy', 'Bakery', 'Dry Goods']; // Prioritized healthy categories
 
-    for (var doc in productsSnapshot.docs) {
+    // Step 1: Query _localProducts_ph for items within healthy categories
+    QuerySnapshot productsSnapshot = await _localProducts
+        .where('category', whereIn: healthyCategories)
+        .limit(fetchLimit)
+        .get();
+
+    List<ShoppingListItemModel> productPool = productsSnapshot.docs.map((doc) {
       var data = doc.data() as Map<String, dynamic>;
-      String? nutriScore = data['nutriScore'];
+      return ShoppingListItemModel(
+        id: _firestore.collection('temp').doc().id, // Assign unique ID
+        productId: doc.id,
+        name: data['productName'],
+        brand: data['brand'],
+        netWeight: data['netWeight'],
+        category: data['category'],
+        unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
+        quantity: 1,
+        nutrition: data['nutriScore'], // Use actual nutriScore if available
+        ecoscore: data['ecoscore'], // Use actual ecoscore if available
+      );
+    }).where((item) => item.unitPrice > 0 && !(item.name.toLowerCase().contains('cup noodles'))).toList(); // Filter out items with no price and "cup noodles"
 
-      // Double-check nutriScore and add to list
-      if (nutriScore != null && ['a', 'b', 'c'].contains(nutriScore.toLowerCase())) {
-        healthyList.add(ShoppingListItemModel(
-          id: _firestore.collection('temp').doc().id, // Assign unique ID
-          productId: doc.id,
-          name: data['productName'],
-          brand: data['brand'],
-          netWeight: data['netWeight'],
-          category: data['category'],
-          unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
-          quantity: 1,
-          nutrition: nutriScore, // Pass the nutriScore
-        ));
+    // Filter out items that are explicitly not healthy (e.g., based on nutriScore or other criteria)
+    // For now, we'll consider items with a nutriScore of 'A', 'B', or 'C' as healthy, or if nutriScore is null/empty, we'll rely on category.
+    productPool = productPool.where((item) {
+      final nutriScore = item.nutrition?.toLowerCase();
+      if (nutriScore == 'a' || nutriScore == 'b' || nutriScore == 'c') {
+        return true;
+      }
+      // If no nutriScore, rely on category to be one of the healthy categories
+      return healthyCategories.contains(item.category);
+    }).toList();
+
+    // Group products by category
+    Map<String, List<ShoppingListItemModel>> productsByCategory = {};
+    for (var product in productPool) {
+      if (product.category != null) { // Removed healthyCategories.contains(product.category) as it's already filtered in productPool
+        if (!productsByCategory.containsKey(product.category)) {
+          productsByCategory[product.category!] = [];
+        }
+        productsByCategory[product.category]!.add(product);
       }
     }
 
-    // If we still need more items, or if the initial query didn't return enough,
-    // we could fetch more and then get nutriScores, but for now, this is a good optimization.
-    // Add randomness to the selection if more items than requested were fetched
-    if (healthyList.length > (numberOfItems ?? 0)) {
-      healthyList.shuffle();
-      return healthyList.take(numberOfItems ?? healthyList.length).toList();
+    // Shuffle each category list and the list of categories for randomization and diversity
+    productsByCategory.values.forEach((list) => list.shuffle());
+    List<String> categories = productsByCategory.keys.toList()..shuffle();
+
+    int itemsAdded = 0;
+    while (itemsAdded < numberOfItems && categories.isNotEmpty) {
+      for (int i = 0; i < categories.length; i++) {
+        String category = categories[i];
+        List<ShoppingListItemModel> categoryProducts = productsByCategory[category]!;
+
+        if (categoryProducts.isNotEmpty) {
+          ShoppingListItemModel item = categoryProducts.removeAt(0);
+          healthyList.add(item);
+          itemsAdded++;
+          if (itemsAdded >= numberOfItems) {
+            break;
+          }
+        }
+
+        // If a category is exhausted, remove it
+        if (categoryProducts.isEmpty) {
+          categories.removeAt(i);
+          i--; // Adjust index after removal
+        }
+      }
     }
+
+    // Ensure the final list is limited to numberOfItems and shuffle again for final randomization
+    if (healthyList.length > numberOfItems) {
+      healthyList = healthyList.sublist(0, numberOfItems);
+    }
+    healthyList.shuffle();
 
     return healthyList;
   }

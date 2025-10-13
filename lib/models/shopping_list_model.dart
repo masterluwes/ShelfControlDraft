@@ -9,6 +9,8 @@ class ShoppingListModel {
   List<ShoppingListItemModel> items;
   String type; // e.g., 'Budget Friendly', 'Most Recommended', 'Healthy Option', 'Manual'
   bool isActive; // New field for active shopping list
+  int? iconCodePoint; // New field for icon code point
+  String? iconFontFamily; // New field for icon font family
 
   ShoppingListModel({
     this.id,
@@ -18,6 +20,8 @@ class ShoppingListModel {
     required this.items,
     required this.type,
     this.isActive = false, // Default to false
+    this.iconCodePoint,
+    this.iconFontFamily,
   });
 
   // Factory constructor to create a ShoppingListModel from a Firestore document or a Map
@@ -37,6 +41,8 @@ class ShoppingListModel {
           [],
       type: data['type'] ?? 'Manual',
       isActive: data['isActive'] ?? false,
+      iconCodePoint: data['iconCodePoint'],
+      iconFontFamily: data['iconFontFamily'],
     );
   }
 
@@ -47,9 +53,11 @@ class ShoppingListModel {
       'householdId': householdId,
       'name': name,
       'createdAt': Timestamp.fromDate(createdAt),
-      'items': items.map((item) => item.toMap()).toList(),
+      'items': items.map((item) => item.toMap()).toList(), // Include items here
       'type': type,
       'isActive': isActive,
+      'iconCodePoint': iconCodePoint,
+      'iconFontFamily': iconFontFamily,
     };
   }
 
@@ -63,6 +71,8 @@ class ShoppingListModel {
       'items': items.map((item) => item.toMap()).toList(),
       'type': type,
       'isActive': isActive,
+      'iconCodePoint': iconCodePoint,
+      'iconFontFamily': iconFontFamily,
     };
   }
 
@@ -79,6 +89,8 @@ class ShoppingListModel {
           [],
       type: json['type'] ?? 'Manual',
       isActive: json['isActive'] ?? false,
+      iconCodePoint: json['iconCodePoint'],
+      iconFontFamily: json['iconFontFamily'],
     );
   }
 
@@ -91,6 +103,8 @@ class ShoppingListModel {
     List<ShoppingListItemModel>? items,
     String? type,
     bool? isActive,
+    int? iconCodePoint,
+    String? iconFontFamily,
   }) {
     return ShoppingListModel(
       id: id ?? this.id,
@@ -100,6 +114,8 @@ class ShoppingListModel {
       items: items ?? this.items,
       type: type ?? this.type,
       isActive: isActive ?? this.isActive,
+      iconCodePoint: iconCodePoint ?? this.iconCodePoint,
+      iconFontFamily: iconFontFamily ?? this.iconFontFamily,
     );
   }
 }

@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shelf_control/services/auth_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:provider/provider.dart'; // Import Provider
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -14,11 +16,18 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final AuthService _authService = AuthService();
+  late AuthService _authService; // Declare as late
 
   String? _emailError;
   String? _passwordError;
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize AuthService here, after context is available
+    _authService = AuthService(Provider.of<FirestoreService>(context, listen: false));
+  }
 
   bool isValidEmail(String email) {
     final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');

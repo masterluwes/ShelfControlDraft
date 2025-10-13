@@ -2,12 +2,33 @@ import 'dart:convert';
 import 'dart:io'; // Import dart:io for platform checks
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart'; // Import the logger package
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 
 class OpenFoodFactsService {
   static const String _baseUrl = 'https://world.openfoodfacts.org/api/v2/product/';
   final Logger _logger = Logger(); // Initialize logger
-  final Map<String, String?> _nutriScoreCache = {}; // In-memory cache for Nutri-scores
+  // Removed in-memory cache, will use SharedPreferences for persistent cache
+  // final Map<String, String?> _nutriScoreCache = {}; 
 
+  static const String _nutriScoreCacheKey = 'nutriScoreCache';
+
+  // Helper to load the entire cache from SharedPreferences
+  Future<Map<String, String?>> _loadNutriScoreCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? encodedData = prefs.getString(_nutriScoreCacheKey);
+    if (encodedData == null) {
+      return {};
+    }
+    final Map<String, dynamic> decodedData = json.decode(encodedData);
+    return decodedData.map((key, value) => MapEntry(key, value as String?));
+  }
+
+  // Helper to save the entire cache to SharedPreferences
+  Future<void> _saveNutriScoreCache(Map<String, String?> cache) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedData = json.encode(cache);
+    await prefs.setString(_nutriScoreCacheKey, encodedData);
+  }
 
   // Function to fetch product data by barcode
   Future<Map<String, dynamic>?> fetchProductByBarcode(String barcode) async {
@@ -56,15 +77,33 @@ class OpenFoodFactsService {
     }
   }
 
-  // Function to get Nutri-score for a product by name
-  Future<String?> getNutriScore(String productName) async {
-    // Check cache first
-    if (_nutriScoreCache.containsKey(productName)) {
-      _logger.d('Nutri-score for "$productName" found in cache.');
-      return _nutriScoreCache[productName];
-    }
+  // Function to search products with various filters
+  Future<List<Map<String, dynamic>>> searchProducts({
+    required String query,
+    String? country,
+    List<String>? brands,
+    List<String>? nutriScoreGrades,
+    List<String>? ecoscoreGrades,
+    List<String>? categories,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final Map<String, dynamic> queryParams = {
+      'search_terms': query,
+      'search_simple': '1',
+      'action': 'process',
+      'json': '1',
+      'page': page.toString(),
+      'page_size': pageSize.toString(),
+    };
 
-    final searchUrl = Uri.parse('https://world.openfoodfacts.org/cgi/search.pl?search_terms=$productName&search_simple=1&action=process&json=1');
+    if (country != null) queryParams['countries_tags'] = 'en:$country';
+    if (brands != null && brands.isNotEmpty) queryParams['brands_tags'] = brands.map((b) => b.toLowerCase()).join(',');
+    if (nutriScoreGrades != null && nutriScoreGrades.isNotEmpty) queryParams['nutriscore_grade'] = nutriScoreGrades.map((n) => n.toLowerCase()).join(',');
+    if (ecoscoreGrades != null && ecoscoreGrades.isNotEmpty) queryParams['ecoscore_grade'] = ecoscoreGrades.map((e) => e.toLowerCase()).join(',');
+    if (categories != null && categories.isNotEmpty) queryParams['categories_tags'] = categories.map((c) => c.toLowerCase()).join(',');
+
+    final searchUrl = Uri.https('world.openfoodfacts.org', '/cgi/search.pl', queryParams);
 
     String platform = 'Unknown';
     if (Platform.isAndroid) {
@@ -90,23 +129,125 @@ class OpenFoodFactsService {
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
         if (data['products'] != null && data['products'].isNotEmpty) {
-          // Take the first product from the search results
-          final product = data['products'][0];
-          final nutriScore = product['nutriscore_grade'] as String?;
-          _nutriScoreCache[productName] = nutriScore; // Cache the result
-          return nutriScore;
+          return List<Map<String, dynamic>>.from(data['products']);
         } else {
-          _logger.i('No product found for name: $productName');
-          _nutriScoreCache[productName] = null; // Cache null to avoid repeated searches
-          return null;
+          _logger.i('No products found for search query: $query');
+          return [];
         }
       } else {
-        _logger.w('Failed to search product for name $productName. Status code: ${response.statusCode}');
-        return null;
+        _logger.w('Failed to search products for query $query. Status code: ${response.statusCode}');
+        return [];
       }
     } catch (e) {
-      _logger.e('Error fetching Nutri-score for product $productName: $e');
+      _logger.e('Error searching products for query $query: $e');
+      return [];
+    }
+  }
+
+  // Function to get Nutri-score and Ecoscore for a product by name, leveraging searchProducts
+  Future<Map<String, String?>?> getNutriAndEcoScore(String productName, {String? brand, String? category}) async {
+    final Map<String, String?> nutriScoreCache = await _loadNutriScoreCache();
+    final String cacheKey = '${productName}_${brand ?? ''}_${category ?? ''}_nutri_eco';
+
+    // Check cache first
+    if (nutriScoreCache.containsKey(cacheKey)) {
+      _logger.d('Nutri-score and Ecoscore for "$productName" (brand: ${brand ?? 'N/A'}, category: ${category ?? 'N/A'}) found in cache.');
+      final cachedValue = nutriScoreCache[cacheKey];
+      if (cachedValue != null) {
+        final parts = cachedValue.split('|');
+        return {'nutriScore': parts[0], 'ecoscore': parts.length > 1 ? parts[1] : null};
+      }
       return null;
     }
+
+    List<Map<String, dynamic>> products = [];
+
+    // Attempt 1: Search with brand and category
+    _logger.i('Attempt 1: Searching for "$productName" with brand: ${brand ?? 'N/A'}, category: ${category ?? 'N/A'}');
+    products = await searchProducts(
+      query: productName,
+      brands: brand != null ? [brand] : null,
+      categories: category != null ? [category] : null,
+      pageSize: 1,
+    );
+
+    // Attempt 2: If no results, search with brand only
+    if (products.isEmpty && brand != null) {
+      _logger.i('Attempt 2: No product found with brand and category. Retrying search with brand only for: $productName (brand: $brand)');
+      products = await searchProducts(
+        query: productName,
+        brands: [brand],
+        pageSize: 1,
+      );
+    }
+
+    // Attempt 3: If still no results, search with category only
+    if (products.isEmpty && category != null) {
+      _logger.i('Attempt 3: No product found with brand. Retrying search with category only for: $productName (category: $category)');
+      products = await searchProducts(
+        query: productName,
+        categories: [category],
+        pageSize: 1,
+      );
+    }
+
+    // Attempt 4: If still no results, search with product name only
+    if (products.isEmpty) {
+      _logger.i('Attempt 4: No product found with brand or category. Retrying search with product name only for: $productName');
+      products = await searchProducts(
+        query: productName,
+        pageSize: 1,
+      );
+    }
+
+    if (products.isNotEmpty) {
+      final product = products[0];
+      final nutriScore = product['nutriscore_grade'] as String?;
+      final ecoscore = product['ecoscore_grade'] as String?;
+
+      final cacheValue = '${nutriScore ?? ''}|${ecoscore ?? ''}';
+      nutriScoreCache[cacheKey] = cacheValue; // Cache the result
+      await _saveNutriScoreCache(nutriScoreCache); // Save updated cache
+      return {'nutriScore': nutriScore, 'ecoscore': ecoscore};
+    } else {
+      _logger.i('No product found for name: $productName (brand: ${brand ?? 'N/A'}, category: ${category ?? 'N/A'}) after all attempts.');
+      nutriScoreCache[cacheKey] = '|'; // Cache null to avoid repeated searches
+      await _saveNutriScoreCache(nutriScoreCache); // Save updated cache
+      return null;
+    }
+  }
+
+  // Helper function to clean product names for better API matching
+  Map<String, String?> cleanProductName(String fullProductName) {
+    String cleanedName = fullProductName;
+    String? brand;
+
+    // Remove net weight/volume information (e.g., "| 946ml", "234g", "234 g", "1.5L")
+    cleanedName = cleanedName.replaceAll(RegExp(r'\|\s*\d+\.?\d*\s*(ml|g|kg|pcs|oz|fl oz|L)\b', caseSensitive: false), '');
+    cleanedName = cleanedName.replaceAll(RegExp(r'\b\d+\.?\d*\s*(ml|g|kg|pcs|oz|fl oz|L)\b', caseSensitive: false), '');
+    cleanedName = cleanedName.replaceAll(RegExp(r'\s*\[.*?\]\s*', caseSensitive: false), ''); // Remove content in brackets
+
+    // Remove common packaging terms
+    cleanedName = cleanedName.replaceAll(RegExp(r'\b(pack|box|can|bottle|jar|bag|pouch|sachet|tub|carton|roll)\b', caseSensitive: false), '');
+
+    // Attempt to extract brand (simple heuristic: first word if common brand, or look for common brand names)
+    final List<String> commonBrands = ['Knorr', 'Purefoods', 'SM Bonus', 'Magnolia', 'Nestlé', 'Alaska', 'CDO', 'Bounty Fresh', 'Coles', 'Sunkist'];
+    String? extractedBrand;
+    for (String b in commonBrands) {
+      if (cleanedName.toLowerCase().contains(b.toLowerCase())) {
+        extractedBrand = b;
+        // If the brand is at the beginning, remove it from the cleaned name
+        if (cleanedName.toLowerCase().startsWith(b.toLowerCase())) {
+          cleanedName = cleanedName.substring(b.length).trim();
+        }
+        break;
+      }
+    }
+    brand = extractedBrand; // Assign to the brand variable
+
+    // Remove extra spaces and trim
+    cleanedName = cleanedName.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    return {'name': cleanedName, 'brand': brand};
   }
 }

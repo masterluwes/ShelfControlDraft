@@ -357,7 +357,8 @@ class _DashboardPageState extends State<DashboardPage> {
                     (Route<dynamic> route) => false,
                   );
                 } else {
-                  await AuthService().signOut();
+                  final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+                  await AuthService(firestoreService).signOut();
                   if (!mounted) return;
                   navigator.pushAndRemoveUntil(
                     MaterialPageRoute(builder: (context) => const WelcomePage()),

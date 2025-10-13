@@ -6,9 +6,10 @@ import 'package:shelf_control/models/household_model.dart'; // Import Household 
 import 'package:shelf_control/models/product_model.dart'; // Import Product model
 import 'package:shelf_control/models/user_model.dart'; // Import UserModel
 import 'package:shelf_control/models/shopping_list_model.dart'; // Import ShoppingListModel
-// Import ShoppingListItemModel
+import 'package:shelf_control/models/shopping_list_item_model.dart'; // Import ShoppingListItemModel
 import 'package:shelf_control/models/shopping_history_item_model.dart'; // Import ShoppingHistoryItemModel
 import 'package:shelf_control/models/app_notification_model.dart'; // Import AppNotificationModel
+import 'package:shelf_control/services/open_food_facts_service.dart'; // Import OpenFoodFactsService
 import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 import 'dart:convert'; // For JSON encoding/decoding
@@ -53,39 +54,57 @@ class FirestoreService extends ChangeNotifier {
     return prefs.getString('selectedHouseholdId');
   }
 
+  // Clear selected household ID from SharedPreferences
+  Future<void> clearSelectedHouseholdId() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('selectedHouseholdId');
+    _selectedHouseholdId = null; // Also clear in-memory
+    notifyListeners();
+  }
+
   // Set the initial selected household for a user
   Future<void> setInitialHousehold(String userId) async {
     print('DEBUG: setInitialHousehold called for userId: $userId');
     print('DEBUG: Current user is anonymous: ${_auth.currentUser?.isAnonymous ?? false}');
 
-    // Try to load from SharedPreferences first
-    String? storedHouseholdId = await _loadSelectedHouseholdId();
-    print('DEBUG: Stored household ID from SharedPreferences: $storedHouseholdId');
+    // Always try to get the personal household ID for authenticated users first
+    final userDoc = await _db.collection('users').doc(userId).get();
+    String? personalHouseholdId = userDoc.exists && userDoc.data() != null
+        ? userDoc.data()!['personalHouseholdId'] as String?
+        : null;
 
-    if (storedHouseholdId != null) {
-      // Check if the stored household still exists and the user is a member
-      final householdDoc =
-          await _db.collection('households').doc(storedHouseholdId).get();
-      if (householdDoc.exists &&
-          householdDoc.data() != null &&
-          householdDoc.data()!['members'].contains(userId)) {
-        selectedHouseholdId =
-            storedHouseholdId; // Use the setter to update and notify
-        print('DEBUG: Set selectedHouseholdId from stored: $selectedHouseholdId');
+    if (!(_auth.currentUser?.isAnonymous ?? false)) {
+      // For authenticated users:
+      // 1. Prioritize personalHouseholdId
+      if (personalHouseholdId != null) {
+        selectedHouseholdId = personalHouseholdId;
+        print('DEBUG: Set selectedHouseholdId for authenticated user to personalHouseholdId: $selectedHouseholdId');
+        return;
+      } else {
+        // This case should ideally not happen for a registered user.
+        // If it does, it means their user document is missing personalHouseholdId.
+        // We might need to create one or handle this as an error.
+        print('DEBUG: Authenticated user has no personalHouseholdId. Attempting to create one.');
+        await createPersonalHousehold(userId, _auth.currentUser?.email ?? 'unknown@user.com');
         return;
       }
-    }
+    } else {
+      // For anonymous users:
+      // 1. Try to load from SharedPreferences
+      String? storedHouseholdId = await _loadSelectedHouseholdId();
+      print('DEBUG: Stored household ID from SharedPreferences (anonymous): $storedHouseholdId');
 
-    // If no stored household or it's invalid, default to personal household
-    final userDoc = await _db.collection('users').doc(userId).get();
-    if (userDoc.exists &&
-        userDoc.data() != null &&
-        userDoc.data()!['personalHouseholdId'] != null) {
-      selectedHouseholdId = userDoc.data()![
-          'personalHouseholdId']; // Use the setter to update and notify
-      print('DEBUG: Set selectedHouseholdId from personalHouseholdId: $selectedHouseholdId');
-    } else if (_auth.currentUser?.isAnonymous ?? false) {
-      // For anonymous users, their personal household ID is their UID
+      if (storedHouseholdId != null) {
+        // Check if the stored household still exists and the user is a member (should be userId for anonymous)
+        final householdDoc = await _db.collection('households').doc(storedHouseholdId).get();
+        if (householdDoc.exists && householdDoc.data() != null && householdDoc.data()!['members'].contains(userId)) {
+          selectedHouseholdId = storedHouseholdId;
+          print('DEBUG: Set selectedHouseholdId from stored (anonymous): $selectedHouseholdId');
+          return;
+        }
+      }
+
+      // If no valid stored household, default to personal household (which is userId for anonymous)
       selectedHouseholdId = userId;
       print('DEBUG: Set selectedHouseholdId for anonymous user: $selectedHouseholdId');
       // Ensure a personal household is created for anonymous users if it doesn't exist
@@ -93,14 +112,6 @@ class FirestoreService extends ChangeNotifier {
       if (!householdDoc.exists) {
         print('DEBUG: Creating personal household for anonymous user: $userId');
         await createPersonalHousehold(userId, 'anonymous@guest.com'); // Use a dummy email for anonymous
-      }
-    } else {
-      // For registered users, ensure selectedHouseholdId is set to their personalHouseholdId
-      if (userDoc.exists && userDoc.data() != null && userDoc.data()!['personalHouseholdId'] != null) {
-        selectedHouseholdId = userDoc.data()!['personalHouseholdId'];
-        print('DEBUG: Set selectedHouseholdId for registered user to personalHouseholdId: $selectedHouseholdId');
-      } else {
-        print('DEBUG: Registered user has no personalHouseholdId. This should not happen.');
       }
     }
     print('DEBUG: Final selectedHouseholdId after setInitialHousehold: $selectedHouseholdId');
@@ -194,6 +205,14 @@ class FirestoreService extends ChangeNotifier {
     }
     final List<dynamic> decodedData = json.decode(encodedData);
     return decodedData.map((data) => ShoppingListModel.fromJson(data)).toList();
+  }
+
+  // Stream for guest shopping lists from local storage
+  Stream<List<ShoppingListModel>> guestShoppingListsStream() {
+    // This is a simplified stream for guest mode, as SharedPreferences doesn't have native stream support.
+    // It will emit the current state whenever `saveGuestShoppingLists` is called.
+    // For a more robust solution, a StreamController could be used within FirestoreService.
+    return Stream.fromFuture(loadGuestShoppingLists());
   }
 
   // Clear all guest data from local storage
@@ -377,8 +396,7 @@ class FirestoreService extends ChangeNotifier {
   }
 
   // Get the currently active shopping list for a household
-  Stream<ShoppingListModel?> getActiveShoppingListForHousehold(
-      String householdId) {
+  Stream<ShoppingListModel?> streamActiveShoppingList(String householdId) {
     return _db
         .collection('shoppingLists')
         .where('householdId', isEqualTo: householdId)
@@ -390,6 +408,97 @@ class FirestoreService extends ChangeNotifier {
         return ShoppingListModel.fromFirestore(snapshot.docs.first);
       }
       return null;
+    });
+  }
+
+  // Stream for suggestions (adapting from ShoppingListService)
+  Stream<List<ShoppingListItemModel>> streamSuggestions(String householdId) {
+    // This stream will combine data from pantryItems and shoppingHistory
+    // and then process it to generate suggestions.
+    // This is a more complex stream as it depends on multiple collections.
+    // For simplicity, we'll re-fetch on changes to either collection.
+    // A more advanced solution might use RxDart to combine streams.
+
+    final pantryStream = _db.collection('pantryItems')
+        .where('householdId', isEqualTo: householdId)
+        .snapshots();
+
+    final historyStream = _db.collection('shoppingHistory')
+        .where('householdId', isEqualTo: householdId)
+        .snapshots();
+
+    return pantryStream.asyncMap((pantrySnapshot) async {
+      final historySnapshot = await historyStream.first; // Get current history state
+
+      List<PantryItemModel> pantryItems = pantrySnapshot.docs.map((doc) => PantryItemModel.fromFirestore(doc)).toList();
+      List<ShoppingHistoryItemModel> historyItems = historySnapshot.docs.map((doc) => ShoppingHistoryItemModel.fromFirestore(doc)).toList();
+
+      List<ShoppingListItemModel> suggestions = [];
+      final OpenFoodFactsService openFoodFactsService = OpenFoodFactsService(); // Instantiate here
+
+      // Get the active shopping list items to filter out already added suggestions
+      List<ShoppingListItemModel> activeListItems = [];
+      final activeListDoc = await _db.collection('shoppingLists')
+          .where('householdId', isEqualTo: householdId)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+      if (activeListDoc.docs.isNotEmpty) {
+        activeListItems = ShoppingListModel.fromFirestore(activeListDoc.docs.first).items;
+      }
+      final Set<String> activeListItemNames = activeListItems.map((item) => item.name.toLowerCase()).toSet();
+
+
+      // 1. Out of Stock, Expired, Low Stock from pantry
+      for (var item in pantryItems) {
+        String? status;
+        if (item.qty > 0 && item.qty <= 2) { // Example threshold for "low stock"
+          status = 'Low on stock';
+        } else if (item.qty <= 0 || item.status == 'Consumed' || (item.expirationDate != null && item.expirationDate!.isBefore(DateTime.now()))) {
+          status = 'Out of stock';
+        }
+
+        if (status != null && !activeListItemNames.contains(item.name.toLowerCase())) {
+          final scores = await openFoodFactsService.getNutriAndEcoScore(item.name);
+          suggestions.add(ShoppingListItemModel(
+            id: _uuid.v4(), // Assign unique ID
+            name: item.name,
+            netWeight: item.netWeight,
+            category: item.category,
+            unitPrice: 0,
+            quantity: 1,
+            nutrition: scores?['nutriScore'],
+            ecoscore: scores?['ecoscore'],
+            suggestionStatus: status, // Set the status here
+          ));
+        }
+      }
+
+      // 2. History-Based
+      for (var item in historyItems) {
+        bool inPantry = pantryItems.any((pantryItem) => pantryItem.name == item.productName);
+        if (!inPantry && !activeListItemNames.contains(item.productName.toLowerCase())) {
+          final scores = await openFoodFactsService.getNutriAndEcoScore(item.productName);
+          suggestions.add(ShoppingListItemModel(
+            id: _uuid.v4(), // Assign unique ID
+            name: item.productName,
+            category: item.category,
+            unitPrice: 0,
+            quantity: 1,
+            nutrition: scores?['nutriScore'],
+            ecoscore: scores?['ecoscore'],
+            suggestionStatus: 'Out of stock', // History items are considered out of stock
+          ));
+        }
+      }
+
+      // Deduplicate suggestions
+      final uniqueSuggestions = <String, ShoppingListItemModel>{};
+      for (var item in suggestions) {
+        uniqueSuggestions[item.name] = item;
+      }
+
+      return uniqueSuggestions.values.toList();
     });
   }
 

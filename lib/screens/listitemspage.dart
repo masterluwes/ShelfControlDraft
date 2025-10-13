@@ -830,7 +830,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
       if (_currentShoppingList.id != null && it.id != null) {
         await _shoppingListService.removeShoppingListItem(
           _currentShoppingList.id!,
-          it.id!,
+          it,
         );
         // Refresh the local list from Firestore
         final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);

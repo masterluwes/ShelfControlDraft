@@ -12,6 +12,8 @@ class ShoppingListItemModel {
   bool isPurchased;
   bool isBookmarked; // Added isBookmarked field
   String? nutrition; // New: Optional nutrition information
+  String? ecoscore; // New: Optional ecoscore information
+  String? suggestionStatus; // New: To indicate suggestion source ('Low on stock', 'Out of stock')
 
   ShoppingListItemModel({
     this.id,
@@ -25,13 +27,14 @@ class ShoppingListItemModel {
     this.isPurchased = false,
     this.isBookmarked = false,
     this.nutrition,
+    this.ecoscore,
+    this.suggestionStatus,
   });
 
-  // Factory constructor to create a ShoppingListItemModel from a Firestore DocumentSnapshot
   factory ShoppingListItemModel.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return ShoppingListItemModel(
-      id: doc.id, // Use doc.id for the item's ID
+      id: doc.id,
       productId: data['productId'],
       name: data['name'] ?? '',
       brand: data['brand'],
@@ -42,13 +45,14 @@ class ShoppingListItemModel {
       isPurchased: data['isPurchased'] ?? false,
       isBookmarked: data['isBookmarked'] ?? false,
       nutrition: data['nutrition'],
+      ecoscore: data['ecoscore'],
+      suggestionStatus: data['suggestionStatus'],
     );
   }
 
-  // Factory constructor to create a ShoppingListItemModel from a map (for local use or array fields)
   factory ShoppingListItemModel.fromMap(Map<String, dynamic> data) {
     return ShoppingListItemModel(
-      id: data['id'], // This ID might be null if it's an item within an array field
+      id: data['id'],
       productId: data['productId'],
       name: data['name'] ?? '',
       brand: data['brand'],
@@ -59,10 +63,11 @@ class ShoppingListItemModel {
       isPurchased: data['isPurchased'] ?? false,
       isBookmarked: data['isBookmarked'] ?? false,
       nutrition: data['nutrition'],
+      ecoscore: data['ecoscore'],
+      suggestionStatus: data['suggestionStatus'],
     );
   }
 
-  // Method to convert a ShoppingListItemModel to a Firestore map
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -74,12 +79,13 @@ class ShoppingListItemModel {
       'unitPrice': unitPrice,
       'quantity': quantity,
       'isPurchased': isPurchased,
-      'isBookmarked': isBookmarked, // Serialize isBookmarked
-      'nutrition': nutrition, // Serialize nutrition
+      'isBookmarked': isBookmarked,
+      'nutrition': nutrition,
+      'ecoscore': ecoscore,
+      'suggestionStatus': suggestionStatus,
     };
   }
 
-  // Method to create a copy of the current object with updated fields
   ShoppingListItemModel copyWith({
     String? id,
     String? productId,
@@ -90,8 +96,10 @@ class ShoppingListItemModel {
     double? unitPrice,
     int? quantity,
     bool? isPurchased,
-    bool? isBookmarked, // Added to copyWith
-    String? nutrition, // Added to copyWith
+    bool? isBookmarked,
+    String? nutrition,
+    String? ecoscore,
+    String? suggestionStatus,
   }) {
     return ShoppingListItemModel(
       id: id ?? this.id,
@@ -103,8 +111,10 @@ class ShoppingListItemModel {
       unitPrice: unitPrice ?? this.unitPrice,
       quantity: quantity ?? this.quantity,
       isPurchased: isPurchased ?? this.isPurchased,
-      isBookmarked: isBookmarked ?? this.isBookmarked, // Copy isBookmarked
-      nutrition: nutrition ?? this.nutrition, // Copy nutrition
+      isBookmarked: isBookmarked ?? this.isBookmarked,
+      nutrition: nutrition ?? this.nutrition,
+      ecoscore: ecoscore ?? this.ecoscore,
+      suggestionStatus: suggestionStatus ?? this.suggestionStatus,
     );
   }
 }

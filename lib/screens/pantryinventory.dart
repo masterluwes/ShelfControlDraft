@@ -742,13 +742,28 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               // Item image
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  item.imageUrl ?? 'assets/ShelfControl_Icon.png', // Placeholder if no image
-                  width: 44,
-                  height: 44,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.image),
-                ),
+                child: (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+                    ? Image.network(
+                        item.imageUrl!,
+                        width: 44,
+                        height: 44,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          // Fallback to asset if network image fails
+                          return Image.asset(
+                            'assets/ShelfControl_Icon.png',
+                            width: 44,
+                            height: 44,
+                            fit: BoxFit.cover,
+                          );
+                        },
+                      )
+                    : Image.asset(
+                        'assets/ShelfControl_Icon.png', // Default asset
+                        width: 44,
+                        height: 44,
+                        fit: BoxFit.cover,
+                      ),
               ),
               const SizedBox(width: 12),
               Expanded(

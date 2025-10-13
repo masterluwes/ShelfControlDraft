@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart'; // Import provider
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
+import 'package:logger/logger.dart'; // Import the logger package
 
 // ===== Top-level enum =====
 enum GenMode { budget, healthy }
@@ -24,56 +25,24 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
 
   final ShoppingListService _shoppingListService = ShoppingListService();
-  List<ShoppingListModel> _lists = [];
   String? _householdId;
   late FirestoreService _firestoreService; // Declare the service here
-
-  // Listener for FirestoreService changes
-  late VoidCallback _firestoreServiceListener;
-
-  @override
-  void initState() {
-    super.initState();
-    _firestoreService = Provider.of<FirestoreService>(context, listen: false); // Initialize here
-
-    // Initialize the listener
-    _firestoreServiceListener = () {
-      if (_householdId != _firestoreService.selectedHouseholdId) {
-        setState(() {
-          _householdId = _firestoreService.selectedHouseholdId;
-        });
-        _fetchLists();
-      }
-    };
-
-    // Add the listener
-    _firestoreService.addListener(_firestoreServiceListener);
-
-    // Initial fetch
-    _fetchHouseholdAndLists();
-  }
+  bool _isLoading = false; // New state variable for loading indicator
+  final Logger _logger = Logger(); // Initialize logger
+  Stream<List<ShoppingListModel>>? _listsStream;
 
   @override
-  void dispose() {
-    // Remove the listener using the stored instance
-    _firestoreService.removeListener(_firestoreServiceListener);
-    super.dispose();
-  }
-
-  Future<void> _fetchHouseholdAndLists() async {
-    _householdId = _firestoreService.selectedHouseholdId; // Get householdId from service
-    _fetchLists();
-  }
-
-  Future<void> _fetchLists() async {
-    if (_householdId != null) {
-      var snapshot = await FirebaseFirestore.instance
-          .collection('shoppingLists')
-          .where('householdId', isEqualTo: _householdId)
-          .get();
-      if (!mounted) return;
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _firestoreService = Provider.of<FirestoreService>(context); // Initialize _firestoreService
+    if (_firestoreService.selectedHouseholdId != _householdId) {
       setState(() {
-        _lists = snapshot.docs.map((doc) => ShoppingListModel.fromFirestore(doc)).toList();
+        _householdId = _firestoreService.selectedHouseholdId;
+        if (_householdId != null) {
+          _listsStream = _shoppingListService.streamShoppingLists(_householdId!);
+        } else {
+          _listsStream = Stream.value([]);
+        }
       });
     }
   }
@@ -93,18 +62,13 @@ class _ViewAllListsPageState extends State<Viewalllist> {
       'Nov',
       'Dec',
     ];
-    return '${months[d.month - 1]} ${d.day}, ${d.year}';
+    return '${months[d.month - 1]} ${d.day}, ${d.year} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
   // ===== Common result handler from ListItemsPage =====
   void _handleListPageResult(dynamic result) {
-    if (!mounted) return;
-      if (result is Map && result['deleted'] == true) {
-        _fetchLists();
-      } else if (result is bool && result == true) {
-      // Backward-compat: if any older page returns just `true`,
-      // we don't know which one—so we won't remove anything here.
-    }
+    // No longer needed with StreamBuilder, but kept for compatibility
+    // if other pages rely on it.
   }
 
   // ===== Icon picker =====
@@ -308,6 +272,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
 
                           ShoppingListModel? newList;
                           if (_householdId != null) {
+                            _logger.d('Creating manual list for householdId: $_householdId');
                             newList = ShoppingListModel(
                               householdId: _householdId!,
                               name: name,
@@ -318,7 +283,13 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                             );
                             DocumentReference docRef = await FirebaseFirestore.instance.collection('shoppingLists').add(newList.toFirestore());
                             newList.id = docRef.id; // Assign the Firestore ID to the model
-                            _fetchLists();
+
+                            // Save items to subcollection
+                            for (var item in newList.items) {
+                              await _shoppingListService.addShoppingListItem(newList.id!, item);
+                            }
+                          } else {
+                            _logger.e('Household ID is null, cannot create manual list.');
                           }
 
                           Navigator.of(dialogCtx, rootNavigator: true).pop();
@@ -351,12 +322,16 @@ class _ViewAllListsPageState extends State<Viewalllist> {
     GenMode mode = GenMode.budget;
     const double minBudget = 200;
     const double maxBudget = 1000; // Adjusted to a more realistic maximum for a single product
-    double sliderValue = maxBudget; // Initialize sliderValue to maxBudget to avoid assertion error
-    int numberOfItems = 10;
+    double budgetSliderValue = maxBudget; // Initialize sliderValue to maxBudget to avoid assertion error
+    int numberOfItems = 15; // Default to 15 items
     final budgetCtrl = TextEditingController(
-      text: sliderValue.toStringAsFixed(0),
+      text: budgetSliderValue.toStringAsFixed(0),
     );
-    final itemsCtrl = TextEditingController(text: numberOfItems.toString());
+    final numberOfItemsCtrl = TextEditingController(
+      text: numberOfItems.toString(),
+    );
+    const int minItems = 1;
+    const int maxItems = 15;
 
     String formatPhp(double v) => '₱${v.toStringAsFixed(0)}';
 
@@ -367,15 +342,28 @@ class _ViewAllListsPageState extends State<Viewalllist> {
       builder: (dialogCtx) {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
-            void syncFromText() {
+            void syncBudgetFromText() {
               final raw = budgetCtrl.text.replaceAll(',', '').trim();
               final parsed = double.tryParse(raw);
               if (parsed != null) {
                 final clamped = parsed.clamp(minBudget, maxBudget).toDouble();
-                setLocal(() => sliderValue = clamped);
+                setLocal(() => budgetSliderValue = clamped);
                 budgetCtrl.text = clamped.toStringAsFixed(0);
                 budgetCtrl.selection = TextSelection.fromPosition(
                   TextPosition(offset: budgetCtrl.text.length),
+                );
+              }
+            }
+
+            void syncNumberOfItemsFromText() {
+              final raw = numberOfItemsCtrl.text.trim();
+              final parsed = int.tryParse(raw);
+              if (parsed != null) {
+                final clamped = parsed.clamp(minItems, maxItems);
+                setLocal(() => numberOfItems = clamped);
+                numberOfItemsCtrl.text = clamped.toString();
+                numberOfItemsCtrl.selection = TextSelection.fromPosition(
+                  TextPosition(offset: numberOfItemsCtrl.text.length),
                 );
               }
             }
@@ -395,41 +383,6 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (mode == GenMode.healthy) ...[
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Number of Items',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: Colors.grey.shade800,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: itemsCtrl,
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 10,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(color: sep),
-                          ),
-                        ),
-                        onChanged: (value) {
-                          numberOfItems = int.tryParse(value) ?? 10;
-                        },
-                      ),
-                    ],
-                    const SizedBox(height: 8),
                     _RadioTile<GenMode>(
                       value: GenMode.budget,
                       groupValue: mode,
@@ -457,14 +410,14 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                         children: [
                           Expanded(
                             child: Slider(
-                              value: sliderValue,
+                              value: budgetSliderValue,
                               min: minBudget,
                               max: maxBudget,
                               divisions: (maxBudget - minBudget).toInt(),
-                              label: formatPhp(sliderValue),
+                              label: formatPhp(budgetSliderValue),
                               activeColor: headerGreen,
                               onChanged: (v) {
-                                setLocal(() => sliderValue = v);
+                                setLocal(() => budgetSliderValue = v);
                                 budgetCtrl.text = v.toStringAsFixed(0);
                               },
                             ),
@@ -476,7 +429,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                               controller: budgetCtrl,
                               keyboardType: TextInputType.number,
                               textAlign: TextAlign.center,
-                              onSubmitted: (_) => syncFromText(),
+                              onSubmitted: (_) => syncBudgetFromText(),
                               decoration: InputDecoration(
                                 prefixText: '₱',
                                 filled: true,
@@ -527,6 +480,79 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                       headerGreen: headerGreen,
                       sep: sep,
                     ),
+                    const SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Number of Items',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey.shade800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Slider(
+                            value: numberOfItems.toDouble(),
+                            min: minItems.toDouble(),
+                            max: maxItems.toDouble(),
+                            divisions: (maxItems - minItems),
+                            label: numberOfItems.toString(),
+                            activeColor: headerGreen,
+                            onChanged: (v) {
+                              setLocal(() => numberOfItems = v.toInt());
+                              numberOfItemsCtrl.text = v.toInt().toString();
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 80,
+                          child: TextField(
+                            controller: numberOfItemsCtrl,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            onSubmitted: (_) => syncNumberOfItemsFromText(),
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 10,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: sep),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: sep),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(
+                                  color: headerGreen,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '$minItems – $maxItems items',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -541,71 +567,112 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                     backgroundColor: headerGreen,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: () async {
-                    // === Titles WITHOUT the "Auto:" prefix ===
-                    String title = '';
-                    IconData icon = Icons.list_alt_outlined; // Default icon
+                  onPressed: _isLoading
+                      ? null // Disable button when loading
+                      : () async {
+                          setLocal(() => _isLoading = true); // Start loading
+                          // === Titles WITHOUT the "Auto:" prefix ===
+                          String title = '';
+                          IconData icon = Icons.list_alt_outlined; // Default icon
 
-                    switch (mode) {
-                      case GenMode.budget:
-                        title = 'Budget ${formatPhp(sliderValue)}';
-                        icon = Icons.account_balance_wallet_outlined;
-                        break;
-                      case GenMode.healthy:
-                        title = 'Healthy Picks';
-                        icon = Icons.eco_outlined;
-                        break;
-                    }
+                          switch (mode) {
+                            case GenMode.budget:
+                              title = 'Budget ${formatPhp(budgetSliderValue)}';
+                              icon = Icons.account_balance_wallet_outlined;
+                              break;
+                            case GenMode.healthy:
+                              title = 'Healthy Picks';
+                              icon = Icons.eco_outlined;
+                              break;
+                          }
 
-                    List<ShoppingListItemModel> generatedItems = [];
-                    if (_householdId != null) {
-                      switch (mode) {
-                        case GenMode.budget:
-                          generatedItems = await _shoppingListService.generateBudgetFriendlyList(_householdId!, sliderValue, numberOfItems: numberOfItems);
-                          break;
-                        case GenMode.healthy:
-                          generatedItems = await _shoppingListService.generateHealthyOptionList(_householdId!, numberOfItems: numberOfItems);
-                          break;
-                      }
-                    }
+                          List<ShoppingListItemModel> generatedItems = [];
+                          if (_householdId != null) {
+                            switch (mode) {
+                              case GenMode.budget:
+                                generatedItems = await _shoppingListService.generateBudgetFriendlyList(_householdId!, budgetSliderValue, numberOfItems: numberOfItems);
+                                break;
+                              case GenMode.healthy:
+                                generatedItems = await _shoppingListService.generateHealthyOptionList(_householdId!, numberOfItems: numberOfItems);
+                                break;
+                            }
+                          }
 
-                    if (!mounted) return;
+                          if (!mounted) {
+                            if (mounted) setLocal(() => _isLoading = false); // Stop loading if widget is unmounted
+                            return;
+                          }
 
-                    ShoppingListModel? newList;
-                    if (_householdId != null) {
-                      newList = ShoppingListModel(
-                        householdId: _householdId!,
-                        name: 'Auto: $title', // Add "Auto:" prefix for generated lists
-                        createdAt: DateTime.now(),
-                        items: generatedItems,
-                        type: mode.name,
-                        isActive: false,
-                      );
-                      // Save the new list to Firestore and get its ID
-                      DocumentReference docRef = await FirebaseFirestore.instance.collection('shoppingLists').add(newList.toFirestore());
-                      newList.id = docRef.id; // Assign the Firestore ID to the model
-                      _fetchLists(); // Refresh the list view
+                          ShoppingListModel? newList;
+                          if (_householdId != null) {
+                            _logger.d('Generating list for householdId: $_householdId');
+                            newList = ShoppingListModel(
+                              householdId: _householdId!,
+                              name: 'Auto: $title', // Add "Auto:" prefix for generated lists
+                              createdAt: DateTime.now(),
+                              items: generatedItems,
+                              type: mode.name,
+                              isActive: true, // Automatically set as active
+                              iconCodePoint: icon.codePoint, // Assign icon code point
+                              iconFontFamily: icon.fontFamily, // Assign icon font family
+                            );
+                            // Save the new list to Firestore and get its ID
+                            DocumentReference docRef = await FirebaseFirestore.instance.collection('shoppingLists').add(newList.toFirestore());
+                            newList.id = docRef.id; // Assign the Firestore ID to the model
 
-                      Navigator.of(dialogCtx, rootNavigator: true).pop();
-                      if (!mounted) return;
+                            // Save generated items to subcollection
+                            for (var item in generatedItems) {
+                              await _shoppingListService.addShoppingListItem(newList.id!, item);
+                            }
+                          } else {
+                            _logger.e('Household ID is null, cannot generate list.');
+                          }
 
-                      final result = await Navigator.of(parentContext).push(
-                        MaterialPageRoute(
-                          builder: (_) => ListItemsPage(shoppingList: newList!),
-                          settings: RouteSettings(
-                            arguments: {
-                              'seedItems': generatedItems,
-                              'isGeneratedTemp': true,
-                              'genMode': mode.name,
-                              'budget': sliderValue,
-                            },
+                          if (newList != null && newList.id != null) {
+                            // Set this new list as the active shopping list for the household
+                            await _shoppingListService.setActiveShoppingList(_householdId!, newList.id!);
+
+                          if (!mounted) {
+                            if (mounted) setLocal(() => _isLoading = false); // Stop loading if widget is unmounted
+                            return;
+                          }
+                          Navigator.of(dialogCtx, rootNavigator: true).pop();
+                          
+                          // Navigate to the new list's detail page
+                          if (newList != null) { // Ensure newList is not null before navigating
+                            final result = await Navigator.of(parentContext).push(
+                              MaterialPageRoute(
+                                builder: (_) => ListItemsPage(shoppingList: newList!),
+                                settings: RouteSettings(
+                                  arguments: {
+                                    'seedItems': generatedItems,
+                                    'isGeneratedTemp': true,
+                                    'genMode': mode.name,
+                                    'budget': budgetSliderValue,
+                                  },
+                                ),
+                              ),
+                            );
+                            if (mounted) _handleListPageResult(result);
+                          } else {
+                            _logger.e('Generated list is null, cannot navigate.');
+                          }
+                        } else {
+                          _logger.e('Generated list is null or has no ID, cannot set as active or navigate.');
+                          Navigator.of(dialogCtx, rootNavigator: true).pop(); // Dismiss dialog even if list creation failed
+                        }
+                        if (mounted) setLocal(() => _isLoading = false); // Stop loading
+                        },
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
                           ),
-                        ),
-                      );
-                      if (mounted) _handleListPageResult(result);
-                                        }
-                  },
-                  child: const Text('Generate'),
+                        )
+                      : const Text('Generate'),
                 ),
               ],
             );
@@ -649,37 +716,68 @@ class _ViewAllListsPageState extends State<Viewalllist> {
           ),
           Divider(height: 1, thickness: 1, color: sep),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-              children: [
-                ..._lists.map((list) {
-                  return _ListCard(
-                    list: list,
-                    createdText: 'Created ${_formatCreated(list.createdAt)}',
-                    sep: sep,
-                    headerGreen: headerGreen, // Pass headerGreen
-                    onTap: () {
-                      _openEditListDialog(list);
-                    },
-                    onChevronTap: () async {
-                      final result = await Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ListItemsPage(shoppingList: list),
-                        ),
-                      );
-                      _handleListPageResult(result);
-                    },
-                    onActivate: () async {
-                      if (_householdId != null && list.id != null) {
-                        await _shoppingListService.setActiveShoppingList(_householdId!, list.id!);
-                        _fetchLists();
-                      }
-                    },
+            child: StreamBuilder<List<ShoppingListModel>>(
+              stream: _listsStream,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text(
+                            'No shopping lists found.',
+                            style: TextStyle(fontSize: 16, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 10),
+                          _CreateListRow(sep: sep, onTap: _showCreateListDialog),
+                        ],
+                      ),
+                    ),
                   );
-                }),
-                const SizedBox(height: 6),
-                _CreateListRow(sep: sep, onTap: _showCreateListDialog),
-              ],
+                }
+
+                final lists = snapshot.data!;
+
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+                  children: [
+                    ...lists.map((list) {
+                      return _ListCard(
+                        list: list,
+                        createdText: 'Created ${_formatCreated(list.createdAt)}',
+                        sep: sep,
+                        headerGreen: headerGreen, // Pass headerGreen
+                        onTap: () {
+                          _openEditListDialog(list);
+                        },
+                        onChevronTap: () async {
+                          final result = await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ListItemsPage(shoppingList: list),
+                            ),
+                          );
+                          _handleListPageResult(result);
+                        },
+                        onActivate: () async {
+                          if (_householdId != null && list.id != null) {
+                            await _shoppingListService.setActiveShoppingList(_householdId!, list.id!);
+                          }
+                        },
+                      );
+                    }),
+                    const SizedBox(height: 6),
+                    _CreateListRow(sep: sep, onTap: _showCreateListDialog),
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -709,6 +807,11 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   Future<void> _openEditListDialog(ShoppingListModel list) async {
     final nameCtrl = TextEditingController(text: list.name);
     IconData tempIcon = Icons.list_alt_outlined; // Default icon
+
+    // Load the existing icon if available
+    if (list.iconCodePoint != null && list.iconFontFamily != null) {
+      tempIcon = IconData(list.iconCodePoint!, fontFamily: list.iconFontFamily!);
+    }
 
     await showDialog<void>(
       context: context,
@@ -847,8 +950,11 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                   onPressed: () async {
                     final newName = nameCtrl.text.trim();
                     if (newName.isNotEmpty && list.id != null) {
-                      await FirebaseFirestore.instance.collection('shoppingLists').doc(list.id).update({'name': newName});
-                      _fetchLists();
+                      await FirebaseFirestore.instance.collection('shoppingLists').doc(list.id).update({
+                        'name': newName,
+                        'iconCodePoint': tempIcon.codePoint,
+                        'iconFontFamily': tempIcon.fontFamily,
+                      });
                     }
                     Navigator.of(dialogCtx, rootNavigator: true).pop();
                   },
@@ -914,7 +1020,13 @@ class _ListCard extends StatelessWidget {
                     color: const Color(0xFFEEEEEE),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(Icons.list_alt_outlined, size: 26, color: Colors.grey.shade800),
+                  child: Icon(
+                    list.iconCodePoint != null && list.iconFontFamily != null
+                        ? IconData(list.iconCodePoint!, fontFamily: list.iconFontFamily!)
+                        : Icons.list_alt_outlined,
+                    size: 26,
+                    color: Colors.grey.shade800,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
