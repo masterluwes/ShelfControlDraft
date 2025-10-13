@@ -600,8 +600,7 @@ class _DashboardHomeState extends State<DashboardHome> {
               icon: Icons.access_alarm,
               label: "Expiring Soon",
               value: "$expiringSoonCount",
-              sublabel: "within 7 days",
-              child: _buildExpiringSoonQuickConsume(expiringSoonItems), // Pass expiring items for quick consume
+              sublabel: "within 7 days"
             ),
             _tipCard(icon: Icons.lightbulb, tipText: suggestionText),
           ],
@@ -636,51 +635,7 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
-  Widget _buildExpiringSoonQuickConsume(List<PantryItemModel> expiringItems) {
-    if (expiringItems.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    // Sort by expiration date to show the most urgent first
-    expiringItems.sort((a, b) => a.expirationDate!.compareTo(b.expirationDate!));
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Divider(height: 16, thickness: 1, color: Colors.black12),
-        const Text("Quick Consume", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        const SizedBox(height: 8),
-        ...expiringItems.take(2).map((item) { // Show top 2 expiring items
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4.0),
-            child: Row(
-              children: [
-                Expanded(child: Text(item.name, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
-                if (item.qty > 0)
-                  ElevatedButton(
-                    onPressed: () async {
-                      await firestoreService.recordConsumedItem(item, 1);
-                      if (mounted) setState(() {}); // Refresh dashboard
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2E7D32),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: const Text("Consume 1", style: TextStyle(color: Colors.white, fontSize: 10)),
-                  )
-                else
-                  const Text("Out of Stock", style: TextStyle(color: Colors.grey, fontSize: 10)),
-              ],
-            ),
-          );
-        }).toList(),
-      ],
-    );
-  }
-
-  Widget _metricCard({required IconData icon, required String label, required String value, String? sublabel, Widget? child}) {
+  Widget _metricCard({required IconData icon, required String label, required String value, String? sublabel}) {
     return Container(
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
       padding: const EdgeInsets.all(16),
@@ -695,10 +650,6 @@ class _DashboardHomeState extends State<DashboardHome> {
           if (sublabel != null) ...[
             const SizedBox(height: 2),
             Text(sublabel, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: Colors.black54)),
-          ],
-          if (child != null) ...[
-            const SizedBox(height: 10),
-            child,
           ],
         ],
       ),

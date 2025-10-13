@@ -894,7 +894,7 @@ class _TipsPageState extends State<TipsPage> {
       name: 'Milk',
       category: 'Dairy',
       quantity: 1.0,
-      price: 85.00,
+      price: 141.50,
       netWeight: 1.0,
       weightUnit: 'L',
       daysUntilExpiration: 5,
