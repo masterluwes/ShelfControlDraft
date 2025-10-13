@@ -128,8 +128,9 @@ Future<WeatherAlert> _computeAlert() async {
       throw Exception('Location services are disabled.');
     }
     LocationPermission perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied)
+    if (perm == LocationPermission.denied) {
       perm = await Geolocator.requestPermission();
+    }
     if (perm == LocationPermission.denied) {
       throw Exception('Location permission denied.');
     }
@@ -161,8 +162,9 @@ Future<WeatherAlert> _computeAlert() async {
 
     // Prefer "Locality, Province/SubAdmin"
     if (locality.isNotEmpty && admin.isNotEmpty) return '$locality, $admin';
-    if (locality.isNotEmpty && subAdmin.isNotEmpty)
+    if (locality.isNotEmpty && subAdmin.isNotEmpty) {
       return '$locality, $subAdmin';
+    }
     return locality.isNotEmpty
         ? locality
         : (admin.isNotEmpty ? admin : 'Your Area');

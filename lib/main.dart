@@ -3,8 +3,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart'; // Added for Firebase App Check
 import 'package:shelf_control/screens/create_account_page.dart';
 import 'package:shelf_control/screens/login_page.dart';
-import 'package:shelf_control/screens/guest_page.dart';
-import 'package:shelf_control/screens/splash_screen.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/feature_preview_screen.dart';
 import 'package:shelf_control/screens/dashboard_page.dart';
@@ -12,23 +10,29 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:provider/provider.dart';
 import 'package:shelf_control/services/notification_service.dart'; // Import the new service
-import 'package:shelf_control/screens/household_page.dart'; // Import HouseholdSetupPage
+// Import HouseholdSetupPage
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    // ✅ load from assets
+    await dotenv.load(fileName: "assets/env/.env");
+  } catch (e) {
+    // Don’t crash the app if the file isn’t found; just log.
+    debugPrint('dotenv load failed: $e');
+  }
   await Firebase.initializeApp();
   await FirebaseAppCheck.instance.activate(
     androidProvider: AndroidProvider.playIntegrity,
   );
 
-  // Initialize NotificationService
-  final NotificationService notificationService = NotificationService();
+  final notificationService = NotificationService();
   await notificationService.initialize();
-
 
   runApp(
     ChangeNotifierProvider(
-      create: (context) => FirestoreService(),
+      create: (_) => FirestoreService(),
       child: const ShelfControlApp(),
     ),
   );

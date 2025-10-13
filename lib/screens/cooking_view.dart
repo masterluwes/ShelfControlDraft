@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:shelf_control/screens/mealsuggest.dart'; // To access the Recipe model
 import 'package:shelf_control/screens/mealhistory.dart'; // Import the MealHistoryPage
+import 'package:provider/provider.dart';
+import 'package:shelf_control/services/firestore_service.dart';
 
 // --- List of common ingredients that can be ignored for the "Done Cooking" button ---
 const List<String> optionalIngredients = [
@@ -32,10 +34,18 @@ class _CookingViewPageState extends State<CookingViewPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _checkedIngredients = List<bool>.filled(
-      widget.recipe.ingredients.length,
-      false,
-    );
+    final ingLen = widget.recipe.ingredients.length;
+    _checkedIngredients = List<bool>.filled(ingLen, false);
+  }
+
+  @override
+  void didUpdateWidget(covariant CookingViewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If ingredients list changes (hot reload / different recipe), keep lengths in sync.
+    final ingLen = widget.recipe.ingredients.length;
+    if (_checkedIngredients.length != ingLen) {
+      _checkedIngredients = List<bool>.filled(ingLen, false);
+    }
   }
 
   @override
@@ -46,8 +56,8 @@ class _CookingViewPageState extends State<CookingViewPage>
 
   bool _areAllRequiredIngredientsDone() {
     for (int i = 0; i < widget.recipe.ingredients.length; i++) {
-      final ingredientName = widget.recipe.ingredients[i]['name']!
-          .toLowerCase();
+      final ingredientName =
+          widget.recipe.ingredients[i]['name']!.toLowerCase();
       final isOptional = optionalIngredients.contains(ingredientName);
       final isChecked = _checkedIngredients[i];
 
@@ -76,9 +86,9 @@ class _CookingViewPageState extends State<CookingViewPage>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          content: Column(
+          content: const Column(
             mainAxisSize: MainAxisSize.min,
-            children: const [
+            children: [
               Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 48),
               SizedBox(height: 16),
               Text(
@@ -103,6 +113,8 @@ class _CookingViewPageState extends State<CookingViewPage>
       },
     );
 
+    
+
     // After 3 seconds, close the dialog and navigate to the history page.
     Future.delayed(const Duration(seconds: 3), () {
       Navigator.of(context).pushAndRemoveUntil(
@@ -113,38 +125,38 @@ class _CookingViewPageState extends State<CookingViewPage>
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFFFBE6),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              _buildImageHeader(),
-              TabBar(
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: const Color(0xFFFFFBE6),
+    bottomNavigationBar: _buildBottomCTA(), // <-- NEW
+    body: Stack(
+      children: [
+        Column(
+          children: [
+            _buildImageHeader(),
+            TabBar(
+              controller: _tabController,
+              labelColor: const Color(0xFF2E7D32),
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: const Color(0xFF2E7D32),
+              tabs: const [
+                Tab(text: 'Ingredients'),
+                Tab(text: 'Directions'),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
                 controller: _tabController,
-                labelColor: const Color(0xFF2E7D32),
-                unselectedLabelColor: Colors.grey,
-                indicatorColor: const Color(0xFF2E7D32),
-                tabs: const [
-                  Tab(text: 'Ingredients'),
-                  Tab(text: 'Directions'),
-                ],
+                children: [_buildIngredientsList(), _buildDirectionsList()],
               ),
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [_buildIngredientsList(), _buildDirectionsList()],
-                ),
-              ),
-              _buildDoneCookingButton(),
-            ],
-          ),
-          _buildConfirmationOverlay(),
-        ],
-      ),
-    );
-  }
+            ),
+          ],
+        ),
+        _buildConfirmationOverlay(),
+      ],
+    ),
+  );
+}
 
   Widget _buildImageHeader() {
     return Stack(
@@ -278,11 +290,12 @@ class _CookingViewPageState extends State<CookingViewPage>
     );
   }
 
-  Widget _buildDoneCookingButton() {
-    bool isDone = _areAllRequiredIngredientsDone();
-    return Container(
-      color: const Color(0xFFFFFBE6),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+  Widget _buildBottomCTA() {
+  final isDone = _areAllRequiredIngredientsDone();
+  return SafeArea(
+    top: false,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: isDone ? const Color(0xFF2E7D32) : Colors.grey,
@@ -294,54 +307,49 @@ class _CookingViewPageState extends State<CookingViewPage>
         onPressed: isDone
             ? () {
                 setState(() {
-                  _isConfirming = true;
+                  _isConfirming = true; // <-- this will show the overlay
                 });
               }
             : null,
-        child: const Text(
-          'Done Cooking',
-          style: TextStyle(
+        child: Text(
+          isDone ? 'Done Cooking' : 'Check required ingredients to continue',
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 18,
             color: Colors.white,
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
+
 
   Widget _buildConfirmationOverlay() {
-    return IgnorePointer(
-      ignoring: !_isConfirming,
-      child: Stack(
-        children: [
-          AnimatedOpacity(
-            duration: const Duration(milliseconds: 300),
-            opacity: _isConfirming ? 1.0 : 0.0,
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _isConfirming = false;
-                });
-              },
-              child: Container(color: Colors.black.withOpacity(0.5)),
-            ),
-          ),
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            bottom: _isConfirming ? 0 : -MediaQuery.of(context).size.height,
-            left: 0,
-            right: 0,
-            child: _ConfirmationCard(
-              recipe: widget.recipe,
-              onConfirm: _confirmAndUpdatePantry,
-            ),
-          ),
-        ],
+  if (!_isConfirming) return const SizedBox.shrink(); // <-- do not render at all
+
+  return Stack(
+    children: [
+      // Dim background
+      GestureDetector(
+        onTap: () {
+          setState(() {
+            _isConfirming = false;
+          });
+        },
+        child: Container(color: Colors.black.withOpacity(0.5)),
       ),
-    );
-  }
+      // Bottom sheet-style card
+      Align(
+        alignment: Alignment.bottomCenter,
+        child: _ConfirmationCard(
+          recipe: widget.recipe,
+          onConfirm: _confirmAndUpdatePantry,
+        ),
+      ),
+    ],
+  );
+}
 }
 
 class _ConfirmationCard extends StatefulWidget {
@@ -364,6 +372,48 @@ class _ConfirmationCardState extends State<_ConfirmationCard> {
       true,
     );
   }
+
+  Future<void> _onDoneCooking() async {
+      final firestore = Provider.of<FirestoreService>(context, listen: false);
+      final householdId = firestore
+          .selectedHouseholdId; // use your existing source for active HID
+
+      if (householdId == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No household selected.')),
+        );
+        return;
+      }
+
+      // If your screen gets the OLD UI Recipe with ingredients as List<Map<String,dynamic>>
+      final ingredients =
+          (widget.recipe.ingredients ?? const <Map<String, dynamic>>[])
+              .map((m) => {
+                    'name': (m['name'] ?? '').toString(),
+                    'amount':
+                        (m['amount'] ?? '').toString(), // e.g. "200 g" or "2"
+                  })
+              .toList();
+
+      try {
+        await firestore.consumePantryForRecipe(
+          householdId: householdId,
+          ingredients: ingredients,
+        );
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pantry updated — enjoy your meal!')),
+        );
+        Navigator.pop(context); // or your desired navigation
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update pantry: $e')),
+        );
+      }
+    }
 
   @override
   Widget build(BuildContext context) {
@@ -439,7 +489,7 @@ class _ConfirmationCardState extends State<_ConfirmationCard> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onPressed: widget.onConfirm,
+              onPressed: _onDoneCooking,
               child: const Text(
                 'Confirm and Update Pantry',
                 style: TextStyle(

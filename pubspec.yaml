@@ -35,6 +35,10 @@ dependencies:
   path_provider: ^2.1.3
   share_plus: ^12.0.0
   provider: ^6.1.5+1
+  pdf: ^3.11.0
+  printing: ^5.13.4
+  flutter_dotenv: ^5.1.0
+  
 
 dev_dependencies:
   flutter_test:
@@ -54,3 +58,5 @@ flutter:
     - assets/plan_groceries.png
     - assets/see_usage_stats.png
     - assets/footer1e27d32-trans.png
+    - assets/fonts/NotoSans.ttf
+    - assets/env/.env

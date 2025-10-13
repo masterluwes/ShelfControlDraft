@@ -29,7 +29,7 @@ class TipsRules {
       if (lvl == WeatherLevel.red) {
         // Typhoon present (RED)
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Secure Cold Chain Now',
             subtitle: 'Keep milk & dairy safe during outages',
             details:
@@ -38,7 +38,7 @@ class TipsRules {
                 'Minimize door opening. If power goes out, keep doors closed—milk is safe if ≤4 °C.',
             icon: Icons.ac_unit,
           ),
-          TipCardModel(
+          const TipCardModel(
             title: 'Plan Fast Consumption',
             subtitle: 'Use the most perishable dairy first',
             details:
@@ -50,7 +50,7 @@ class TipsRules {
       } else if (lvl == WeatherLevel.blue) {
         // Storm approaching (BLUE)
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Pre-cool & Organize Fridge',
             subtitle: 'Get ready for possible outages',
             details:
@@ -59,7 +59,7 @@ class TipsRules {
                 'Buy UHT milk backups; keep them in a cool, dry cabinet.',
             icon: Icons.kitchen,
           ),
-          TipCardModel(
+          const TipCardModel(
             title: 'Moisture & Seal Check',
             subtitle: 'Protect quality during humid spells',
             details:
@@ -71,7 +71,7 @@ class TipsRules {
       } else {
         // GREEN
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Daily Dairy Care',
             subtitle: 'Keep milk fresh longer',
             details:
@@ -88,7 +88,7 @@ class TipsRules {
     if (cat == 'beverages') {
       if (lvl == WeatherLevel.red) {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Set Aside Potable Water',
             subtitle: 'Minimum 3–4 L per person per day',
             details:
@@ -99,7 +99,7 @@ class TipsRules {
         ];
       } else if (lvl == WeatherLevel.blue) {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Stock Shelf-Stable Drinks',
             subtitle: 'UHT milk, boxed juices, powdered drinks',
             details:
@@ -109,7 +109,7 @@ class TipsRules {
         ];
       } else {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Keep Caps Tight',
             subtitle: 'Quality care for coffee/tea/juices',
             details:
@@ -125,7 +125,7 @@ class TipsRules {
     if (cat == 'canned goods') {
       if (lvl == WeatherLevel.red) {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Ready-to-Eat Priority',
             subtitle: 'No-cook cans on top of the stack',
             details:
@@ -136,7 +136,7 @@ class TipsRules {
         ];
       } else if (lvl == WeatherLevel.blue) {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Top-Up Essentials',
             subtitle: '3-day minimum supply',
             details:
@@ -147,7 +147,7 @@ class TipsRules {
         ];
       } else {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'FIFO & Label',
             subtitle: 'Rotate and track open cans',
             details:
@@ -162,7 +162,7 @@ class TipsRules {
     if (cat == 'dry goods') {
       if (lvl == WeatherLevel.red) {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Moisture Guard',
             subtitle: 'Protect flour, sugar, grains',
             details:
@@ -173,7 +173,7 @@ class TipsRules {
         ];
       } else if (lvl == WeatherLevel.blue) {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Refill Staples',
             subtitle: 'Rice, pasta, noodles',
             details:
@@ -183,7 +183,7 @@ class TipsRules {
         ];
       } else {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Pest-Proof Storage',
             subtitle: 'Keep bins clean and airtight',
             details:
@@ -198,7 +198,7 @@ class TipsRules {
     if (cat == 'snacks') {
       if (lvl == WeatherLevel.red || lvl == WeatherLevel.blue) {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Seal Against Humidity',
             subtitle: 'Crisps & crackers go soft fast',
             details:
@@ -208,7 +208,7 @@ class TipsRules {
         ];
       } else {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Portion Smart',
             subtitle: 'Avoid staling',
             details:
@@ -223,7 +223,7 @@ class TipsRules {
     if (cat == 'condiments') {
       if (lvl == WeatherLevel.red) {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Tighten Lids',
             subtitle: 'Prevent leaks in outages',
             details:
@@ -233,7 +233,7 @@ class TipsRules {
         ];
       } else if (lvl == WeatherLevel.blue) {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Check Essentials',
             subtitle: 'Salt, sugar, oil, soy, vinegar',
             details:
@@ -243,7 +243,7 @@ class TipsRules {
         ];
       } else {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Clean Spouts & Caps',
             subtitle: 'Keep bottles tidy',
             details:
@@ -258,7 +258,7 @@ class TipsRules {
     if (cat == 'produce') {
       if (lvl == WeatherLevel.red) {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Use-First List',
             subtitle: 'Consume the most perishable items',
             details:
@@ -268,7 +268,7 @@ class TipsRules {
         ];
       } else if (lvl == WeatherLevel.blue) {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Humidity Control',
             subtitle: 'Reduce mold risk',
             details:
@@ -278,7 +278,7 @@ class TipsRules {
         ];
       } else {
         return [
-          TipCardModel(
+          const TipCardModel(
             title: 'Cool, Dry, Dark',
             subtitle: 'Standard produce care',
             details:
@@ -291,7 +291,7 @@ class TipsRules {
 
     // ---- Uncategorized / Others ----
     return [
-      TipCardModel(
+      const TipCardModel(
         title: 'General Pantry Care',
         subtitle: 'Applies to most shelf-stable items',
         details:

@@ -7,23 +7,26 @@ class RecipeSuggestionsPage extends StatelessWidget {
 
   // Dummy recipe data for demonstration
   static final Map<String, List<Map<String, String>>> _recipes = {
-    'milk': [
-      {'name': 'Pancakes', 'description': 'Fluffy pancakes perfect for breakfast.', 'link': 'https://www.allrecipes.com/recipe/20177/best-pancakes/'},
-      {'name': 'Creamy Pasta Sauce', 'description': 'A rich and creamy sauce for your favorite pasta.', 'link': 'https://www.allrecipes.com/recipe/228862/creamy-tomato-pasta-sauce/'},
-      {'name': 'Fruit Smoothie', 'description': 'Healthy and refreshing fruit smoothie.', 'link': 'https://www.allrecipes.com/recipe/213008/berry-smoothie/'},
-    ],
-    'canned tuna': [
-      {'name': 'Tuna Salad Sandwich', 'description': 'Classic tuna salad for a quick lunch.', 'link': 'https://www.allrecipes.com/recipe/20516/best-tuna-salad-sandwich/'},
-      {'name': 'Tuna Pasta Bake', 'description': 'Comforting tuna pasta bake.', 'link': 'https://www.bbcgoodfood.com/recipes/tuna-pasta-bake'},
-      {'name': 'Spicy Tuna Bowl', 'description': 'A quick and spicy tuna bowl with rice.', 'link': 'https://www.budgetbytes.com/spicy-tuna-bowls/'},
-    ],
-    'bread': [
-      {'name': 'French Toast', 'description': 'Sweet and delicious French toast.', 'link': 'https://www.allrecipes.com/recipe/7016/french-toast-i/'},
-      {'name': 'Garlic Bread', 'description': 'Easy homemade garlic bread.', 'link': 'https://www.allrecipes.com/recipe/24022/garlic-bread-spread/'},
-      {'name': 'Bread Pudding', 'description': 'A classic dessert to use up old bread.', 'link': 'https://www.allrecipes.com/recipe/7017/bread-pudding-i/'},
-    ],
-    'cupcakes': [
-      {'name': 'Cupcake Milkshake', 'description': 'Turn leftover cupcakes into a delicious milkshake.', 'link': 'https://www.food.com/recipe/cupcake-milkshake-499000'},
+    // 'milk': [
+    //   {'name': 'Pancakes', 'description': 'Fluffy pancakes perfect for breakfast.', 'link': 'https://www.allrecipes.com/recipe/20177/best-pancakes/'},
+    //   {'name': 'Creamy Pasta Sauce', 'description': 'A rich and creamy sauce for your favorite pasta.', 'link': 'https://www.allrecipes.com/recipe/228862/creamy-tomato-pasta-sauce/'},
+    //   {'name': 'Fruit Smoothie', 'description': 'Healthy and refreshing fruit smoothie.', 'link': 'https://www.allrecipes.com/recipe/213008/berry-smoothie/'},
+    // ],
+    // 'canned tuna': [
+    //   {'name': 'Tuna Salad Sandwich', 'description': 'Classic tuna salad for a quick lunch.', 'link': 'https://www.allrecipes.com/recipe/20516/best-tuna-salad-sandwich/'},
+    //   {'name': 'Tuna Pasta Bake', 'description': 'Comforting tuna pasta bake.', 'link': 'https://www.bbcgoodfood.com/recipes/tuna-pasta-bake'},
+    //   {'name': 'Spicy Tuna Bowl', 'description': 'A quick and spicy tuna bowl with rice.', 'link': 'https://www.budgetbytes.com/spicy-tuna-bowls/'},
+    // ],
+    // 'bread': [
+    //   {'name': 'French Toast', 'description': 'Sweet and delicious French toast.', 'link': 'https://www.allrecipes.com/recipe/7016/french-toast-i/'},
+    //   {'name': 'Garlic Bread', 'description': 'Easy homemade garlic bread.', 'link': 'https://www.allrecipes.com/recipe/24022/garlic-bread-spread/'},
+    //   {'name': 'Bread Pudding', 'description': 'A classic dessert to use up old bread.', 'link': 'https://www.allrecipes.com/recipe/7017/bread-pudding-i/'},
+    // ],
+    // 'cupcakes': [
+    //   {'name': 'Cupcake Milkshake', 'description': 'Turn leftover cupcakes into a delicious milkshake.', 'link': 'https://www.food.com/recipe/cupcake-milkshake-499000'},
+    // ],
+    'dynamic': [
+      {'name': '', 'description': 'This page is going to be dynamic.', 'link': ''},
     ],
     // Add more items and recipes as needed
   };
@@ -68,7 +71,7 @@ class RecipeSuggestionsPage extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
-                'Recipes for "${itemName}"',
+                'Recipes for "$itemName"',
                 style: TextStyle(
                   color: headerGreen,
                   fontWeight: FontWeight.w800,
@@ -81,7 +84,7 @@ class RecipeSuggestionsPage extends StatelessWidget {
               child: recipes.isEmpty
                   ? Center(
                       child: Text(
-                        'No recipe suggestions found for "${itemName}".',
+                        'No recipe suggestions found for "$itemName".',
                         style: const TextStyle(fontSize: 16, color: Colors.black54),
                         textAlign: TextAlign.center,
                       ),

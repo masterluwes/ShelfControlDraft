@@ -14,7 +14,6 @@ import 'package:shelf_control/screens/viewalllists.dart' hide Text, Navigator, S
 import 'package:shelf_control/services/shopping_list_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:provider/provider.dart'; // Import provider
