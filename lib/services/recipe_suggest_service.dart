@@ -8,6 +8,7 @@ import '../models/suggested_recipe.dart';
 import 'meal_planner.dart'; // Import MealPlanner
 import 'normalization.dart';
 import 'spoonacular_service.dart';
+import 'ai_recipe_service.dart';
 
 // Local copy just for this file (names are local and won't clash with other files)
 String _toGenericIngredientLocal(String raw) {
@@ -85,10 +86,15 @@ class RecipeSuggestService {
       );
     }).toList();
 
+    // Functions base URL from your deploy output
+    const String functionsBase =
+        "https://asia-southeast1-<your-project-id>.cloudfunctions.net";
+    final spoonClient = SpoonacularService(baseUrl: functionsBase);
+    final aiClient = AiRecipeService(baseUrl: functionsBase);
+
     // Cloud Functions base URL (from deploy)
     const String _functionsBase =
         "https://asia-southeast1-shelfcontrol-8f5ab.cloudfunctions.net";
-    final spoonClient = SpoonacularService(baseUrl: _functionsBase);
 
     // [CALL_GENERATE_FIX] begin
     final localSuggestions = MealPlanner.generate(
@@ -154,8 +160,6 @@ class RecipeSuggestService {
 
     print("[spoon] strict=${strict.length}");
 
-    print("[spoon] strict=${strict.length}");
-
     if (strict.isNotEmpty) {
       // hydrate details
       final hydrated = <Map<String, dynamic>>[];
@@ -186,7 +190,11 @@ class RecipeSuggestService {
         return at.compareTo(bt);
       });
 
-      if (mapped.isNotEmpty) return mapped.take(limit).toList();
+      if (mapped.isNotEmpty) {
+        final sliced = mapped.take(limit).toList();
+        final enhanced = await aiClient.enhance(sliced, locale: 'en-PH');
+        return enhanced;
+      }
     }
 
     if (localSuggestions.isEmpty) {
@@ -235,6 +243,27 @@ class RecipeSuggestService {
       // final aiRecipes = await _fallbackAi(...);
       // candidates = aiRecipes;
       return []; // keep stepwise progress for now
+    }
+
+    // Gemini fallback if both local and spoonacular returned nothing
+    // Gemini fallback if both local and spoonacular returned nothing
+    final pantryNames = pantry
+        .map((p) => (p.name ?? '').toString())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+// If you later add fields on UserPrefs, populate this map accordingly.
+// For now, keep it empty so we don't depend on non-existent getters.
+    final Map<String, dynamic> prefsPayload = <String, dynamic>{};
+
+    final aiList = await aiClient.suggestFromPantry(
+      pantryNames: pantryNames,
+      prefs: prefsPayload,
+      nearExpiryDays: nearExpiryDays,
+    );
+
+    if (aiList.isNotEmpty) {
+      return aiList.take(limit).toList();
     }
 
     // 6) Score & rank (if needed, for now local recipes have score 1.0)

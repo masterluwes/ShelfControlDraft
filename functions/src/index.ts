@@ -442,3 +442,85 @@ export const spoonacularGetRecipeInfo = onRequest(
   }
 );
 
+const GEMINI_KEY = defineSecret("AIzaSyAzAQ0YFpbli-T2PUK1daqTAFRcrQGJG7A");
+
+export const aiEnhanceRecipes = onRequest(
+  { region: "asia-southeast1", secrets: [GEMINI_KEY] },
+  async (req, res) => {
+    try {
+      const { recipes, locale = "en-PH" } = req.body || {};
+      if (!Array.isArray(recipes) || recipes.length === 0) {
+        res.status(400).json({ error: "recipes[] required" });
+        return;
+      }
+      // Call Gemini (use fetch with JSON payload). Pseudocode:
+      const apiKey = GEMINI_KEY.value();
+      const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key="+apiKey, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text:
+`You are enhancing structured recipes.
+- Keep ingredients unchanged
+- Fix steps to clear, numbered imperative sentences
+- Use metric (g, ml); keep servings
+- If calories missing, estimate and mark as estimated:true
+- Locale: ${locale}
+JSON in, JSON out: array of {id, steps[], timeMin?, kcalPerServing?, notes?}
+INPUT: ${JSON.stringify(recipes)}`
+            }]
+          }]
+        })
+      });
+      const data = await r.json();
+      // parse model output; assume JSON in first candidate
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "[]";
+      const enhanced = JSON.parse(text);
+      res.json(enhanced);
+    } catch (e: any) {
+      console.error(e);
+      res.status(500).json({ error: e.message || "aiEnhanceRecipes error" });
+    }
+  }
+);
+
+export const aiSuggestFromPantry = onRequest(
+  { region: "asia-southeast1", secrets: [GEMINI_KEY] },
+  async (req, res) => {
+    try {
+      const { pantry, prefs, nearExpiryDays = 5 } = req.body || {};
+      if (!Array.isArray(pantry)) {
+        res.status(400).json({ error: "pantry[] required" });
+        return;
+      }
+      const apiKey = GEMINI_KEY.value();
+      const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key="+apiKey, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text:
+`You generate pantry-only recipes. Rules:
+- Use ONLY ingredients listed in "pantryNames" (except staples: water, oil, salt, pepper).
+- Prefer items expiring in <= ${nearExpiryDays} days.
+- Output JSON array: [{id,title,ingredients:[{name,qty,unit}],steps[],servings?,timeMin?,kcalPerServing?}]
+
+pantryNames: ${JSON.stringify(pantry)}
+prefs: ${JSON.stringify(prefs || {})}`
+            }]
+          }]
+        })
+      });
+      const data = await r.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "[]";
+      const arr = JSON.parse(text);
+      res.json(arr);
+    } catch (e: any) {
+      console.error(e);
+      res.status(500).json({ error: e.message || "aiSuggestFromPantry error" });
+    }
+  }
+);
