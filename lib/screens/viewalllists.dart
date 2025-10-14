@@ -23,7 +23,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
 
-  final ShoppingListService _shoppingListService = ShoppingListService();
+  late final ShoppingListService _shoppingListService;
   String? _householdId;
   late FirestoreService _firestoreService; // Declare the service here
   bool _isLoading = false; // New state variable for loading indicator
@@ -34,6 +34,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _firestoreService = Provider.of<FirestoreService>(context); // Initialize _firestoreService
+    _shoppingListService = ShoppingListService(firestoreService: _firestoreService);
     if (_firestoreService.selectedHouseholdId != _householdId) {
       setState(() {
         _householdId = _firestoreService.selectedHouseholdId;

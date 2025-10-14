@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:provider/provider.dart';
 import 'package:shelf_control/models/shopping_list_item_model.dart';
 import 'package:shelf_control/models/shopping_list_model.dart';
+import 'package:shelf_control/services/firestore_service.dart';
 import 'package:shelf_control/services/shopping_list_service.dart';
 import 'package:shelf_control/services/open_food_facts_service.dart'; // Import OpenFoodFactsService
 
@@ -47,7 +49,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
 
-  final ShoppingListService _shoppingListService = ShoppingListService();
+  late final ShoppingListService _shoppingListService;
   final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService(); // Initialize OpenFoodFactsService
   late ShoppingListModel _currentShoppingList;
   List<ShoppingListItemModel> _items = [];
@@ -67,6 +69,9 @@ class _ListItemsPageState extends State<ListItemsPage> {
   @override
   void initState() {
     super.initState();
+    _shoppingListService = ShoppingListService(
+      firestoreService: Provider.of<FirestoreService>(context, listen: false),
+    );
     _currentShoppingList = widget.shoppingList;
     _items = _currentShoppingList.items.map((e) => e.copyWith()).toList(); // Deep copy items
     _resort();

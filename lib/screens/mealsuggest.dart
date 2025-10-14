@@ -7,11 +7,11 @@ import 'package:shelf_control/services/meal_planner.dart';
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import Provider
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
-import 'package:shelf_control/services/spoonacular_client.dart';
 import 'package:shelf_control/services/recipe_suggest_service.dart';
 import 'package:shelf_control/models/user_prefs_model.dart';
 import 'package:shelf_control/models/suggested_recipe.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shelf_control/services/shopping_list_service.dart'; // Import ShoppingListService
+import 'package:shelf_control/models/shopping_list_item_model.dart'; // Import ShoppingListItemModel
 
 
 // ===== CONFIG =====
@@ -35,6 +35,7 @@ class Recipe {
   final String description;
   final List<Map<String, String>> ingredients;
   final List<String> directions;
+  final List<String> missingIngredients; // New field
 
   const Recipe({
     required this.name,
@@ -45,6 +46,7 @@ class Recipe {
     required this.description,
     required this.ingredients,
     required this.directions,
+    this.missingIngredients = const [], // Initialize as empty list
   });
 
   factory Recipe.fromFirestore(DocumentSnapshot doc) {
@@ -148,9 +150,7 @@ class _MealSuggestState extends State<MealSuggest> {
   void initState() {
     super.initState();
     _firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    _svc = RecipeSuggestService(
-      SpoonacularClient(dotenv.env['SPOONACULAR_KEY'] ?? ''),
-    );
+    _svc = RecipeSuggestService();
   }
 
   @override
@@ -347,62 +347,6 @@ class _MealSuggestState extends State<MealSuggest> {
           }).toList();
 
           // 2) Generate suggestions from pantry (near-expiry prioritized, <=2 missing)
-          @override
-          Widget build(BuildContext context) {
-            if (_loading)
-              return const Center(child: CircularProgressIndicator());
-            if (_error != null) {
-              return Center(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text('Unable to load suggestions:\n$_error'),
-                  const SizedBox(height: 8),
-                  ElevatedButton(onPressed: _load, child: const Text('Retry')),
-                ]),
-              );
-            }
-            if (_recipes.isEmpty) {
-              return const Center(
-                  child: Text('No suggestions yet. Add more pantry items.'));
-            }
-
-            // if your card code expects your old UI Recipe type, map it here:
-            final suggested = _recipes
-                .map((r) => Recipe(
-                      name: r.title,
-                      imageUrl: r.imageUrl ?? '',
-                      servingSize:
-                          r.servings == null ? '' : '${r.servings} servings',
-                      calories: r.kcalPerServing == null
-                          ? ''
-                          : '${r.kcalPerServing} kcal/serving',
-                      time: r.timeMin == null ? '' : '${r.timeMin} min',
-                      description:
-                          'Uses ${r.usesExpiring.length} near-expiry item(s)',
-                      ingredients: r.ingredients
-                          .map((i) => {
-                                'name': i.name,
-                                'amount': i.qty == null
-                                    ? ''
-                                    : (i.unit == null
-                                        ? '${i.qty}'
-                                        : '${i.qty} ${i.unit}')
-                              })
-                          .toList(),
-                      directions: r.steps.isEmpty
-                          ? const ['See steps in details']
-                          : r.steps,
-                    ))
-                .toList();
-
-            return ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: suggested.length,
-              itemBuilder: (_, i) =>
-                  _buildMealCard(context: context, recipe: suggested[i]),
-            );
-          }
-
-          // 3) Map to your existing Recipe model (string fields)
           // loading / error / empty states first
           if (_loading) return const Center(child: CircularProgressIndicator());
           if (_error != null) {
@@ -419,8 +363,8 @@ class _MealSuggestState extends State<MealSuggest> {
                 child: Text('No suggestions yet. Add more pantry items.'));
           }
 
-// If your card builder expects your old `Recipe` UI type,
-// map each SuggestedRecipe from `_recipes` -> Recipe
+          // If your card builder expects your old `Recipe` UI type,
+          // map each SuggestedRecipe from `_recipes` -> Recipe
           final List<Recipe> suggested = _recipes
               .map((r) => Recipe(
                     name: r.title,
@@ -431,8 +375,9 @@ class _MealSuggestState extends State<MealSuggest> {
                         ? ''
                         : '${r.kcalPerServing} kcal/serving',
                     time: r.timeMin == null ? '' : '${r.timeMin} min',
-                    description:
-                        'Uses ${r.usesExpiring.length} near-expiry item(s)',
+                    description: r.missingIngredients.isNotEmpty
+                        ? 'Missing: ${r.missingIngredients.join(', ')}'
+                        : 'Uses ${r.usesExpiring.length} near-expiry item(s)',
                     ingredients: r.ingredients
                         .map((i) => {
                               'name': i.name,
@@ -446,18 +391,26 @@ class _MealSuggestState extends State<MealSuggest> {
                     directions: r.steps.isEmpty
                         ? const ['See steps in details']
                         : r.steps,
+                    missingIngredients: r.missingIngredients, // Pass missing ingredients
                   ))
               .toList();
 
-// Now render `suggested` (NOT `suggestions`)
-          
-
           // 4) Build the UI (same layout you already use)
+          final atRiskItems = pantryItemModels
+              .where((item) =>
+                  item.expirationDate != null &&
+                  item.expirationDate!.isBefore(DateTime.now().add(const Duration(days: 3))))
+              .toList();
+
           return SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
+                  if (atRiskItems.isNotEmpty) ...[
+                    _buildAtRiskBanner(atRiskItems),
+                    const SizedBox(height: 16),
+                  ],
                   _buildNoteBanner(),
                   const SizedBox(height: 20),
                   if (suggested.isEmpty)
@@ -470,6 +423,35 @@ class _MealSuggestState extends State<MealSuggest> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildAtRiskBanner(List<PantryItemModel> atRiskItems) {
+    return Container(
+      padding: const EdgeInsets.all(14.0),
+      decoration: BoxDecoration(
+        color: Colors.red.shade100,
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(color: Colors.red.shade700),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.red.shade700),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'You have ${atRiskItems.length} item(s) expiring soon! Check out these meal ideas to use them up.',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 15,
+                color: Colors.red.shade900,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -527,10 +509,14 @@ class _MealSuggestState extends State<MealSuggest> {
     );
   }
 
+
   Widget _buildMealCard({
     required BuildContext context,
     required Recipe recipe,
   }) {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final shoppingListService = ShoppingListService(firestoreService: firestoreService);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -551,63 +537,48 @@ class _MealSuggestState extends State<MealSuggest> {
           },
           child: Padding(
             padding: const EdgeInsets.all(12.0),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8.0),
-                  child: Image.network(
-                    recipe.imageUrl,
-                    width: 70,
-                    height: 70,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
+                Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8.0),
+                      child: Image.network(
+                        recipe.imageUrl,
                         width: 70,
                         height: 70,
-                        color: Colors.grey.shade200,
-                        child: const Icon(
-                          Icons.image_not_supported,
-                          color: Colors.grey,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        recipe.name,
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 17,
-                          color: Colors.black,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: 70,
+                            height: 70,
+                            color: Colors.grey.shade200,
+                            child: const Icon(
+                              Icons.image_not_supported,
+                              color: Colors.grey,
+                            ),
+                          );
+                        },
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Serving Size: ${recipe.servingSize}  •  ${recipe.calories}',
-                        style: const TextStyle(
-                          fontFamily: 'Roboto',
-                          fontSize: 14,
-                          color: Colors.black,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(
-                            Icons.access_time,
-                            color: Colors.black,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 4),
                           Text(
-                            recipe.time,
+                            recipe.name,
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 17,
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Serving Size: ${recipe.servingSize}  •  ${recipe.calories}',
                             style: const TextStyle(
                               fontFamily: 'Roboto',
                               fontSize: 14,
@@ -615,11 +586,77 @@ class _MealSuggestState extends State<MealSuggest> {
                               fontWeight: FontWeight.w400,
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.access_time,
+                                color: Colors.black,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                recipe.time,
+                                style: const TextStyle(
+                                  fontFamily: 'Roboto',
+                                  fontSize: 14,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+                if (recipe.missingIngredients.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Missing Ingredients: ${recipe.missingIngredients.join(', ')}',
+                    style: const TextStyle(
+                      fontFamily: 'Roboto',
+                      fontSize: 14,
+                      color: Colors.red,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        if (householdId == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Household not selected.')),
+                          );
+                          return;
+                        }
+                        for (final item in recipe.missingIngredients) {
+                          await shoppingListService.addOrUpdateItem(
+                            householdId: householdId!,
+                            itemName: item,
+                            quantity: 1, // Default to 1, user can adjust in shopping list
+                          );
+                        }
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Missing ingredients added to shopping list!')),
+                        );
+                      },
+                      icon: const Icon(Icons.add_shopping_cart, color: Color(0xFF2E7D32)),
+                      label: const Text(
+                        'Add to Shopping List',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          color: Color(0xFF2E7D32),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

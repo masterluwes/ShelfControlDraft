@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shelf_control/models/household_model.dart'; // Import Household model
 import 'package:shelf_control/models/user_model.dart'; // Import UserModel
+import 'package:shelf_control/models/household_task_model.dart'; // Import HouseholdTaskModel
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import Provider
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
+import 'package:uuid/uuid.dart'; // For generating unique IDs
 
 class HouseholdDetailPage extends StatefulWidget {
   final Household household;
@@ -315,6 +317,140 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
     Navigator.pop(context); // No data to return directly from here anymore
   }
 
+  void _showAssignTaskDialog(BuildContext context, FirestoreService firestoreService, String assignedToUserId, String assignedToUserName) {
+    final TextEditingController customTaskController = TextEditingController();
+    String? selectedTaskType;
+    final Uuid uuid = const Uuid();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, dialogSetState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: _green, width: 3),
+              ),
+              title: Text(
+                "Assign Task to $assignedToUserName",
+                style: const TextStyle(fontWeight: FontWeight.bold, color: _green),
+                textAlign: TextAlign.center,
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(
+                        labelText: "Select Task Type",
+                        border: OutlineInputBorder(),
+                      ),
+                      value: selectedTaskType,
+                      onChanged: (String? newValue) {
+                        dialogSetState(() {
+                          selectedTaskType = newValue;
+                          if (newValue != 'custom') {
+                            customTaskController.clear();
+                          }
+                        });
+                      },
+                      items: <String>['shopping_list', 'check_pantry', 'custom']
+                          .map<DropdownMenuItem<String>>((String value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value.replaceAll('_', ' ').toCapitalized()),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    if (selectedTaskType == 'custom')
+                      TextField(
+                        controller: customTaskController,
+                        maxLength: 100,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          labelText: "Custom Task Description",
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  child: const Text(
+                    "Cancel",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                ElevatedButton(
+                  onPressed: () async {
+                    String taskDescription = '';
+                    if (selectedTaskType == 'custom') {
+                      taskDescription = customTaskController.text.trim();
+                      if (taskDescription.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Custom task description cannot be empty.')),
+                        );
+                        return;
+                      }
+                    } else if (selectedTaskType != null) {
+                      taskDescription = "Please ${selectedTaskType!.replaceAll('_', ' ')}";
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please select a task type.')),
+                      );
+                      return;
+                    }
+
+                    try {
+                      final newTask = HouseholdTask(
+                        id: uuid.v4(),
+                        householdId: widget.household.id,
+                        assignedToUserId: assignedToUserId,
+                        assignedByUserId: _currentUserId,
+                        taskType: selectedTaskType!,
+                        description: taskDescription,
+                        createdAt: DateTime.now(),
+                      );
+                      await firestoreService.createHouseholdTask(newTask);
+                      if (!mounted) return;
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Task assigned to $assignedToUserName!')),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Failed to assign task: ${e.toString().replaceFirst('Exception: ', '')}')),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _green,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  child: const Text("Assign", style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showEditNicknameDialog(BuildContext context, FirestoreService firestoreService, String userId, String currentNickname) {
     final controller = TextEditingController(text: currentNickname);
     String? errorText;
@@ -560,27 +696,101 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                         final isOwner = memberId == widget.household.ownerId;
                         final isCurrentUser = memberId == _currentUserId;
 
-                        return ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: Colors.black12,
-                            child: Icon(Icons.person, color: Colors.black),
-                          ),
-                          title: Text(
-                            displayName + (isOwner ? " (Owner)" : ""),
-                            style: TextStyle(
-                              fontWeight: isOwner ? FontWeight.bold : FontWeight.normal,
-                            ),
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (isCurrentUser)
-                                IconButton(
-                                  icon: const Icon(Icons.edit, size: 20),
-                                  onPressed: () => _showEditNicknameDialog(context, firestoreService, memberId, displayName),
+                        return Column(
+                          children: [
+                            ListTile(
+                              leading: const CircleAvatar(
+                                backgroundColor: Colors.black12,
+                                child: Icon(Icons.person, color: Colors.black),
+                              ),
+                              title: Text(
+                                displayName + (isOwner ? " (Owner)" : ""),
+                                style: TextStyle(
+                                  fontWeight: isOwner ? FontWeight.bold : FontWeight.normal,
                                 ),
-                            ],
-                          ),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (isCurrentUser)
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, size: 20),
+                                      onPressed: () => _showEditNicknameDialog(context, firestoreService, memberId, displayName),
+                                    ),
+                                  if (widget.household.ownerId == _currentUserId && !isCurrentUser) // Only owner can assign tasks to others
+                                    IconButton(
+                                      icon: const Icon(Icons.assignment_add, size: 20),
+                                      onPressed: () => _showAssignTaskDialog(context, firestoreService, memberId, displayName),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            // Display assigned tasks below the member's name
+                            StreamBuilder<List<HouseholdTask>>(
+                              stream: firestoreService.streamHouseholdTasksForMember(widget.household.id, memberId),
+                              builder: (context, taskSnapshot) {
+                                if (taskSnapshot.connectionState == ConnectionState.waiting) {
+                                  return const Padding(
+                                    padding: EdgeInsets.only(left: 72.0, bottom: 8.0),
+                                    child: Text("Loading tasks...", style: TextStyle(fontStyle: FontStyle.italic)),
+                                  );
+                                }
+                                if (taskSnapshot.hasError) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(left: 72.0, bottom: 8.0),
+                                    child: Text('Error loading tasks: ${taskSnapshot.error}', style: const TextStyle(color: Colors.red)),
+                                  );
+                                }
+                                final tasks = taskSnapshot.data ?? [];
+                                if (tasks.isEmpty) {
+                                  return const SizedBox.shrink(); // No tasks to display
+                                }
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: tasks.map((task) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(left: 72.0, right: 16.0, bottom: 4.0),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              task.description,
+                                              style: const TextStyle(fontSize: 14),
+                                            ),
+                                          ),
+                                          if (isCurrentUser) // Only the assigned member can mark as done
+                                            ElevatedButton(
+                                              onPressed: () async {
+                                                try {
+                                                  await firestoreService.updateHouseholdTaskStatus(task.id, 'done');
+                                                  if (!mounted) return;
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(content: Text('Task "${task.description}" marked as done!')),
+                                                  );
+                                                } catch (e) {
+                                                  if (!mounted) return;
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(content: Text('Failed to mark task as done: ${e.toString().replaceFirst('Exception: ', '')}')),
+                                                  );
+                                                }
+                                              },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: _green,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(20),
+                                                ),
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                              ),
+                                              child: const Text("Done", style: TextStyle(color: Colors.white, fontSize: 12)),
+                                            ),
+                                        ],
+                                      ),
+                                    );
+                                  }).toList(),
+                                );
+                              },
+                            ),
+                          ],
                         );
                       },
                     );
@@ -592,5 +802,12 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
         ),
       ),
     );
+  }
+}
+
+extension StringExtension on String {
+  String toCapitalized() {
+    if (isEmpty) return this;
+    return "${this[0].toUpperCase()}${substring(1)}";
   }
 }

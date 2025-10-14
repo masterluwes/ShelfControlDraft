@@ -109,10 +109,64 @@ service cloud.firestore {
       allow create: if request.auth.uid != null && request.resource.data.userId == request.auth.uid;
     }
 
+    // Allow authenticated users to read and write their own user preferences
+    match /userPrefs/{userId} {
+      allow read, write: if request.auth.uid == userId;
+    }
 
     // Allow authenticated users to create feedback documents
     match /feedback/{feedbackId} {
       allow create: if request.auth.uid != null;
     }
+
+    // Rules for household tasks
+    match /householdTasks/{taskId} {
+      // Helper function to check if the user is a member of the household for a given task
+      function isTaskHouseholdMember(taskDoc) {
+        return get(/databases/$(database)/documents/households/$(taskDoc.householdId)).data.members.hasAny([request.auth.uid]);
+      }
+
+      // Allow read if the user is a member of the household the task belongs to
+      allow read: if request.auth.uid != null && isTaskHouseholdMember(resource.data);
+
+      // Allow create if the user is the owner of the household and the assigned user is a member
+      allow create: if request.auth.uid != null &&
+                      request.resource.data.assignedByUserId == request.auth.uid &&
+                      get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.ownerId == request.auth.uid &&
+                      get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.resource.data.assignedToUserId]);
+
+      // Allow update if the user is the assigned user and is marking the task as 'done'
+      allow update: if request.auth.uid != null &&
+                      resource.data.assignedToUserId == request.auth.uid &&
+                      request.resource.data.status == 'done' &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'completedAt']);
+
+      // Allow delete if the user is the one who assigned the task (owner)
+      allow delete: if request.auth.uid != null && resource.data.assignedByUserId == request.auth.uid;
+    }
+    
+    match /pantryItems/{itemId} {
+      function isHouseholdMember(hid) {
+        return get(/databases/$(database)/documents/households/$(hid))
+               .data.members.hasAny([request.auth.uid]);
+      }
+      allow read: if request.auth != null
+              && (
+                   (resource.data.ownerId == request.auth.uid)
+                   ||
+                   (resource.data.householdId is string
+                    && isHouseholdMember(resource.data.householdId))
+                 );
+
+  		allow list: if request.auth != null
+              && (
+                   (resource.data.ownerId == request.auth.uid)
+                   ||
+                   (resource.data.householdId is string
+                    && isHouseholdMember(resource.data.householdId))
+                 );
+      
+    }
+
   }
 }

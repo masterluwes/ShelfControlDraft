@@ -9,6 +9,7 @@ class SuggestedRecipe {
   final int? kcalPerServing;
   final String source;              // "spoonacular" | "ai"
   final List<String> usesExpiring;
+  final List<String> missingIngredients; // New field
   final double score;
 
   SuggestedRecipe({
@@ -22,6 +23,7 @@ class SuggestedRecipe {
     this.kcalPerServing,
     required this.source,
     required this.usesExpiring,
+    this.missingIngredients = const [], // Initialize as empty list
     required this.score,
   });
 }

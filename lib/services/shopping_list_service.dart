@@ -8,12 +8,21 @@ import 'package:shelf_control/services/open_food_facts_service.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 import 'dart:convert'; // For JSON encoding/decoding
 import 'package:uuid/uuid.dart'; // For generating unique IDs
+import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 
 class ShoppingListService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance; // Instantiate FirebaseAuth
-  final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService();
-  final Uuid _uuid = const Uuid(); // Instantiate Uuid
+  final FirebaseFirestore _firestore;
+  final FirebaseAuth _auth;
+  final OpenFoodFactsService _openFoodFactsService;
+  final Uuid _uuid;
+  final FirestoreService _firestoreService; // Added FirestoreService
+
+  ShoppingListService({required FirestoreService firestoreService})
+      : _firestoreService = firestoreService,
+        _firestore = FirebaseFirestore.instance,
+        _auth = FirebaseAuth.instance,
+        _openFoodFactsService = OpenFoodFactsService(),
+        _uuid = const Uuid();
 
   // Helper to get a reference to the collections
   CollectionReference get _shoppingLists => _firestore.collection('shoppingLists');
@@ -83,6 +92,54 @@ class ShoppingListService {
       await listRef.update({
         'items': FieldValue.arrayUnion([itemWithId.toMap()])
       });
+    }
+  }
+
+  // Add or Update an item in a shopping list
+  Future<void> addOrUpdateItem({
+    required String householdId,
+    required String itemName,
+    required int quantity,
+    String? category,
+    String? netWeight,
+    double? unitPrice,
+  }) async {
+    final String? activeListId = await _firestoreService.getActiveShoppingListId(householdId);
+    if (activeListId == null) {
+      // Handle case where no active shopping list is found, maybe create a default one
+      // For now, we'll throw an error or return
+      throw Exception('No active shopping list found for household $householdId');
+    }
+
+    ShoppingListModel? activeList = await getShoppingListById(activeListId);
+    if (activeList == null) {
+      throw Exception('Active shopping list with ID $activeListId not found.');
+    }
+
+    // Check if item already exists in the list
+    final existingItemIndex = activeList.items.indexWhere(
+      (item) => item.name.toLowerCase() == itemName.toLowerCase(),
+    );
+
+    if (existingItemIndex != -1) {
+      // Update existing item
+      final existingItem = activeList.items[existingItemIndex];
+      final updatedItem = existingItem.copyWith(
+        quantity: existingItem.quantity + quantity,
+      );
+      await updateShoppingListItem(activeListId, updatedItem);
+    } else {
+      // Add new item
+      final newItem = ShoppingListItemModel(
+        id: _uuid.v4(),
+        name: itemName,
+        quantity: quantity,
+        category: category,
+        netWeight: netWeight,
+        unitPrice: unitPrice ?? 0.0,
+        isPurchased: false,
+      );
+      await addShoppingListItem(activeListId, newItem);
     }
   }
 

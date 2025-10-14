@@ -45,7 +45,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
   final GlobalKey _captureKey = GlobalKey();
 
   String? _householdId;
-  final ShoppingListService _shoppingListService = ShoppingListService();
+  late final ShoppingListService _shoppingListService;
   final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService();
 
   // Guest limit
@@ -141,6 +141,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
   void initState() {
     super.initState();
     _firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    _shoppingListService = ShoppingListService(firestoreService: _firestoreService);
     _householdId = _firestoreService.selectedHouseholdId;
     _setupStreams();
   }

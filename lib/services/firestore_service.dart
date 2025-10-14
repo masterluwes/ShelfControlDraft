@@ -9,6 +9,7 @@ import 'package:shelf_control/models/shopping_list_model.dart'; // Import Shoppi
 import 'package:shelf_control/models/shopping_list_item_model.dart'; // Import ShoppingListItemModel
 import 'package:shelf_control/models/shopping_history_item_model.dart'; // Import ShoppingHistoryItemModel
 import 'package:shelf_control/models/app_notification_model.dart'; // Import AppNotificationModel
+import 'package:shelf_control/models/household_task_model.dart'; // Import HouseholdTaskModel
 import 'package:shelf_control/services/open_food_facts_service.dart'; // Import OpenFoodFactsService
 import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
@@ -518,6 +519,15 @@ class FirestoreService extends ChangeNotifier {
       }
       return null;
     });
+  }
+
+  // Get the active shopping list ID for a household
+  Future<String?> getActiveShoppingListId(String householdId) async {
+    final householdDoc = await _db.collection('households').doc(householdId).get();
+    if (householdDoc.exists && householdDoc.data() != null) {
+      return householdDoc.data()!['activeShoppingListId'] as String?;
+    }
+    return null;
   }
 
   // Stream for suggestions (adapting from ShoppingListService)
@@ -1340,5 +1350,39 @@ class FirestoreService extends ChangeNotifier {
       'fileUrl': fileUrl,
       'createdAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  // --- Household Task Methods ---
+
+  // Create a new household task
+  Future<void> createHouseholdTask(HouseholdTask task) async {
+    await _db.collection('householdTasks').add(task.toFirestore());
+  }
+
+  // Get a stream of household tasks assigned to a specific member
+  Stream<List<HouseholdTask>> streamHouseholdTasksForMember(String householdId, String assignedToUserId) {
+    return _db
+        .collection('householdTasks')
+        .where('householdId', isEqualTo: householdId)
+        .where('assignedToUserId', isEqualTo: assignedToUserId)
+        .where('status', isEqualTo: 'pending') // Only show pending tasks
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => HouseholdTask.fromFirestore(doc))
+            .toList());
+  }
+
+  // Update the status of a household task
+  Future<void> updateHouseholdTaskStatus(String taskId, String newStatus) async {
+    await _db.collection('householdTasks').doc(taskId).update({
+      'status': newStatus,
+      'completedAt': newStatus == 'done' ? FieldValue.serverTimestamp() : null,
+    });
+  }
+
+  // Delete a household task
+  Future<void> deleteHouseholdTask(String taskId) async {
+    await _db.collection('householdTasks').doc(taskId).delete();
   }
 }
