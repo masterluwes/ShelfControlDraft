@@ -24,8 +24,7 @@ class FirestoreService extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance; // Instantiate Firebase Storage
   final Uuid _uuid = const Uuid(); // Instantiate Uuid
-  
-  
+  final ValueNotifier<String?> householdIdNotifier = ValueNotifier<String?>(null);
 
   FirebaseFirestore get db => _db; // Public getter for _db
 
@@ -136,6 +135,8 @@ class FirestoreService extends ChangeNotifier {
   // Load selected household ID from SharedPreferences
   Future<String?> _loadSelectedHouseholdId() async {
     final prefs = await SharedPreferences.getInstance();
+    _selectedHouseholdId = /* loaded value */
+  householdIdNotifier.value = _selectedHouseholdId;
     return prefs.getString('selectedHouseholdId');
   }
 

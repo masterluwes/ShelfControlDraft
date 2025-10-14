@@ -1097,12 +1097,21 @@ class _TipsPageState extends State<TipsPage> {
             },
           ),
         ),
-        Expanded(child: _buildBodyContent()),
+        Expanded(
+          child: ValueListenableBuilder<String?>(
+            valueListenable: FirestoreService().householdIdNotifier,
+            builder: (context, hhId, _) {
+              return _buildBodyContent(
+                  hhId: hhId); // pass the current household id down
+            },
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildBodyContent() {
+  Widget _buildBodyContent({String? hhId}) {
+    // 1) General tab stays as-is
     if (selectedCategory == 'General') {
       final generalTips = allTips['General']?['General'] ?? [];
       if (generalTips.isEmpty) {
@@ -1148,8 +1157,7 @@ class _TipsPageState extends State<TipsPage> {
       );
     }
 
-    // ===== DYNAMIC LIST FROM FIRESTORE (UI unchanged) =====
-
+    // 2) Dynamic list from Firestore for all other categories
     if (_bootstrapping) {
       return const SizedBox(
         height: 80,
@@ -1157,30 +1165,34 @@ class _TipsPageState extends State<TipsPage> {
       );
     }
 
-    final hhId = _hhId ?? FirestoreService().selectedHouseholdId;
-    if (hhId == null || hhId.isEmpty) {
+    // NOTE: prioritize the hhId passed from the ValueListenableBuilder
+    final String? effectiveHhId =
+        hhId ?? _hhId ?? FirestoreService().selectedHouseholdId;
+
+    if (effectiveHhId == null || effectiveHhId.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Text(
             'Select or create a household to view pantry items.',
-            style: TextStyle(color: Colors.black54),
+            style: const TextStyle(color: Colors.black54),
             textAlign: TextAlign.center,
           ),
         ),
       );
     }
 
-// ROOT collection + strict household filter (matches the rules)
+    // Strict household-scoped query (matches your rules)
     final query = FirebaseFirestore.instance
         .collection('pantryItems')
-        .where('householdId', isEqualTo: hhId);
+        .where('householdId', isEqualTo: effectiveHhId);
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      key: ValueKey(
+          'tips-$effectiveHhId-$selectedCategory'), // rebuilds on household or category change
       stream: query.snapshots(),
       builder: (context, snap) {
         if (snap.hasError) {
-          // <-- Show the real error so we don’t silently fall back to “No items”
           return Padding(
             padding: const EdgeInsets.all(20),
             child: Text('Error loading pantry: ${snap.error}',
@@ -1195,9 +1207,9 @@ class _TipsPageState extends State<TipsPage> {
         }
 
         final docs = snap.data!.docs;
-        print('TIPS ROOT DOCS (after rules): ${docs.length} for hhId=$hhId');
+        // print('TIPS ROOT DOCS (after rules): ${docs.length} for hhId=$effectiveHhId');
 
-        // ---- parsing helpers (same as before) ----
+        // ---------- helpers ----------
         String pickString(Map<String, dynamic> m, List<String> keys,
             {String orElse = ''}) {
           for (final k in keys) {
@@ -1234,9 +1246,10 @@ class _TipsPageState extends State<TipsPage> {
             final v = m[k];
             if (v == null) continue;
             if (v is Timestamp) return v.toDate();
-            if (v is int)
+            if (v is int) {
               return DateTime.fromMillisecondsSinceEpoch(
                   v > 2000000000 ? v : v * 1000);
+            }
             if (v is String) {
               try {
                 return DateTime.parse(v);
@@ -1249,7 +1262,8 @@ class _TipsPageState extends State<TipsPage> {
         String normalizeCategory(String raw) {
           final s = raw.trim().toLowerCase();
           if (s.isEmpty) return 'Uncategorized';
-          if (s.contains('dairy')) return 'Dairy';
+          if (s.contains('dairy') || s == 'milk' || s.contains('creamer'))
+            return 'Dairy';
           if (s.contains('beverage') || s == 'drinks') return 'Beverages';
           if (s.contains('canned')) return 'Canned goods';
           if (s.contains('condiment')) return 'Condiments';
@@ -1296,11 +1310,12 @@ class _TipsPageState extends State<TipsPage> {
           );
         }).toList();
 
-        // Show only selected category; if none match, show ALL (so page isn’t empty)
+        // Filter by the selected chip using the normalized category
         final byChip =
             parsed.where((p) => p.category == selectedCategory).toList();
         final listToShow =
             byChip.isEmpty && parsed.isNotEmpty ? parsed : byChip;
+
         if (listToShow.isEmpty) return _buildEmptyState();
 
         return ListView.separated(
