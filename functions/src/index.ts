@@ -1,8 +1,11 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { onDocumentDeleted } from "firebase-functions/v2/firestore"; // Updated for removed functions
 import * as admin from "firebase-admin";
+import { defineSecret } from "firebase-functions/params";
 
 admin.initializeApp();
+
+const SPOONACULAR_KEY = defineSecret("SPOONACULAR_KEY");
 
 const db = admin.firestore();
 const messaging = admin.messaging();
@@ -87,7 +90,7 @@ async function addAppNotificationToFirestore(
 
 // Extracted logic for the daily pantry check
 async function runPantryCheckLogic(targetUserId?: string) {
-    console.log(`Executing pantry check logic for user: ${targetUserId || 'all users'}`);
+    console.log(`Executing pantry check logic for user: ${targetUserId || "all users"}`);
     let usersSnapshot;
     if (targetUserId) {
         const userDoc = await db.collection("users").doc(targetUserId).get();
@@ -166,7 +169,7 @@ async function runPantryCheckLogic(targetUserId?: string) {
 
 // Extracted logic for processing and sending notifications
 async function processAndSendNotifications(targetUserId?: string) {
-    console.log(`Executing notification sending logic for user: ${targetUserId || 'all users'}`);
+    console.log(`Executing notification sending logic for user: ${targetUserId || "all users"}`);
     let promptsQuery = db.collection("notificationPrompts").where("status", "==", "pending_action");
 
     if (targetUserId) {
@@ -222,8 +225,8 @@ async function processAndSendNotifications(targetUserId?: string) {
             const household = householdDoc.data() as Household | undefined;
             const householdName = household?.name || "Your Pantry";
 
-            let expiredItems: string[] = [];
-            let atRiskItems: string[] = [];
+            const expiredItems: string[] = [];
+            const atRiskItems: string[] = [];
 
             for (const item of householdPrompts) {
                 if (item.type === "expired") {
@@ -361,10 +364,10 @@ export const onPantryItemDelete = onDocumentDeleted("pantryItems/{itemId}", asyn
 // Temporary HTTP-triggered function for testing notifications
 export const testSendReminderNotifications = onRequest(async (req, res) => {
     const targetUserId = req.query.userId as string | undefined;
-    console.log(`Executing testSendReminderNotifications via HTTP request for user: ${targetUserId || 'all users'}`);
+    console.log(`Executing testSendReminderNotifications via HTTP request for user: ${targetUserId || "all users"}`);
     try {
         await processAndSendNotifications(targetUserId);
-        res.status(200).send(`Test notifications sent successfully for user: ${targetUserId || 'all users'}!`);
+        res.status(200).send(`Test notifications sent successfully for user: ${targetUserId || "all users"}!`);
     } catch (error) {
         console.error("Error in testSendReminderNotifications:", error);
         res.status(500).send(`Error sending test notifications: ${error}`);
@@ -374,12 +377,68 @@ export const testSendReminderNotifications = onRequest(async (req, res) => {
 // Temporary HTTP-triggered function to manually run dailyPantryCheck
 export const testDailyPantryCheck = onRequest(async (req, res) => {
     const targetUserId = req.query.userId as string | undefined;
-    console.log(`Executing testDailyPantryCheck via HTTP request for user: ${targetUserId || 'all users'}`);
+    console.log(`Executing testDailyPantryCheck via HTTP request for user: ${targetUserId || "all users"}`);
     try {
         await runPantryCheckLogic(targetUserId);
-        res.status(200).send(`Test dailyPantryCheck executed successfully for user: ${targetUserId || 'all users'}!`);
+        res.status(200).send(`Test dailyPantryCheck executed successfully for user: ${targetUserId || "all users"}!`);
     } catch (error) {
         console.error("Error in testDailyPantryCheck:", error);
         res.status(500).send(`Error executing testDailyPantryCheck: ${error}`);
     }
 });
+
+// Find recipes by ingredients (pantry → candidates)
+export const spoonacularFindByIngredients = onRequest(
+  { region: "asia-southeast1", secrets: [SPOONACULAR_KEY] },
+  async (req, res) => {
+    try {
+      const { ingredients, number = 24, ranking = 1 } = req.body || {};
+      if (!Array.isArray(ingredients) || ingredients.length === 0) {
+        res.status(400).json({ error: "ingredients[] required" });
+        return;
+      }
+
+      // Node 18+ has built-in fetch; no node-fetch needed
+      const apiKey = SPOONACULAR_KEY.value();
+      const url = new URL("https://api.spoonacular.com/recipes/findByIngredients");
+      url.searchParams.set("apiKey", apiKey);
+      url.searchParams.set("ingredients", ingredients.join(","));
+      url.searchParams.set("number", String(number));
+      url.searchParams.set("ranking", String(ranking)); // 1 = maximize used ingredients
+
+      const r = await fetch(url.toString());
+      const data = await r.json();
+      res.json(data);
+    } catch (e: any) {
+      console.error(e);
+      res.status(500).json({ error: e.message || "spoonacular proxy error" });
+    }
+  }
+);
+
+// Hydrate a recipe with details/nutrition
+export const spoonacularGetRecipeInfo = onRequest(
+  { region: "asia-southeast1", secrets: [SPOONACULAR_KEY] },
+  async (req, res) => {
+    try {
+      const { id } = req.body || {};
+      if (!id) {
+        res.status(400).json({ error: "id required" });
+        return;
+      }
+
+      const apiKey = SPOONACULAR_KEY.value();
+      const url = new URL(`https://api.spoonacular.com/recipes/${id}/information`);
+      url.searchParams.set("apiKey", apiKey);
+      url.searchParams.set("includeNutrition", "true");
+
+      const r = await fetch(url.toString());
+      const data = await r.json();
+      res.json(data);
+    } catch (e: any) {
+      console.error(e);
+      res.status(500).json({ error: e.message || "spoonacular info error" });
+    }
+  }
+);
+

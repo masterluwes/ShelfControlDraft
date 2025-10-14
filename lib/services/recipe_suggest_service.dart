@@ -7,6 +7,51 @@ import '../models/user_prefs_model.dart';
 import '../models/suggested_recipe.dart';
 import 'meal_planner.dart'; // Import MealPlanner
 import 'normalization.dart';
+import 'spoonacular_service.dart';
+
+// Local copy just for this file (names are local and won't clash with other files)
+String _toGenericIngredientLocal(String raw) {
+  var s = raw.toLowerCase().trim();
+  for (final sep in ['|', '–', '-', '—']) {
+    if (s.contains(sep)) s = s.split(sep)[0].trim();
+  }
+  s = s
+      .replaceAll(
+          RegExp(r'\b\d+(\.\d+)?\s*(g|kg|ml|l|pcs|pc|pack|packs)\b'), '')
+      .trim();
+  s = s
+      .replaceAll(
+          RegExp(
+              r'\b(adult|plus|amazing|premium|original|classic|loaf|drink)\b'),
+          '')
+      .trim();
+  s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  const canon = {
+    'bear brand': 'milk powder',
+    'powdered milk': 'milk powder',
+    'powdered milk drink': 'milk powder',
+    'banana catsup': 'banana ketchup',
+    'catsup': 'ketchup',
+    'butterscotch': 'bread',
+    'butterscotch loaf': 'bread',
+    'gardenia': 'bread',
+    'loaf': 'bread',
+  };
+  if (canon.containsKey(s)) return canon[s]!;
+  if (s.contains('catsup')) return 'ketchup';
+  if (s.contains('ketchup')) return 'banana ketchup';
+  if (s.contains('milk')) return 'milk powder';
+  if (s.contains('bread')) return 'bread';
+  return s;
+}
+
+// Accepts nullable name and always returns a non-null String
+String _toSpoonNameLocal(String? name) {
+  final base = (name ?? '').trim().toLowerCase();
+  if (base.isEmpty) return '';
+  return _toGenericIngredientLocal(base);
+}
 
 // [NEAR_EXPIRY_LOCAL_HELPER] begin
 bool _isNearExpiryLocal(DateTime? expiry, {int days = 5}) {
@@ -18,7 +63,8 @@ bool _isNearExpiryLocal(DateTime? expiry, {int days = 5}) {
 // [NEAR_EXPIRY_LOCAL_HELPER] end
 
 class RecipeSuggestService {
-  RecipeSuggestService(); // No SpoonacularClient needed
+  RecipeSuggestService();
+  // No SpoonacularClient needed
 
   Future<List<SuggestedRecipe>> suggest({
     required List<PantryItemModel> pantry,
@@ -39,6 +85,11 @@ class RecipeSuggestService {
       );
     }).toList();
 
+    // Cloud Functions base URL (from deploy)
+    const String _functionsBase =
+        "https://asia-southeast1-shelfcontrol-8f5ab.cloudfunctions.net";
+    final spoonClient = SpoonacularService(baseUrl: _functionsBase);
+
     // [CALL_GENERATE_FIX] begin
     final localSuggestions = MealPlanner.generate(
         pantry: mealPlannerPantry,
@@ -47,7 +98,96 @@ class RecipeSuggestService {
         nearExpiryDays: nearExpiryDays,
         pantryOnly: true, // strict pantry-only instead of 'maxMissing'
         preferNearExpiry: true);
+    // optional, hybrid pass
 // [CALL_GENERATE_FIX] end
+    if (localSuggestions.isNotEmpty) {
+      final mapped =
+          localSuggestions.map(_mapLocalToSuggested).take(limit).toList();
+      return mapped;
+    }
+
+    // Spoonacular second pass (only if local is empty and client available)
+    // Spoonacular second pass (only if local is empty)
+    // Build normalized, generic ingredient names from pantry (null-safe)
+    final ingredients = pantry
+        .map((p) =>
+            _toSpoonNameLocal(p.name)) // p.name may be null; helper handles it
+        .where((s) => s.isNotEmpty)
+        .toSet()
+        .take(40)
+        .toList();
+
+    print("[spoon] sending ${ingredients.length} ingredients: $ingredients");
+
+    final found = await spoonClient.findByIngredients(
+      ingredients: ingredients,
+      number: 24,
+      ranking: 1, // maximize used ingredients
+    );
+
+    print("[spoon] found=${found.length}");
+
+    /// allow common “staples” to be missing
+    const stapleSet = {
+      'water',
+      'salt',
+      'pepper',
+      'black pepper',
+      'oil',
+      'cooking oil',
+      'olive oil',
+      'vegetable oil',
+      'canola oil'
+    };
+
+    final strict = found.where((m) {
+      final missed = (m['missedIngredients'] as List?) ?? const [];
+      for (final x in missed) {
+        final name = (x is Map && x['name'] != null)
+            ? x['name'].toString().toLowerCase()
+            : '';
+        if (name.isEmpty) return false;
+        if (!stapleSet.contains(name)) return false;
+      }
+      return true;
+    }).toList();
+
+    print("[spoon] strict=${strict.length}");
+
+    print("[spoon] strict=${strict.length}");
+
+    if (strict.isNotEmpty) {
+      // hydrate details
+      final hydrated = <Map<String, dynamic>>[];
+      for (final m in strict.take(limit * 2)) {
+        final id = m['id'] as int?;
+        if (id == null) continue;
+        try {
+          final info = await spoonClient.getRecipeInfo(id: id);
+          hydrated.add({'find': m, 'info': info});
+        } catch (_) {
+          // skip bad ids
+        }
+      }
+
+      final mapped = hydrated
+          .map((h) => _mapSpoonacularToSuggested(
+                h,
+                nearExpiryDays: nearExpiryDays,
+                pantry: pantry,
+              ))
+          .toList();
+
+      // sort: more near-expiry hits first, then shorter time
+      mapped.sort((a, b) {
+        final aExp = a.usesExpiring.length, bExp = b.usesExpiring.length;
+        if (aExp != bExp) return bExp.compareTo(aExp);
+        final at = a.timeMin ?? 9999, bt = b.timeMin ?? 9999;
+        return at.compareTo(bt);
+      });
+
+      if (mapped.isNotEmpty) return mapped.take(limit).toList();
+    }
 
     if (localSuggestions.isEmpty) {
       final regular = MealPlanner.generate(
@@ -109,6 +249,153 @@ class RecipeSuggestService {
 
   // Remove Spoonacular-specific _toSuggested method
   // SuggestedRecipe? _toSuggested(...) { ... }
+// Builds SuggestedRecipe from a { find, info } pair
+  SuggestedRecipe _mapSpoonacularToSuggested(
+    Map<String, dynamic> h, {
+    required int nearExpiryDays,
+    required List<PantryItemModel> pantry,
+  }) {
+    final find = h['find'] as Map<String, dynamic>;
+    final info = h['info'] as Map<String, dynamic>;
+
+    final title = (info['title'] ?? find['title'] ?? '').toString();
+    final image = (info['image'] ?? find['image'])?.toString();
+    final servings = (info['servings'] as num?)?.toInt();
+    final readyInMinutes = (info['readyInMinutes'] as num?)?.toInt();
+
+    // Ingredients from info.extendedIngredients if present; else from find.usedIngredients
+    final List ingredientsRaw = (info['extendedIngredients'] as List?) ??
+        (find['usedIngredients'] as List? ?? const []);
+
+    final ingredientLines = ingredientsRaw.map((e) {
+      final m = e as Map<String, dynamic>;
+      final name =
+          (m['name'] ?? m['originalName'] ?? m['aisle'] ?? '').toString();
+      final amount = (m['amount'] as num?)?.toDouble();
+      final unit = (m['unit'] ?? '').toString();
+      // Pantry-only pass means everything used should be in pantry
+      return IngredientLine(
+        name: name,
+        qty: amount,
+        unit: unit.isEmpty ? null : unit,
+        inPantry: true,
+      );
+    }).toList();
+
+    // Steps (if analyzedInstructions present)
+    final steps = <String>[];
+    final List instructions =
+        (info['analyzedInstructions'] as List?) ?? const [];
+    if (instructions.isNotEmpty) {
+      final first = instructions.first as Map<String, dynamic>;
+      final List st = (first['steps'] as List?) ?? const [];
+      for (final s in st) {
+        final sm = s as Map<String, dynamic>;
+        steps.add((sm['step'] ?? '').toString());
+      }
+    }
+
+    // Estimate kcal if available
+    int? kcal;
+    final nutrition = info['nutrition'];
+    if (nutrition is Map && nutrition['nutrients'] is List) {
+      final nutrients = nutrition['nutrients'] as List;
+      final cal = nutrients.cast<Map<String, dynamic>>().firstWhere(
+            (n) => (n['name'] as String?)?.toLowerCase() == 'calories',
+            orElse: () => const {},
+          );
+      final val = cal['amount'];
+      if (val is num) kcal = val.toInt();
+    }
+
+    // Compute “usesExpiring” from pantry expiry windows
+    final pantryByName = {
+      for (final p in pantry) normalizeName(p.name): p,
+    };
+    final usesExpiring = <String>[];
+    for (final ing in ingredientLines) {
+      final key = normalizeName(ing.name);
+      final p = pantryByName[key];
+      if (p != null) {
+        final exp = p.expirationDate;
+        if (exp != null) {
+          final now = DateTime.now();
+          if (!exp.isBefore(now) &&
+              exp.difference(now).inDays <= nearExpiryDays) {
+            usesExpiring.add(ing.name);
+          }
+        }
+      }
+    }
+
+    return SuggestedRecipe(
+      id: title.isEmpty
+          ? 'spoon_${find['id']}'
+          : title.replaceAll(' ', '_').toLowerCase(),
+      title: title,
+      imageUrl: image,
+      ingredients: ingredientLines,
+      steps: steps,
+      servings: servings,
+      timeMin: readyInMinutes,
+      kcalPerServing: kcal,
+      source: 'spoonacular',
+      usesExpiring: usesExpiring,
+      missingIngredients: const [], // strict pantry-only in this pass
+      score: 1.0,
+    );
+  }
+
+  SuggestedRecipe _mapLocalToSuggested(RecipeSuggestion s) {
+    final ingr = (s.ingredients as List).map((e) {
+      final m = e as Map<String, dynamic>;
+      final name = (m['name'] ?? '').toString();
+
+      final qtyRaw = m['qty'];
+      double? qty;
+      if (qtyRaw is num) qty = qtyRaw.toDouble();
+      if (qty == null && qtyRaw is String) {
+        qty = double.tryParse(qtyRaw.replaceAll(RegExp(r'[^0-9.]'), ''));
+      }
+
+      final unit = (m['unit'] ?? '').toString();
+
+      return IngredientLine(
+        name: name,
+        qty: qty,
+        unit: unit.isEmpty ? null : unit,
+        inPantry: true,
+      );
+    }).toList();
+
+    final steps = (s.directions is List)
+        ? (s.directions as List).map((x) => x.toString()).toList()
+        : <String>[];
+
+    final servings = int.tryParse(
+        (s.servingSize ?? '').toString().replaceAll(RegExp(r'[^0-9]'), ''));
+    final timeMin = int.tryParse(
+        (s.time ?? '').toString().replaceAll(RegExp(r'[^0-9]'), ''));
+    final kcal = int.tryParse(
+        (s.calories ?? '').toString().replaceAll(RegExp(r'[^0-9]'), ''));
+
+    final id = s.name.replaceAll(' ', '_').toLowerCase();
+
+    return SuggestedRecipe(
+      id: id,
+      title: s.name,
+      imageUrl: s.imageUrl,
+      ingredients: ingr,
+      steps: steps,
+      servings: servings,
+      timeMin: timeMin,
+      kcalPerServing: kcal,
+      source: 'local',
+      usesExpiring: const [],
+      missingIngredients: const [],
+      score: 1.0,
+    );
+  }
 
   // Keep _violatesPrefs and _score if they are generic enough or adapt them
   bool _violatesPrefs(List<IngredientLine> ingr, UserPrefs prefs) {
