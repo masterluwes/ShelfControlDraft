@@ -524,3 +524,31 @@ prefs: ${JSON.stringify(prefs || {})}`
     }
   }
 );
+// (SPOONACULAR_KEY already defined)
+
+export const spoonacularSearchImage = onRequest(
+  { region: "asia-southeast1", secrets: [SPOONACULAR_KEY] },
+  async (req, res) => {
+    try {
+      const { query } = req.body || {};
+      if (!query || !query.trim()) {
+        res.status(400).json({ error: "query required" });
+        return;
+      }
+      const apiKey = SPOONACULAR_KEY.value();
+      const url = new URL("https://api.spoonacular.com/recipes/complexSearch");
+      url.searchParams.set("apiKey", apiKey);
+      url.searchParams.set("query", query);
+      url.searchParams.set("number", "1");
+      url.searchParams.set("addRecipeInformation", "false");
+      url.searchParams.set("instructionsRequired", "false");
+
+      const r = await fetch(url.toString());
+      const data = await r.json();
+      res.json(data);
+    } catch (e: any) {
+      console.error(e);
+      res.status(500).json({ error: e.message || "spoonacularSearchImage error" });
+    }
+  }
+);

@@ -67,6 +67,42 @@ class RecipeSuggestService {
   RecipeSuggestService();
   // No SpoonacularClient needed
 
+  Future<List<SuggestedRecipe>> _fillImagesIfMissing(
+    List<SuggestedRecipe> list,
+    SpoonacularService spoon,
+  ) async {
+    final out = <SuggestedRecipe>[];
+    for (final r in list) {
+      if (r.imageUrl != null && r.imageUrl!.isNotEmpty) {
+        out.add(r);
+        continue;
+      }
+
+      // try complexSearch by title
+      String? img = await spoon.searchImage(r.title);
+
+      // final open fallback if still none
+      img ??=
+          'https://source.unsplash.com/600x400/?${Uri.encodeComponent(r.title)}';
+
+      out.add(SuggestedRecipe(
+        id: r.id,
+        title: r.title,
+        imageUrl: img,
+        ingredients: r.ingredients,
+        steps: r.steps,
+        servings: r.servings,
+        timeMin: r.timeMin,
+        kcalPerServing: r.kcalPerServing,
+        source: r.source,
+        usesExpiring: r.usesExpiring,
+        missingIngredients: r.missingIngredients,
+        score: r.score,
+      ));
+    }
+    return out;
+  }
+
   Future<List<SuggestedRecipe>> suggest({
     required List<PantryItemModel> pantry,
     required UserPrefs prefs,
@@ -109,7 +145,8 @@ class RecipeSuggestService {
     if (localSuggestions.isNotEmpty) {
       final mapped =
           localSuggestions.map(_mapLocalToSuggested).take(limit).toList();
-      return mapped;
+      final withImages = await _fillImagesIfMissing(mapped, spoonClient);
+      return withImages;
     }
 
     // Spoonacular second pass (only if local is empty and client available)
@@ -192,7 +229,8 @@ class RecipeSuggestService {
 
       if (mapped.isNotEmpty) {
         final sliced = mapped.take(limit).toList();
-        final enhanced = await aiClient.enhance(sliced, locale: 'en-PH');
+        final withImages = await _fillImagesIfMissing(sliced, spoonClient);
+        final enhanced = await aiClient.enhance(withImages, locale: 'en-PH');
         return enhanced;
       }
     }
@@ -288,7 +326,11 @@ class RecipeSuggestService {
     final info = h['info'] as Map<String, dynamic>;
 
     final title = (info['title'] ?? find['title'] ?? '').toString();
-    final image = (info['image'] ?? find['image'])?.toString();
+    String? image = (info['image'] ?? find['image'])?.toString();
+    final rid = (find['id'] ?? info['id']) as int?;
+    if ((image == null || image.isEmpty) && rid != null) {
+      image = 'https://img.spoonacular.com/recipes/$rid-480x360.jpg';
+    }
     final servings = (info['servings'] as num?)?.toInt();
     final readyInMinutes = (info['readyInMinutes'] as num?)?.toInt();
 
