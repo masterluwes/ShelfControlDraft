@@ -1,6 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shelf_control/services/weather_service.dart';
 import 'package:shelf_control/services/tips_rules.dart';
+import 'package:shelf_control/models/pantry_item_model.dart';
+import 'package:shelf_control/services/firestore_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 
 // --- NEW DATA MODEL ---
 // A placeholder class to represent a full pantry item's data.
@@ -342,13 +347,18 @@ class TipDetailPage extends StatelessWidget {
         backgroundColor: const Color(0xFF2E7D32),
         elevation: 0,
         // The title in the app bar is optional as it's shown in the body
-        title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+        title: Text(title,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SingleChildScrollView(
         child: Padding(
           // Add enough padding at the bottom to ensure content isn't hidden by the footer image
-          padding: EdgeInsets.fromLTRB(24, 24, 24, 200 + MediaQuery.of(context).padding.bottom),
+          padding: EdgeInsets.fromLTRB(
+              24, 24, 24, 200 + MediaQuery.of(context).padding.bottom),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -389,7 +399,6 @@ class TipDetailPage extends StatelessWidget {
     );
   }
 }
-
 
 // --- Item Tips Detail Page (WITH FOOTER) ---
 
@@ -461,13 +470,14 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
   }
   // -----------
 
-
   @override
   Widget build(BuildContext context) {
     final weatherLevel = alert?.level ?? WeatherLevel.green;
-    
-    final allDynamicTips = TipsRules.adviceFor(item.category, item.name, weatherLevel);
-    final currentSuggestion = allDynamicTips.isNotEmpty ? allDynamicTips.first : null;
+
+    final allDynamicTips =
+        TipsRules.adviceFor(item.category, item.name, weatherLevel);
+    final currentSuggestion =
+        allDynamicTips.isNotEmpty ? allDynamicTips.first : null;
 
     String getExpirationText(int days) {
       if (days < 0) return 'Expired ${days.abs()} days ago';
@@ -503,7 +513,8 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
                   onTap: () => Navigator.pop(context),
                   child: const Padding(
                     padding: EdgeInsets.all(8.0),
-                    child: Icon(Icons.arrow_back, color: Colors.white, size: 24),
+                    child:
+                        Icon(Icons.arrow_back, color: Colors.white, size: 24),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -518,7 +529,6 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
               ],
             ),
           ),
-
           Expanded(
             child: Container(
               decoration: const BoxDecoration(
@@ -577,7 +587,8 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
                                           horizontal: 12, vertical: 6),
                                       decoration: BoxDecoration(
                                         color: expColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(999),
+                                        borderRadius:
+                                            BorderRadius.circular(999),
                                         border: Border.all(
                                             color: expColor.withOpacity(0.3)),
                                       ),
@@ -621,7 +632,9 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
                                 Column(
                                   children: [
                                     const Text('Quantity',
-                                        style: TextStyle(fontSize: 12, color: Colors.black54)),
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.black54)),
                                     Text(item.quantity.toStringAsFixed(0),
                                         style: const TextStyle(
                                             fontSize: 16,
@@ -632,7 +645,9 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
                                 Column(
                                   children: [
                                     const Text('Item Price',
-                                        style: TextStyle(fontSize: 12, color: Colors.black54)),
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.black54)),
                                     Text('₱ ${item.price.toStringAsFixed(2)}',
                                         style: const TextStyle(
                                             fontSize: 16,
@@ -643,7 +658,9 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
                                 Column(
                                   children: [
                                     const Text('Net weight',
-                                        style: TextStyle(fontSize: 12, color: Colors.black54)),
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.black54)),
                                     Text(
                                         '${item.netWeight.toStringAsFixed(1)} ${item.weightUnit}',
                                         style: const TextStyle(
@@ -686,7 +703,8 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
                       context,
                       item: item,
                       title: 'Food Preservation Tips',
-                      subtitle: 'How to extend freshness & store items properly?',
+                      subtitle:
+                          'How to extend freshness & store items properly?',
                       icon: Icons.recycling,
                     ),
                     _buildSuggestionCard(
@@ -815,11 +833,61 @@ class _TipsPageState extends State<TipsPage> {
   WeatherAlert? _alert;
   bool _loadingWeather = true;
   String? _error;
+  late final String _ownerId;
+  String? _hhId; // runtime-selected household id
+  bool _initializingHousehold = true;
+  bool _bootstrapping = true;
 
   @override
   void initState() {
     super.initState();
-    _loadWeather();
+    _bootstrap(); // resolve auth + household, then load weather
+  }
+
+  Future<void> _bootstrap() async {
+    // Ensure we are authenticated (anon is fine in dev)
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser == null) {
+      await auth.signInAnonymously();
+    }
+
+    // Try FirestoreService’s stored household first
+    final svc = FirestoreService();
+    String? hhId = svc.selectedHouseholdId;
+
+    // If none stored, pick the first household where this user is a member
+    if (hhId == null || hhId.isEmpty) {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final snap = await FirebaseFirestore.instance
+          .collection('households')
+          .where('members', arrayContains: uid)
+          .limit(1)
+          .get();
+
+      if (snap.docs.isNotEmpty) {
+        hhId = snap.docs.first.id;
+
+        // If your service has a setter, persist it (ignore if it doesn’t)
+        try {
+          svc.selectedHouseholdId = hhId;
+        } catch (_) {}
+      }
+    }
+
+    setState(() {
+      _hhId = hhId; // may still be null if user is in no household
+      _bootstrapping = false;
+    });
+
+    // Load your weather banner (your existing logic)
+    await _loadWeather();
+  }
+
+  Future<void> _ensureAuth() async {
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser == null) {
+      await auth.signInAnonymously();
+    }
   }
 
   Future<void> _loadWeather() async {
@@ -917,11 +985,36 @@ class _TipsPageState extends State<TipsPage> {
       weightUnit: 'kg',
       daysUntilExpiration: -1,
     ),
-    'Pork': PantryItem(name: 'Pork', category: 'Meat', daysUntilExpiration: 3, netWeight: 1.5, weightUnit: 'kg'),
-    'Beef': PantryItem(name: 'Beef', category: 'Meat', daysUntilExpiration: 4, netWeight: 0.8, weightUnit: 'kg'),
-    'Cheese': PantryItem(name: 'Cheese', category: 'Dairy', daysUntilExpiration: 15, netWeight: 0.3, weightUnit: 'kg'),
-    'Lettuce': PantryItem(name: 'Lettuce', category: 'Produce', daysUntilExpiration: 2, netWeight: 0.2, weightUnit: 'kg'),
-    'Rice': PantryItem(name: 'Rice', category: 'Grains', daysUntilExpiration: 730, netWeight: 5.0, weightUnit: 'kg'),
+    'Pork': PantryItem(
+        name: 'Pork',
+        category: 'Meat',
+        daysUntilExpiration: 3,
+        netWeight: 1.5,
+        weightUnit: 'kg'),
+    'Beef': PantryItem(
+        name: 'Beef',
+        category: 'Meat',
+        daysUntilExpiration: 4,
+        netWeight: 0.8,
+        weightUnit: 'kg'),
+    'Cheese': PantryItem(
+        name: 'Cheese',
+        category: 'Dairy',
+        daysUntilExpiration: 15,
+        netWeight: 0.3,
+        weightUnit: 'kg'),
+    'Lettuce': PantryItem(
+        name: 'Lettuce',
+        category: 'Produce',
+        daysUntilExpiration: 2,
+        netWeight: 0.2,
+        weightUnit: 'kg'),
+    'Rice': PantryItem(
+        name: 'Rice',
+        category: 'Grains',
+        daysUntilExpiration: 730,
+        netWeight: 5.0,
+        weightUnit: 'kg'),
   };
 
   final Map<String, List<String>> pantryItems = {
@@ -947,8 +1040,7 @@ class _TipsPageState extends State<TipsPage> {
 
   String selectedCategory = 'General';
 
-  final Map<String, Map<String, List<Map<String, dynamic>>>> allTips = {
-  };
+  final Map<String, Map<String, List<Map<String, dynamic>>>> allTips = {};
 
   @override
   Widget build(BuildContext context) {
@@ -966,7 +1058,6 @@ class _TipsPageState extends State<TipsPage> {
             ),
           ),
         ),
-
         if (_loadingWeather)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -982,7 +1073,6 @@ class _TipsPageState extends State<TipsPage> {
           )
         else if (_alert != null)
           WeatherAlertBanner(alert: _alert!, initiallyExpanded: false),
-
         SizedBox(
           height: 90,
           child: ListView.builder(
@@ -1007,7 +1097,6 @@ class _TipsPageState extends State<TipsPage> {
             },
           ),
         ),
-
         Expanded(child: _buildBodyContent()),
       ],
     );
@@ -1029,7 +1118,8 @@ class _TipsPageState extends State<TipsPage> {
           _buildTipCard(
             context,
             title: 'How to store items properly',
-            subtitle: 'Keep your food fresh for longer! Find out where to store each item.',
+            subtitle:
+                'Keep your food fresh for longer! Find out where to store each item.',
             details:
                 'Proper storage prevents spoilage. Keep potatoes in a cool dark place, bread in a breadbox, leafy greens in the fridge with a damp paper towel.',
             icon: Icons.inventory_2_outlined,
@@ -1058,37 +1148,182 @@ class _TipsPageState extends State<TipsPage> {
       );
     }
 
-    final availableItems = pantryItems[selectedCategory] ?? [];
+    // ===== DYNAMIC LIST FROM FIRESTORE (UI unchanged) =====
 
-    if (availableItems.isEmpty) {
-      return _buildEmptyState();
+    if (_bootstrapping) {
+      return const SizedBox(
+        height: 80,
+        child: Center(child: CircularProgressIndicator()),
+      );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-      itemCount: availableItems.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (context, index) {
-        final itemName = availableItems[index];
-        final itemData = _dummyPantryData[itemName] ??
-            PantryItem(
-              name: itemName,
-              category: selectedCategory,
-            );
+    final hhId = _hhId ?? FirestoreService().selectedHouseholdId;
+    if (hhId == null || hhId.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            'Select or create a household to view pantry items.',
+            style: TextStyle(color: Colors.black54),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
 
-        return _buildItemNavigationCard(
-          context,
-          itemName: itemName,
-          icon: _getIconForItem(itemName),
-          onTap: () {
-            Navigator.push(
+// ROOT collection + strict household filter (matches the rules)
+    final query = FirebaseFirestore.instance
+        .collection('pantryItems')
+        .where('householdId', isEqualTo: hhId);
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: query.snapshots(),
+      builder: (context, snap) {
+        if (snap.hasError) {
+          // <-- Show the real error so we don’t silently fall back to “No items”
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text('Error loading pantry: ${snap.error}',
+                style: const TextStyle(color: Colors.red)),
+          );
+        }
+        if (snap.connectionState == ConnectionState.waiting || !snap.hasData) {
+          return const SizedBox(
+            height: 80,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final docs = snap.data!.docs;
+        print('TIPS ROOT DOCS (after rules): ${docs.length} for hhId=$hhId');
+
+        // ---- parsing helpers (same as before) ----
+        String pickString(Map<String, dynamic> m, List<String> keys,
+            {String orElse = ''}) {
+          for (final k in keys) {
+            final v = m[k];
+            if (v == null) continue;
+            if (v is String && v.trim().isNotEmpty) return v.trim();
+            if (v.toString().trim().isNotEmpty) return v.toString().trim();
+          }
+          return orElse;
+        }
+
+        num? toNum(dynamic v) {
+          if (v == null) return null;
+          if (v is num) return v;
+          if (v is String) {
+            final cleaned = v.trim().replaceAll(',', '');
+            final m = RegExp(r'[-+]?\d*\.?\d+').firstMatch(cleaned);
+            if (m != null) return num.tryParse(m.group(0)!);
+          }
+          return null;
+        }
+
+        num pickNum(Map<String, dynamic> m, List<String> keys,
+            {num orElse = 0}) {
+          for (final k in keys) {
+            final n = toNum(m[k]);
+            if (n != null) return n;
+          }
+          return orElse;
+        }
+
+        DateTime? pickDate(Map<String, dynamic> m, List<String> keys) {
+          for (final k in keys) {
+            final v = m[k];
+            if (v == null) continue;
+            if (v is Timestamp) return v.toDate();
+            if (v is int)
+              return DateTime.fromMillisecondsSinceEpoch(
+                  v > 2000000000 ? v : v * 1000);
+            if (v is String) {
+              try {
+                return DateTime.parse(v);
+              } catch (_) {}
+            }
+          }
+          return null;
+        }
+
+        String normalizeCategory(String raw) {
+          final s = raw.trim().toLowerCase();
+          if (s.isEmpty) return 'Uncategorized';
+          if (s.contains('dairy')) return 'Dairy';
+          if (s.contains('beverage') || s == 'drinks') return 'Beverages';
+          if (s.contains('canned')) return 'Canned goods';
+          if (s.contains('condiment')) return 'Condiments';
+          if (s.contains('snack')) return 'Snacks';
+          if (s.contains('produce') ||
+              s.contains('fruit') ||
+              s.contains('vegg')) return 'Produce';
+          if (s.contains('grain') ||
+              s.contains('rice') ||
+              s.contains('bread') ||
+              s.contains('bakery')) return 'Grains';
+          if (s.contains('dry')) return 'Dry goods';
+          if (s == 'other' || s.contains('other')) return 'Others';
+          return raw;
+        }
+        // ------------------------------------------
+
+        final parsed = docs.map((d) {
+          final data = d.data();
+          final name = pickString(data, ['name', 'itemName', 'title']);
+          final catRaw = pickString(data, ['category', 'cat', 'group'],
+              orElse: 'Uncategorized');
+          final category = normalizeCategory(catRaw);
+          final qty = pickNum(data, ['quantity', 'qty', 'count', 'amount']);
+          final price = pickNum(data, ['price', 'unitPrice', 'cost']);
+          final weight =
+              pickNum(data, ['netWeight', 'weight', 'size', 'amountWeight']);
+          final unit = pickString(
+              data, ['weightUnit', 'unit', 'uom', 'measure'],
+              orElse: 'pcs');
+          final expiry = pickDate(
+              data, ['expiryDate', 'bestBefore', 'expiration', 'expiry']);
+          final daysUntil =
+              expiry == null ? 0 : expiry.difference(DateTime.now()).inDays;
+
+          return PantryItem(
+            name: name.isEmpty ? '(Unnamed Item)' : name,
+            category: category,
+            quantity: qty.toDouble(),
+            price: price.toDouble(),
+            netWeight: weight.toDouble(),
+            weightUnit: unit,
+            daysUntilExpiration: daysUntil,
+          );
+        }).toList();
+
+        // Show only selected category; if none match, show ALL (so page isn’t empty)
+        final byChip =
+            parsed.where((p) => p.category == selectedCategory).toList();
+        final listToShow =
+            byChip.isEmpty && parsed.isNotEmpty ? parsed : byChip;
+        if (listToShow.isEmpty) return _buildEmptyState();
+
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+          itemCount: listToShow.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, i) {
+            final it = listToShow[i];
+            return _buildItemNavigationCard(
               context,
-              MaterialPageRoute(
-                builder: (_) => ItemTipsDetailPage(
-                  item: itemData,
-                  alert: _alert,
-                ),
-              ),
+              itemName: it.name,
+              icon: _getIconForItem(it.name),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ItemTipsDetailPage(
+                      item: it,
+                      alert: _alert,
+                    ),
+                  ),
+                );
+              },
             );
           },
         );
@@ -1252,8 +1487,8 @@ class _TipsPageState extends State<TipsPage> {
             context,
             MaterialPageRoute(
               builder: (_) => TipDetailPage(
-                title: title, 
-                subtitle: subtitle, 
+                title: title,
+                subtitle: subtitle,
                 details: details,
               ),
             ),

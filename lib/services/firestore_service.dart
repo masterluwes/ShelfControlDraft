@@ -25,6 +25,7 @@ class FirestoreService extends ChangeNotifier {
   final FirebaseStorage _storage = FirebaseStorage.instance; // Instantiate Firebase Storage
   final Uuid _uuid = const Uuid(); // Instantiate Uuid
   
+  
 
   FirebaseFirestore get db => _db; // Public getter for _db
 
