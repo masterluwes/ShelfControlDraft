@@ -8,6 +8,15 @@ import '../models/suggested_recipe.dart';
 import 'meal_planner.dart'; // Import MealPlanner
 import 'normalization.dart';
 
+// [NEAR_EXPIRY_LOCAL_HELPER] begin
+bool _isNearExpiryLocal(DateTime? expiry, {int days = 5}) {
+  if (expiry == null) return false;
+  final now = DateTime.now();
+  if (expiry.isBefore(now)) return false; // already expired
+  return expiry.difference(now).inDays <= days;
+}
+// [NEAR_EXPIRY_LOCAL_HELPER] end
+
 class RecipeSuggestService {
   RecipeSuggestService(); // No SpoonacularClient needed
 
@@ -18,31 +27,51 @@ class RecipeSuggestService {
     int nearExpiryDays = 5,
   }) async {
     // Convert PantryItemModel to MealPlanner's PantryItem
+    // Convert PantryItemModel to MealPlanner's PantryItem
     final mealPlannerPantry = pantry.map((model) {
       return PantryItem(
         name: normalizeName(model.name),
         qty: model.qty,
         expiryAt: model.expirationDate,
         consumed: model.status == 'Consumed',
-        nearExpiry: isNearExpiry(model.expirationDate, days: nearExpiryDays),
+        nearExpiry:
+            _isNearExpiryLocal(model.expirationDate, days: nearExpiryDays),
       );
     }).toList();
 
-    // Use local MealPlanner to generate suggestions
+    // [CALL_GENERATE_FIX] begin
     final localSuggestions = MealPlanner.generate(
-      pantry: mealPlannerPantry,
-      maxResults: limit,
-      nearExpiryDays: nearExpiryDays,
-    );
+        pantry: mealPlannerPantry,
+        prefs: prefs,
+        limit: limit, // use 'limit', not 'maxResults'
+        nearExpiryDays: nearExpiryDays,
+        pantryOnly: true, // strict pantry-only instead of 'maxMissing'
+        preferNearExpiry: true);
+// [CALL_GENERATE_FIX] end
+
+    if (localSuggestions.isEmpty) {
+      final regular = MealPlanner.generate(
+        pantry: mealPlannerPantry,
+        prefs: prefs,
+        limit: limit,
+        nearExpiryDays: nearExpiryDays,
+        pantryOnly: true,
+        preferNearExpiry: false,
+      );
+      // then map 'regular' instead of 'localSuggestions' below if non-empty
+    }
 
     // Convert MealPlanner's RecipeSuggestion to SuggestedRecipe
     final candidates = localSuggestions.map((s) {
-      final ingr = s.ingredients.map((i) => IngredientLine(
-        name: normalizeName(i['name'] ?? ''),
-        qty: double.tryParse(i['amount'] ?? '0'),
-        unit: '', // MealPlanner doesn't provide units in this format
-        inPantry: true, // Assuming all ingredients from local suggestions are in pantry
-      )).toList();
+      final ingr = s.ingredients
+          .map((i) => IngredientLine(
+                name: normalizeName(i['name'] ?? ''),
+                qty: double.tryParse(i['amount'] ?? '0'),
+                unit: '', // MealPlanner doesn't provide units in this format
+                inPantry:
+                    true, // Assuming all ingredients from local suggestions are in pantry
+              ))
+          .toList();
 
       return SuggestedRecipe(
         id: s.name.replaceAll(' ', '_').toLowerCase(), // Generate a simple ID
@@ -52,9 +81,11 @@ class RecipeSuggestService {
         steps: s.directions,
         servings: int.tryParse(s.servingSize),
         timeMin: int.tryParse(s.time.replaceAll(RegExp(r'[^0-9]'), '')),
-        kcalPerServing: int.tryParse(s.calories.replaceAll(RegExp(r'[^0-9]'), '')),
+        kcalPerServing:
+            int.tryParse(s.calories.replaceAll(RegExp(r'[^0-9]'), '')),
         source: 'local',
         usesExpiring: [], // Local planner doesn't explicitly track this yet
+        missingIngredients: const [],
         score: 1.0, // Default score for local recipes
       );
     }).toList();
@@ -113,7 +144,8 @@ class RecipeSuggestService {
     final total = ingr.length;
     final have = ingr.where((i) => i.inPantry).length;
     final coverage = total == 0 ? 0.0 : have / total;
-    final expiry = usedExpiring.length.clamp(0, 3) / 3.0; // up to 3 expiring items counted
+    final expiry =
+        usedExpiring.length.clamp(0, 3) / 3.0; // up to 3 expiring items counted
 
     // weight: expiry 0.55, coverage 0.30, bias 0.15
     return 0.55 * expiry + 0.30 * coverage + 0.15;
