@@ -490,7 +490,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
     );
   }
 
-  Widget textField(TextEditingController ctrl, {required String labelText, bool readOnly = false, VoidCallback? onTap, BorderSide? borderSide, TextInputType? keyboardType, List<TextInputFormatter>? inputFormatters, Widget? suffixIcon, String? errorText, void Function(String)? onChanged}) {
+  Widget textField(TextEditingController ctrl, {required String labelText, bool readOnly = false, VoidCallback? onTap, BorderSide? borderSide, TextInputType? keyboardType, List<TextInputFormatter>? inputFormatters, Widget? suffixIcon, String? errorText, void Function(String)? onChanged, TextCapitalization textCapitalization = TextCapitalization.none}) {
     return TextField(
       controller: ctrl,
       readOnly: readOnly,
@@ -498,6 +498,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
       onChanged: onChanged,
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
+      textCapitalization: textCapitalization,
       decoration: InputDecoration(
         labelText: labelText,
         suffixIcon: suffixIcon,
@@ -604,7 +605,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      textField(_nameCtrl, labelText: 'Item Name', borderSide: nameBorderSide, onChanged: (value) {
+                      textField(_nameCtrl, labelText: 'Item Name', borderSide: nameBorderSide, textCapitalization: TextCapitalization.sentences, onChanged: (value) {
                         if (_debounce?.isActive ?? false) _debounce!.cancel();
                         _debounce = Timer(const Duration(milliseconds: 500), () {
                           final suggestedCategory = _suggestCategoryFromName(value);

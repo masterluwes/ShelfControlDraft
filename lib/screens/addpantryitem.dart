@@ -641,12 +641,13 @@ class _AddPantryItemState extends State<AddPantryItem> {
       bool readOnly = false, int maxLines = 1, FocusNode? focusNode,
       VoidCallback? onTap, void Function(String)? onSubmitted, void Function(String)? onChanged, TextInputType keyboardType = TextInputType.text,
       List<TextInputFormatter>? inputFormatters, Widget? suffixIcon,
-      String? errorText, BorderSide? borderSide}) {
+      String? errorText, BorderSide? borderSide, TextCapitalization textCapitalization = TextCapitalization.none}) {
     final currentBorderSide = borderSide ?? BorderSide(color: inputBorderColor);
     return TextField(
       controller: ctrl, readOnly: readOnly, maxLines: maxLines, focusNode: focusNode,
       onTap: onTap, onSubmitted: onSubmitted, onChanged: onChanged,
       style: TextStyle(fontFamily: 'Roboto', fontSize: 16, color: inputTextColor),
+      textCapitalization: textCapitalization,
       decoration: InputDecoration(
         labelText: labelText, prefixText: prefixText, hintText: hintText,
         labelStyle: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w500, fontSize: 14, color: labelTextColor),
@@ -846,6 +847,7 @@ class _AddPantryItemState extends State<AddPantryItem> {
                           return textField(
                             fieldTextEditingController, labelText: 'Item Name',
                             focusNode: fieldFocusNode, borderSide: nameBorderSide,
+                            textCapitalization: TextCapitalization.sentences,
                           );
                         },
                         optionsViewBuilder: (context, onSelected, options) {

@@ -21,6 +21,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
   final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService();
   final Logger _logger = Logger(); // Initialize logger
   late MobileScannerController _scannerController; // Declare controller
+  Key _scannerKey = UniqueKey(); // Add a key for the scanner
   final DraggableScrollableController _sheetController = DraggableScrollableController();
   bool _isSheetExpanded = false;
 
@@ -57,7 +58,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     'Milk': 10,
     'Yogurt': 14,
     'Cheese': 60,
-    'Bread': 5,
+    'Bread': 7,
     'Pastries': 3,
     'Juice': 30,
     'Soda': 180,
@@ -79,14 +80,29 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
   };
 
   @override
+  @override
   void initState() {
     super.initState();
+    _initializeScanner(); // Call a new method to initialize
+    _sheetController.addListener(_onSheetScrolled);
+  }
+
+  void _initializeScanner() {
     _scannerController = MobileScannerController(
       detectionSpeed: DetectionSpeed.normal,
       facing: CameraFacing.back,
       torchEnabled: false,
     );
-    _sheetController.addListener(_onSheetScrolled);
+    _logger.d('Scanner initialized with key: $_scannerKey');
+  }
+
+  void _resetScanner() {
+    _scannerController.dispose(); // Dispose the old controller
+    setState(() {
+      _scannerKey = UniqueKey(); // Change the key to force rebuild
+      _initializeScanner(); // Initialize a new controller
+    });
+    _logger.d('Scanner reset with new key: $_scannerKey');
   }
 
   void _onSheetScrolled() {
@@ -103,9 +119,15 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         _isSheetExpanded = false;
       });
       // If the sheet is fully collapsed, restart the scanner
-      if (currentSize <= minSheetSize + 0.01) { // Check if it's at utor very near min size
-        _scannerController.start();
-        _logger.d('Scanner restarted due to sheet collapse.');
+      if (currentSize <= minSheetSize + 0.01) { // Check if it's at or very near min size
+        // Add a small delay before restarting to allow resources to be fully released
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            // Instead of just _scannerController.start(), reset the scanner
+            _resetScanner();
+            _logger.d('Scanner reset due to sheet collapse after delay.');
+          }
+        });
       }
     } else if (!wasExpanded && isNowExpanded) {
       // Sheet is expanding
@@ -138,11 +160,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       _isProcessingBarcode = true; // Set flag to true
     });
 
-    // Stop scanner immediately after a successful scan
-    _scannerController.stop();
-    _logger.d('Scanner stopped after barcode detection.');
-
     await _fetchProductDetails(barcodeScanRes, firestoreService);
+    // Scanner will be stopped by _onSheetScrolled when the sheet expands
 
     if (mounted) {
       setState(() {
@@ -169,6 +188,12 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
   }
 
   Future<void> _fetchProductDetails(String barcode, FirestoreService firestoreService) async {
+    // Stop the scanner immediately after a barcode is detected and before processing
+    _scannerController.stop();
+    _logger.d('Scanner stopped explicitly after barcode detection.');
+    // Add a small delay here to allow camera resources to be released
+    await Future.delayed(const Duration(milliseconds: 200));
+
     final product = await _openFoodFactsService.fetchProductByBarcode(barcode);
     if (!mounted) return;
 
@@ -177,9 +202,11 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         setState(() {
           _isLoading = false;
         });
+        // If no household ID, reset scanner as we can't proceed
+        _resetScanner();
+        _logger.d('Scanner reset due to missing household ID.');
         return;
       }
-
       // Extract category from product data
       String detectedCategory = 'Other'; // Default to 'Other'
       if (product['categories_tags'] != null && product['categories_tags'] is List && product['categories_tags'].isNotEmpty) {
@@ -243,21 +270,37 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       // Expand the sheet after a successful scan, ensuring it happens after the build
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_sheetController.isAttached) {
-          _sheetController.animateTo(
-            0.9,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-          );
-          _logger.d('DraggableScrollableSheet animated to 0.9 (expanded).');
+          try {
+            _sheetController.animateTo(
+              0.9,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+            _logger.d('DraggableScrollableSheet animated to 0.9 (expanded).');
+          } catch (e) {
+            _logger.e('Error animating DraggableScrollableSheet: $e');
+            // If animation fails, ensure scanner is reset if sheet is not expanded
+            if (!_isSheetExpanded) {
+              _resetScanner();
+              _logger.d('Scanner reset after sheet animation error.');
+            }
+          }
         } else {
           _logger.d('DraggableScrollableSheet not attached, cannot animate.');
+          // If not attached, scanner should remain stopped or be reset if needed
+          // In this case, it was already stopped at the beginning of the function.
+          // We should reset it if the sheet is not expanded.
+          if (!_isSheetExpanded) {
+            _resetScanner();
+            _logger.d('Scanner reset because sheet was not attached.');
+          }
         }
       });
 
     } else {
-      // If product not found, restart scanner
-      _scannerController.start();
-      _logger.d('Scanner restarted after product not found.');
+      // If product not found, reset scanner
+      _resetScanner();
+      _logger.d('Scanner reset after product not found.');
     }
   }
 
@@ -341,6 +384,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         children: [
           // Camera View
           MobileScanner(
+            key: _scannerKey, // Assign the key here
             controller: _scannerController,
             onDetect: (capture) {
               if (_isProcessingBarcode) return; // Prevent processing if already busy
@@ -421,10 +465,14 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                     // Custom Top Bar
                     GestureDetector(
                       onTap: () {
-                        if (_isSheetExpanded) {
-                          _sheetController.animateTo(0.12, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+                        if (_sheetController.isAttached) { // Add this check
+                          if (_isSheetExpanded) {
+                            _sheetController.animateTo(0.12, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+                          } else {
+                            _sheetController.animateTo(0.9, duration: const Duration(milliseconds: 300), curve: Curves.easeIn);
+                          }
                         } else {
-                          _sheetController.animateTo(0.9, duration: const Duration(milliseconds: 300), curve: Curves.easeIn);
+                          _logger.d('DraggableScrollableSheet not attached, cannot animate from GestureDetector.');
                         }
                       },
                       child: Container(
@@ -439,16 +487,23 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                             IconButton(
                               icon: Icon(_isSheetExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up, color: Colors.white),
                               onPressed: () {
-                                if (_isSheetExpanded) {
-                                  _sheetController.animateTo(0.12, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+                                if (_sheetController.isAttached) { // Add this check
+                                  if (_isSheetExpanded) {
+                                    _sheetController.animateTo(0.12, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+                                  } else {
+                                    _sheetController.animateTo(0.9, duration: const Duration(milliseconds: 300), curve: Curves.easeIn);
+                                  }
                                 } else {
-                                  _sheetController.animateTo(0.9, duration: const Duration(milliseconds: 300), curve: Curves.easeIn);
+                                  _logger.d('DraggableScrollableSheet not attached, cannot animate from IconButton.');
                                 }
                               },
                             ),
-                            Text(
-                              _scannedItems.isNotEmpty ? 'Item ${_currentItemIndex + 1} of ${_scannedItems.length}' : 'Scan an item',
-                              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                            Expanded(
+                              child: Text(
+                                _scannedItems.isNotEmpty ? 'Item ${_currentItemIndex + 1} of ${_scannedItems.length}' : 'Scan an item',
+                                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                textAlign: TextAlign.center,
+                              ),
                             ),
                             Row(
                               children: [
@@ -470,8 +525,16 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                       _updateControllersForItem(_currentItemIndex); // Populate controllers with new empty item
                                     });
 
-                                    _scannerController.start();
-                                    _sheetController.animateTo(0.12, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+                                    // Only reset scanner if sheet is collapsed
+                                    if (!_isSheetExpanded) {
+                                      _resetScanner();
+                                      _logger.d('Scanner reset after adding new item (sheet collapsed).');
+                                    }
+                                    if (_sheetController.isAttached) { // Add this check
+                                      _sheetController.animateTo(0.12, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+                                    } else {
+                                      _logger.d('DraggableScrollableSheet not attached, cannot animate after adding new item.');
+                                    }
                                   },
                                 ),
                                 IconButton(

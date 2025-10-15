@@ -402,13 +402,17 @@ class ShoppingListService {
     String householdId, {
     int numberOfItems = 15, // Default to 15 items, can be overridden
     int fetchLimit = 200, // Fetch a larger pool of items to ensure enough healthy options
+    List<String>? categories, // New optional parameter
   }) async {
     List<ShoppingListItemModel> healthyList = [];
-    final List<String> healthyCategories = ['Dairy', 'Bakery', 'Dry Goods', 'Beverages', 'Canned Goods', 'Condiments', 'Snacks', 'Other']; // All categories are now considered for healthy options
+    final List<String> defaultHealthyCategories = ['Dairy', 'Bakery', 'Dry Goods', 'Beverages', 'Canned Goods', 'Condiments', 'Snacks', 'Other']; // Default categories
+
+    // Use provided categories or default ones
+    final List<String> categoriesToUse = categories ?? defaultHealthyCategories;
 
     // Step 1: Query _localProducts_ph for items within healthy categories
     QuerySnapshot productsSnapshot = await _localProducts
-        .where('category', whereIn: healthyCategories)
+        .where('category', whereIn: categoriesToUse)
         .limit(fetchLimit)
         .get();
 
@@ -436,13 +440,13 @@ class ShoppingListService {
         return true;
       }
       // If no nutriScore, rely on category to be one of the healthy categories
-      return healthyCategories.contains(item.category);
+      return categoriesToUse.contains(item.category);
     }).toList();
 
     // Group products by category
     Map<String, List<ShoppingListItemModel>> productsByCategory = {};
     for (var product in productPool) {
-      if (product.category != null) { // Removed healthyCategories.contains(product.category) as it's already filtered in productPool
+      if (product.category != null) {
         if (!productsByCategory.containsKey(product.category)) {
           productsByCategory[product.category!] = [];
         }
@@ -452,12 +456,12 @@ class ShoppingListService {
 
     // Shuffle each category list and the list of categories for randomization and diversity
     productsByCategory.values.forEach((list) => list.shuffle());
-    List<String> categories = productsByCategory.keys.toList()..shuffle();
+    List<String> shuffledCategories = productsByCategory.keys.toList()..shuffle(); // Renamed local variable
 
     int itemsAdded = 0;
-    while (itemsAdded < numberOfItems && categories.isNotEmpty) {
-      for (int i = 0; i < categories.length; i++) {
-        String category = categories[i];
+    while (itemsAdded < numberOfItems && shuffledCategories.isNotEmpty) {
+      for (int i = 0; i < shuffledCategories.length; i++) {
+        String category = shuffledCategories[i];
         List<ShoppingListItemModel> categoryProducts = productsByCategory[category]!;
 
         if (categoryProducts.isNotEmpty) {
@@ -471,7 +475,7 @@ class ShoppingListService {
 
         // If a category is exhausted, remove it
         if (categoryProducts.isEmpty) {
-          categories.removeAt(i);
+          shuffledCategories.removeAt(i);
           i--; // Adjust index after removal
         }
       }

@@ -2088,7 +2088,17 @@ class _ShoppingRow extends StatelessWidget {
                   color: selected ? Colors.black45 : Colors.black54,
                 ),
               ),
-              // Removed Nutri-score display as per user request
+              if (item.nutrition != null && item.nutrition!.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'Nutrition: ${item.nutrition!}',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: selected ? Colors.black45 : Colors.black54,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

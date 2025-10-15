@@ -861,7 +861,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                     if (item.qty > 1) {
                       await _showQuantityPickerDialog(item);
                     } else {
-                      await _updateItemStatus(item, 'consumed', consumedQuantity: 1);
+                      // Directly call recordConsumedItem which handles both quantity update and history
+                      await firestoreService.recordConsumedItem(item, 1);
                     }
                   },
           ),

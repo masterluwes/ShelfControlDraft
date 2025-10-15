@@ -574,26 +574,19 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                           // === Titles WITHOUT the "Auto:" prefix ===
                           String title = '';
                           IconData icon = Icons.list_alt_outlined; // Default icon
+                          List<ShoppingListItemModel> generatedItems = []; // Declare here
 
-                          switch (mode) {
-                            case GenMode.budget:
-                              title = 'Budget ${formatPhp(budgetSliderValue)}';
-                              icon = Icons.account_balance_wallet_outlined;
-                              break;
-                            case GenMode.healthy:
-                              title = 'Healthy Picks';
-                              icon = Icons.eco_outlined;
-                              break;
-                          }
-
-                          List<ShoppingListItemModel> generatedItems = [];
                           if (_householdId != null) {
                             switch (mode) {
                               case GenMode.budget:
+                                title = 'Budget ${formatPhp(budgetSliderValue)}';
+                                icon = Icons.account_balance_wallet_outlined;
                                 generatedItems = await _shoppingListService.generateBudgetFriendlyList(_householdId!, budgetSliderValue, numberOfItems: numberOfItems);
                                 break;
                               case GenMode.healthy:
-                                generatedItems = await _shoppingListService.generateHealthyOptionList(_householdId!, numberOfItems: numberOfItems);
+                                title = 'Healthy Option'; // Add title for healthy mode
+                                icon = Icons.eco_outlined; // Add icon for healthy mode
+                                generatedItems = await _shoppingListService.generateHealthyOptionList(_householdId!, numberOfItems: numberOfItems, categories: ['Bakery', 'Dairy']);
                                 break;
                             }
                           }
