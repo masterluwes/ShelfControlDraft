@@ -23,6 +23,24 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
 
+  static const List<IconData> _iconChoices = <IconData>[
+    Icons.list_alt_outlined,
+    Icons.shopping_cart_outlined,
+    Icons.storefront_outlined,
+    Icons.local_mall_outlined,
+    Icons.fastfood_outlined,
+    Icons.lunch_dining_outlined,
+    Icons.local_grocery_store_outlined,
+    Icons.kitchen_outlined,
+    Icons.inventory_2_outlined,
+    Icons.event_note_outlined,
+    Icons.receipt_long_outlined,
+    Icons.assignment_outlined,
+    Icons.food_bank_outlined,
+    Icons.set_meal_outlined,
+    Icons.ramen_dining_outlined,
+  ];
+
   late final ShoppingListService _shoppingListService;
   String? _householdId;
   late FirestoreService _firestoreService; // Declare the service here
@@ -73,23 +91,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
 
   // ===== Icon picker =====
   Future<IconData?> _pickIcon(BuildContext context, IconData current) async {
-    final choices = <IconData>[
-      Icons.list_alt_outlined,
-      Icons.shopping_cart_outlined,
-      Icons.storefront_outlined,
-      Icons.local_mall_outlined,
-      Icons.fastfood_outlined,
-      Icons.lunch_dining_outlined,
-      Icons.local_grocery_store_outlined,
-      Icons.kitchen_outlined,
-      Icons.inventory_2_outlined,
-      Icons.event_note_outlined,
-      Icons.receipt_long_outlined,
-      Icons.assignment_outlined,
-      Icons.food_bank_outlined,
-      Icons.set_meal_outlined,
-      Icons.ramen_dining_outlined,
-    ];
+    final choices = _ViewAllListsPageState._iconChoices;
 
     return showModalBottomSheet<IconData>(
       context: context,
@@ -1015,7 +1017,10 @@ class _ListCard extends StatelessWidget {
                   ),
                   child: Icon(
                     list.iconCodePoint != null && list.iconFontFamily != null
-                        ? IconData(list.iconCodePoint!, fontFamily: list.iconFontFamily!)
+                        ? _ViewAllListsPageState._iconChoices.firstWhere(
+                            (icon) => icon.codePoint == list.iconCodePoint && icon.fontFamily == list.iconFontFamily,
+                            orElse: () => Icons.list_alt_outlined, // Fallback if not found
+                          )
                         : Icons.list_alt_outlined,
                     size: 26,
                     color: Colors.grey.shade800,
