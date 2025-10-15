@@ -41,6 +41,29 @@ class _ViewAllListsPageState extends State<Viewalllist> {
     Icons.ramen_dining_outlined,
   ];
 
+  static IconData _getIconFromCodePoint(int? codePoint) {
+    if (codePoint == null) return Icons.list_alt_outlined;
+    final iconMap = {
+      Icons.list_alt_outlined.codePoint: Icons.list_alt_outlined,
+      Icons.shopping_cart_outlined.codePoint: Icons.shopping_cart_outlined,
+      Icons.storefront_outlined.codePoint: Icons.storefront_outlined,
+      Icons.local_mall_outlined.codePoint: Icons.local_mall_outlined,
+      Icons.fastfood_outlined.codePoint: Icons.fastfood_outlined,
+      Icons.lunch_dining_outlined.codePoint: Icons.lunch_dining_outlined,
+      Icons.local_grocery_store_outlined.codePoint:
+          Icons.local_grocery_store_outlined,
+      Icons.kitchen_outlined.codePoint: Icons.kitchen_outlined,
+      Icons.inventory_2_outlined.codePoint: Icons.inventory_2_outlined,
+      Icons.event_note_outlined.codePoint: Icons.event_note_outlined,
+      Icons.receipt_long_outlined.codePoint: Icons.receipt_long_outlined,
+      Icons.assignment_outlined.codePoint: Icons.assignment_outlined,
+      Icons.food_bank_outlined.codePoint: Icons.food_bank_outlined,
+      Icons.set_meal_outlined.codePoint: Icons.set_meal_outlined,
+      Icons.ramen_dining_outlined.codePoint: Icons.ramen_dining_outlined,
+    };
+    return iconMap[codePoint] ?? Icons.list_alt_outlined;
+  }
+
   late final ShoppingListService _shoppingListService;
   String? _householdId;
   late FirestoreService _firestoreService; // Declare the service here
@@ -801,12 +824,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   // ===== Edit dialog used when tapping a card =====
   Future<void> _openEditListDialog(ShoppingListModel list) async {
     final nameCtrl = TextEditingController(text: list.name);
-    IconData tempIcon = Icons.list_alt_outlined; // Default icon
-
-    // Load the existing icon if available
-    if (list.iconCodePoint != null && list.iconFontFamily != null) {
-      tempIcon = IconData(list.iconCodePoint!, fontFamily: list.iconFontFamily!);
-    }
+    IconData tempIcon = _getIconFromCodePoint(list.iconCodePoint);
 
     await showDialog<void>(
       context: context,
@@ -1016,12 +1034,7 @@ class _ListCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
-                    list.iconCodePoint != null && list.iconFontFamily != null
-                        ? _ViewAllListsPageState._iconChoices.firstWhere(
-                            (icon) => icon.codePoint == list.iconCodePoint && icon.fontFamily == list.iconFontFamily,
-                            orElse: () => Icons.list_alt_outlined, // Fallback if not found
-                          )
-                        : Icons.list_alt_outlined,
+                    _ViewAllListsPageState._getIconFromCodePoint(list.iconCodePoint),
                     size: 26,
                     color: Colors.grey.shade800,
                   ),
