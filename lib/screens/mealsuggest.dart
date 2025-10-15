@@ -402,12 +402,15 @@ class _MealSuggestState extends State<MealSuggest> {
                   item.expirationDate!.isBefore(DateTime.now().add(const Duration(days: 3))))
               .toList();
 
+          // Check if any suggested recipes use expiring items
+          final hasRecipesUsingExpiringItems = _recipes.any((recipe) => recipe.usesExpiring.isNotEmpty);
+
           return SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  if (atRiskItems.isNotEmpty) ...[
+                  if (atRiskItems.isNotEmpty && hasRecipesUsingExpiringItems) ...[
                     _buildAtRiskBanner(atRiskItems),
                     const SizedBox(height: 16),
                   ],
@@ -544,23 +547,41 @@ class _MealSuggestState extends State<MealSuggest> {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8.0),
-                      child: Image.network(
-                        recipe.imageUrl,
-                        width: 70,
-                        height: 70,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            width: 70,
-                            height: 70,
-                            color: Colors.grey.shade200,
-                            child: const Icon(
-                              Icons.image_not_supported,
-                              color: Colors.grey,
+                      child: recipe.imageUrl.startsWith('assets/')
+                          ? Image.asset(
+                              recipe.imageUrl,
+                              width: 70,
+                              height: 70,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: 70,
+                                  height: 70,
+                                  color: Colors.grey.shade200,
+                                  child: const Icon(
+                                    Icons.image_not_supported,
+                                    color: Colors.grey,
+                                  ),
+                                );
+                              },
+                            )
+                          : Image.network(
+                              recipe.imageUrl,
+                              width: 70,
+                              height: 70,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: 70,
+                                  height: 70,
+                                  color: Colors.grey.shade200,
+                                  child: const Icon(
+                                    Icons.image_not_supported,
+                                    color: Colors.grey,
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -628,9 +649,6 @@ class _MealSuggestState extends State<MealSuggest> {
                     child: TextButton.icon(
                       onPressed: () async {
                         if (householdId == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Household not selected.')),
-                          );
                           return;
                         }
                         for (final item in recipe.missingIngredients) {
@@ -641,9 +659,6 @@ class _MealSuggestState extends State<MealSuggest> {
                           );
                         }
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Missing ingredients added to shopping list!')),
-                        );
                       },
                       icon: const Icon(Icons.add_shopping_cart, color: Color(0xFF2E7D32)),
                       label: const Text(

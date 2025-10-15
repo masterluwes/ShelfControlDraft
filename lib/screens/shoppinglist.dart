@@ -38,8 +38,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
   // Deeper green for "View All List"
   final Color darkGreen = const Color(0xFF2F4F3A);
 
-  // Header key so we can anchor SnackBars right under it (no layout shift)
-  final GlobalKey _headerKey = GlobalKey();
 
   // For PNG export — wrap the list with a RepaintBoundary
   final GlobalKey _captureKey = GlobalKey();
@@ -242,7 +240,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
   // --- Add to Pantry Workflow ---
   Future<void> _addPurchasedItemToPantry(ShoppingListItemModel item) async {
     if (_householdId == null) {
-      _showTopSnack("No household selected.");
+      // No household selected.
       return;
     }
 
@@ -291,11 +289,11 @@ class _ShoppinglistState extends State<Shoppinglist> {
         manufacturedDate: existingPantryItem.manufacturedDate ?? manufacturedDate,
       );
       await firestoreService.db.collection('pantryItems').doc(existingPantryItem.id).update(updatedPantryItem.toFirestore());
-      _showTopSnack("Item quantity updated in pantry!");
+      // Item quantity updated in pantry!
     } else {
       // No duplicate, add new item
       await firestoreService.db.collection('pantryItems').doc(newPantryItem.id).set(newPantryItem.toFirestore());
-      _showTopSnack("Item added to pantry!");
+      // Item added to pantry!
     }
 
     // Add to shopping history
@@ -312,7 +310,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
 
   Future<void> _clearPurchasedItems(ShoppingListModel activeList) async {
     if (_householdId == null) {
-      _showTopSnack("No household selected.");
+      // No household selected.
       return;
     }
 
@@ -320,7 +318,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
     List<ShoppingListItemModel> purchasedItems = activeList.items.where((item) => item.isPurchased).toList();
 
     if (purchasedItems.isEmpty) {
-      _showTopSnack("No items marked as purchased to clear.");
+      // No items marked as purchased to clear.
       return;
     }
 
@@ -378,33 +376,10 @@ class _ShoppinglistState extends State<Shoppinglist> {
       }
     }
 
-    _showTopSnack("${purchasedItems.length} item(s) cleared and moved to history!");
+    // ${purchasedItems.length} item(s) cleared and moved to history!
   }
 
   // ---------- Helpers: compute top margin under header ----------
-  double _topSnackMargin() {
-    final messengerTop = MediaQuery.of(context).padding.top;
-    final render = _headerKey.currentContext?.findRenderObject() as RenderBox?;
-    final headerHeight = render?.size.height ?? 0;
-    // +8px breathing room under the header
-    return messengerTop + headerHeight + 8;
-  }
-
-  // ---------- toast-style snack (top, floating, no layout shift) ----------
-  void _showTopSnack(String message) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        dismissDirection: DismissDirection.up,
-        margin: EdgeInsets.fromLTRB(16, _topSnackMargin(), 16, 0),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
 
 
   // ---------- limit banner ----------
@@ -542,7 +517,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
         ),
       );
     } catch (e) {
-      _showTopSnack('Failed to export TXT: $e');
+      // Failed to export TXT: $e
     }
   }
 
@@ -560,7 +535,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
         ),
       );
     } catch (e) {
-      _showTopSnack('Failed to export PNG: $e');
+      // Failed to export PNG: $e
     }
   }
 
@@ -639,12 +614,12 @@ class _ShoppinglistState extends State<Shoppinglist> {
         guestLists.add(newGuestList);
         await firestoreService.saveGuestShoppingLists(guestLists);
         // No setState here, StreamBuilder will handle the update
-        _showTopSnack("Created a new guest shopping list.");
+        // Created a new guest shopping list.
       }
     } else {
       // Registered user logic
       if (_householdId == null) {
-        _showTopSnack("Household not found. Please log in again.");
+        // Household not found. Please log in again.
         return;
       }
 
@@ -661,7 +636,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
         if (existingManualListSnapshot.docs.isNotEmpty) {
           // Use the existing manual list
           // No setState here, StreamBuilder will handle the update
-          _showTopSnack("Using existing manual list: ${ShoppingListModel.fromFirestore(existingManualListSnapshot.docs.first).name}");
+          // Using existing manual list: ${ShoppingListModel.fromFirestore(existingManualListSnapshot.docs.first).name}
         } else {
           // Create a new default manual list
           final newDefaultList = ShoppingListModel(
@@ -675,14 +650,14 @@ class _ShoppinglistState extends State<Shoppinglist> {
           DocumentReference docRef = await FirebaseFirestore.instance.collection('shoppingLists').add(newDefaultList.toFirestore());
           newDefaultList.id = docRef.id;
           // No setState here, StreamBuilder will handle the update
-          _showTopSnack("Created a new default shopping list.");
+          // Created a new default shopping list.
         }
       }
     }
 
     // After ensuring activeList is not null (either found or created)
     if (activeList == null) {
-      _showTopSnack("Could not create or find a shopping list.");
+      // Could not create or find a shopping list.
       return;
     }
 
@@ -965,7 +940,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                       await _shoppingListService.updateShoppingListItem(activeList.id!, updatedItem);
                                     }
                                   }
-                                  _showTopSnack("Item already on list. Quantity updated.");
+                                  // Item already on list. Quantity updated.
                                 } else {
                                   // No duplicate, add new item
                                   final newItem = ShoppingListItemModel(
@@ -1432,7 +1407,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
       } else {
         await _shoppingListService.updateShoppingListItem(activeList.id!, updatedItem);
       }
-      _showTopSnack("Item already on list. Quantity updated.");
+      // Item already on list. Quantity updated.
     } else {
       // No duplicate, add new item
       final newItem = ShoppingListItemModel(
@@ -1499,7 +1474,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
             // Header
             Divider(height: 1, thickness: 1, color: sep),
             Container(
-              key: _headerKey, // <-- anchor for top snackbars
               width: double.infinity,
               color: softCream,
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),

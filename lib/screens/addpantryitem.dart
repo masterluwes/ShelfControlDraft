@@ -393,8 +393,7 @@ class _AddPantryItemState extends State<AddPantryItem> {
       if (image != null) setState(() => _selectedImage = File(image.path));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Error picking image: $e')));
+      // Optionally, handle error without SnackBar, e.g., logging or a dialog
     }
   }
 
@@ -447,8 +446,7 @@ class _AddPantryItemState extends State<AddPantryItem> {
     } catch (e) {
       setState(() => _isUploadingImage = false);
       if (!mounted) return null;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Error uploading image: $e')));
+      // Optionally, handle error without SnackBar, e.g., logging or a dialog
       return null;
     }
   }
@@ -463,8 +461,7 @@ class _AddPantryItemState extends State<AddPantryItem> {
     });
 
     if (_isNameInvalid || _isCategoryInvalid || _isExpDateInvalid || _isPriceInvalid) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Please fill all required fields marked in red.')));
+      // Optionally, show a dialog or other non-snackbar feedback here
       return;
     }
 
@@ -473,8 +470,7 @@ class _AddPantryItemState extends State<AddPantryItem> {
       List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
       if (currentGuestPantry.length >= 10) { // Assuming a limit of 10 items for guests
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Guest users are limited to 10 pantry items. Please register to add more.')));
+        // Optionally, show a dialog or other non-snackbar feedback here
         return;
       }
     }

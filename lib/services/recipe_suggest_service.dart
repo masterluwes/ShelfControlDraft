@@ -124,13 +124,10 @@ class RecipeSuggestService {
 
     // Functions base URL from your deploy output
     const String functionsBase =
-        "https://asia-southeast1-<your-project-id>.cloudfunctions.net";
+        "https://asia-southeast1-shelfcontrol-8f5ab.cloudfunctions.net";
     final spoonClient = SpoonacularService(baseUrl: functionsBase);
     final aiClient = AiRecipeService(baseUrl: functionsBase);
 
-    // Cloud Functions base URL (from deploy)
-    const String _functionsBase =
-        "https://asia-southeast1-shelfcontrol-8f5ab.cloudfunctions.net";
 
     // [CALL_GENERATE_FIX] begin
     final localSuggestions = MealPlanner.generate(

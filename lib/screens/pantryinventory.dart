@@ -221,7 +221,6 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         await firestoreService.deletePantryItem(item.id!);
       }
       if (!mounted) return;
-      // Removed SnackBar to prevent pushing up the FAB
     }
   }
 
@@ -557,13 +556,6 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           backgroundColor = Colors.orange.shade700;
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: backgroundColor,
-            duration: const Duration(seconds: 3),
-          ),
-        );
       }
     }
   }
@@ -612,13 +604,6 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           backgroundColor = Colors.orange.shade700;
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: backgroundColor,
-            duration: const Duration(seconds: 3),
-          ),
-        );
       }
     }
   }
@@ -826,12 +811,6 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     if (item.id != null) {
       await firestoreService.recordWastedItem(item, item.qty);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Marked "${item.name}" as wasted'),
-        ),
-      );
     }
   }
 
@@ -904,12 +883,6 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       await firestoreService.recordWastedItem(item, item.qty, actionType: 'Expired Waste');
       await firestoreService.deletePantryItem(item.id!); // This will now just delete the item from pantry
       if (!mounted) return;
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Marked "${item.name}" as expired waste and removed from pantry'),
-        ),
-      );
     }
   }
 

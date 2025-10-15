@@ -274,9 +274,7 @@ class _DashboardPageState extends State<DashboardPage> {
               final householdId = widget.isGuest ? FirebaseAuth.instance.currentUser?.uid : firestoreService.selectedHouseholdId;
 
               if (!widget.isGuest && householdId == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please select a household first.')),
-                );
+                // Optionally, you could show a dialog or other non-snackbar feedback here
                 return;
               }
 

@@ -263,7 +263,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
     } catch (e) {
       setState(() => _isUploadingImage = false);
       if (!mounted) return null;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error uploading image: $e')));
+      // Optionally, handle error without SnackBar, e.g., logging or a dialog
       return null;
     }
   }
@@ -276,7 +276,7 @@ class _EditPantryItemState extends State<EditPantryItem> {
     });
 
     if (_isNameInvalid || _isCategoryInvalid || _isExpDateInvalid) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields.')));
+      // Optionally, show a dialog or other non-snackbar feedback here
       return;
     }
 

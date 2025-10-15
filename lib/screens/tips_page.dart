@@ -837,6 +837,7 @@ class _TipsPageState extends State<TipsPage> {
   String? _hhId; // runtime-selected household id
   bool _initializingHousehold = true;
   bool _bootstrapping = true;
+  Stream<List<PantryItemModel>>? _pantryItemsStream; // Stream for pantry items
 
   @override
   void initState() {
@@ -879,8 +880,25 @@ class _TipsPageState extends State<TipsPage> {
       _bootstrapping = false;
     });
 
+    // Set up the pantry items stream
+    _setupPantryItemsStream();
+
     // Load your weather banner (your existing logic)
     await _loadWeather();
+  }
+
+  void _setupPantryItemsStream() {
+    if (_hhId != null) {
+      _pantryItemsStream = FirebaseFirestore.instance
+          .collection('pantryItems')
+          .where('householdId', isEqualTo: _hhId)
+          .snapshots()
+          .map((snapshot) => snapshot.docs
+              .map((doc) => PantryItemModel.fromFirestore(doc))
+              .toList());
+    } else {
+      _pantryItemsStream = Stream.value([]); // Empty stream if no household
+    }
   }
 
   Future<void> _ensureAuth() async {
@@ -930,100 +948,6 @@ class _TipsPageState extends State<TipsPage> {
     }
   }
 
-  final Map<String, PantryItem> _dummyPantryData = {
-    'Chicken': PantryItem(
-      name: 'Chicken',
-      category: 'Meat',
-      quantity: 1.0,
-      price: 150.00,
-      netWeight: 1.2,
-      weightUnit: 'kg',
-      daysUntilExpiration: 2,
-    ),
-    'Salmon': PantryItem(
-      name: 'Salmon',
-      category: 'Fish',
-      quantity: 2.0,
-      price: 350.50,
-      netWeight: 0.5,
-      weightUnit: 'kg',
-      daysUntilExpiration: 1,
-    ),
-    'Tuna': PantryItem(
-      name: 'Tuna',
-      category: 'Fish',
-      quantity: 5.0,
-      price: 45.00,
-      netWeight: 0.18,
-      weightUnit: 'kg',
-      daysUntilExpiration: 365,
-    ),
-    'Milk': PantryItem(
-      name: 'Milk',
-      category: 'Dairy',
-      quantity: 1.0,
-      price: 141.50,
-      netWeight: 1.0,
-      weightUnit: 'L',
-      daysUntilExpiration: 5,
-    ),
-    'Apples': PantryItem(
-      name: 'Apples',
-      category: 'Produce',
-      quantity: 6.0,
-      price: 120.00,
-      netWeight: 0.9,
-      weightUnit: 'kg',
-      daysUntilExpiration: 0,
-    ),
-    'Bread': PantryItem(
-      name: 'Bread',
-      category: 'Grains',
-      quantity: 1.0,
-      price: 75.00,
-      netWeight: 0.45,
-      weightUnit: 'kg',
-      daysUntilExpiration: -1,
-    ),
-    'Pork': PantryItem(
-        name: 'Pork',
-        category: 'Meat',
-        daysUntilExpiration: 3,
-        netWeight: 1.5,
-        weightUnit: 'kg'),
-    'Beef': PantryItem(
-        name: 'Beef',
-        category: 'Meat',
-        daysUntilExpiration: 4,
-        netWeight: 0.8,
-        weightUnit: 'kg'),
-    'Cheese': PantryItem(
-        name: 'Cheese',
-        category: 'Dairy',
-        daysUntilExpiration: 15,
-        netWeight: 0.3,
-        weightUnit: 'kg'),
-    'Lettuce': PantryItem(
-        name: 'Lettuce',
-        category: 'Produce',
-        daysUntilExpiration: 2,
-        netWeight: 0.2,
-        weightUnit: 'kg'),
-    'Rice': PantryItem(
-        name: 'Rice',
-        category: 'Grains',
-        daysUntilExpiration: 730,
-        netWeight: 5.0,
-        weightUnit: 'kg'),
-  };
-
-  final Map<String, List<String>> pantryItems = {
-    'Meat': ['Chicken', 'Pork', 'Beef'],
-    'Fish': ['Salmon', 'Tuna'],
-    'Dairy': ['Milk', 'Cheese'],
-    'Produce': ['Apples', 'Lettuce'],
-    'Grains': ['Rice', 'Bread'],
-  };
 
   final List<Map<String, dynamic>> categories = [
     {'name': 'General', 'icon': Icons.lightbulb},
@@ -1182,139 +1106,48 @@ class _TipsPageState extends State<TipsPage> {
       );
     }
 
-    // Strict household-scoped query (matches your rules)
-    final query = FirebaseFirestore.instance
-        .collection('pantryItems')
-        .where('householdId', isEqualTo: effectiveHhId);
-
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      key: ValueKey(
-          'tips-$effectiveHhId-$selectedCategory'), // rebuilds on household or category change
-      stream: query.snapshots(),
-      builder: (context, snap) {
-        if (snap.hasError) {
+    return StreamBuilder<List<PantryItemModel>>(
+      stream: _pantryItemsStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
           return Padding(
             padding: const EdgeInsets.all(20),
-            child: Text('Error loading pantry: ${snap.error}',
+            child: Text('Error loading pantry: ${snapshot.error}',
                 style: const TextStyle(color: Colors.red)),
           );
         }
-        if (snap.connectionState == ConnectionState.waiting || !snap.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
           return const SizedBox(
             height: 80,
             child: Center(child: CircularProgressIndicator()),
           );
         }
 
-        final docs = snap.data!.docs;
-        // print('TIPS ROOT DOCS (after rules): ${docs.length} for hhId=$effectiveHhId');
+        final pantryItemModels = snapshot.data!;
 
-        // ---------- helpers ----------
-        String pickString(Map<String, dynamic> m, List<String> keys,
-            {String orElse = ''}) {
-          for (final k in keys) {
-            final v = m[k];
-            if (v == null) continue;
-            if (v is String && v.trim().isNotEmpty) return v.trim();
-            if (v.toString().trim().isNotEmpty) return v.toString().trim();
-          }
-          return orElse;
-        }
-
-        num? toNum(dynamic v) {
-          if (v == null) return null;
-          if (v is num) return v;
-          if (v is String) {
-            final cleaned = v.trim().replaceAll(',', '');
-            final m = RegExp(r'[-+]?\d*\.?\d+').firstMatch(cleaned);
-            if (m != null) return num.tryParse(m.group(0)!);
-          }
-          return null;
-        }
-
-        num pickNum(Map<String, dynamic> m, List<String> keys,
-            {num orElse = 0}) {
-          for (final k in keys) {
-            final n = toNum(m[k]);
-            if (n != null) return n;
-          }
-          return orElse;
-        }
-
-        DateTime? pickDate(Map<String, dynamic> m, List<String> keys) {
-          for (final k in keys) {
-            final v = m[k];
-            if (v == null) continue;
-            if (v is Timestamp) return v.toDate();
-            if (v is int) {
-              return DateTime.fromMillisecondsSinceEpoch(
-                  v > 2000000000 ? v : v * 1000);
-            }
-            if (v is String) {
-              try {
-                return DateTime.parse(v);
-              } catch (_) {}
-            }
-          }
-          return null;
-        }
-
-        String normalizeCategory(String raw) {
-          final s = raw.trim().toLowerCase();
-          if (s.isEmpty) return 'Uncategorized';
-          if (s.contains('dairy') || s == 'milk' || s.contains('creamer'))
-            return 'Dairy';
-          if (s.contains('beverage') || s == 'drinks') return 'Beverages';
-          if (s.contains('canned')) return 'Canned goods';
-          if (s.contains('condiment')) return 'Condiments';
-          if (s.contains('snack')) return 'Snacks';
-          if (s.contains('produce') ||
-              s.contains('fruit') ||
-              s.contains('vegg')) return 'Produce';
-          if (s.contains('grain') ||
-              s.contains('rice') ||
-              s.contains('bread') ||
-              s.contains('bakery')) return 'Grains';
-          if (s.contains('dry')) return 'Dry goods';
-          if (s == 'other' || s.contains('other')) return 'Others';
-          return raw;
-        }
-        // ------------------------------------------
-
-        final parsed = docs.map((d) {
-          final data = d.data();
-          final name = pickString(data, ['name', 'itemName', 'title']);
-          final catRaw = pickString(data, ['category', 'cat', 'group'],
-              orElse: 'Uncategorized');
-          final category = normalizeCategory(catRaw);
-          final qty = pickNum(data, ['quantity', 'qty', 'count', 'amount']);
-          final price = pickNum(data, ['price', 'unitPrice', 'cost']);
-          final weight =
-              pickNum(data, ['netWeight', 'weight', 'size', 'amountWeight']);
-          final unit = pickString(
-              data, ['weightUnit', 'unit', 'uom', 'measure'],
-              orElse: 'pcs');
-          final expiry = pickDate(
-              data, ['expiryDate', 'bestBefore', 'expiration', 'expiry']);
-          final daysUntil =
-              expiry == null ? 0 : expiry.difference(DateTime.now()).inDays;
+        // Convert PantryItemModel to PantryItem
+        final parsedPantryItems = pantryItemModels.map((pantryItemModel) {
+          final daysUntil = pantryItemModel.expirationDate == null
+              ? 0
+              : pantryItemModel.expirationDate!.difference(DateTime.now()).inDays;
 
           return PantryItem(
-            name: name.isEmpty ? '(Unnamed Item)' : name,
-            category: category,
-            quantity: qty.toDouble(),
-            price: price.toDouble(),
-            netWeight: weight.toDouble(),
-            weightUnit: unit,
+            name: pantryItemModel.name,
+            category: pantryItemModel.category ?? 'Uncategorized',
+            quantity: pantryItemModel.qty.toDouble(),
+            price: pantryItemModel.price?.toDouble() ?? 0.0,
+            netWeight: double.tryParse(pantryItemModel.netWeight ?? '0.0') ?? 0.0,
+            weightUnit: pantryItemModel.quantityUnit ?? 'pcs',
             daysUntilExpiration: daysUntil,
           );
         }).toList();
 
         // Filter by the selected chip using the normalized category
-        final byChip =
-            parsed.where((p) => p.category == selectedCategory).toList();
+        final byChip = parsedPantryItems
+            .where((p) => p.category == selectedCategory)
+            .toList();
         final listToShow =
-            byChip.isEmpty && parsed.isNotEmpty ? parsed : byChip;
+            byChip.isEmpty && parsedPantryItems.isNotEmpty ? parsedPantryItems : byChip;
 
         if (listToShow.isEmpty) return _buildEmptyState();
 

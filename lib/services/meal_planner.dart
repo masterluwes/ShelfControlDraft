@@ -314,8 +314,7 @@ class MealPlanner {
     _Rule(
       id: 'tuna_pasta',
       titleTemplate: 'Tuna Pantry Pasta',
-      imageUrl:
-          'https://images.unsplash.com/photo-1523986371872-9d3ba2e2f642?q=80&w=1200',
+      imageUrl: 'assets/Tuna-Caper-Chilli-Spaghetti.jpg',
       requiredIngredients: {'pasta', 'tuna'},
       optionalIngredients: {
         'olive oil',
@@ -418,8 +417,7 @@ class MealPlanner {
     _Rule(
       id: 'garlic_oil_pasta',
       titleTemplate: 'Garlic Oil Pasta (Pantry)',
-      imageUrl:
-          'https://images.unsplash.com/photo-1526318472351-c75fcf070305?q=80&w=1200',
+      imageUrl: 'assets/garlic_pil_pasta.jpg',
       requiredIngredients: {'pasta', 'oil'},
       optionalIngredients: {'garlic powder', 'chili flakes', 'soy sauce'},
       baseTimeMin: 12,

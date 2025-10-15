@@ -24,23 +24,6 @@ class _MealHistoryPageState extends State<MealHistoryPage> {
     final removedRecipe = MealHistoryPage.mealHistory.removeAt(index);
     setState(() {}); // Update the UI to reflect the removal
 
-    // Clear any previous SnackBars
-    ScaffoldMessenger.of(context).clearSnackBars();
-    // Show a SnackBar with an Undo button
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${removedRecipe.name} removed.'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () {
-            // If undo is pressed, re-insert the item at its original position
-            setState(() {
-              MealHistoryPage.mealHistory.insert(index, removedRecipe);
-            });
-          },
-        ),
-      ),
-    );
   }
 
   @override
