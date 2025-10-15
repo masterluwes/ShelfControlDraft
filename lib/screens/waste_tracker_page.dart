@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'weekly_report.dart';
 import 'package:provider/provider.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:shelf_control/models/pantry_item_model.dart';
@@ -14,6 +13,7 @@ import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:shelf_control/models/shopping_history_item_model.dart';
 
 // for the week dropdown
 class WeekPeriod {
@@ -55,18 +55,136 @@ class WeekPeriod {
 }
 
 class WasteTrackerPage extends StatefulWidget {
-  final WeeklyReport thisWeekReport;
-  final WeeklyReport lastWeekReport;
-
-  WasteTrackerPage({
+  const WasteTrackerPage({
     super.key,
-    WeeklyReport? thisWeekReport,
-    WeeklyReport? lastWeekReport,
-  })  : thisWeekReport = thisWeekReport ?? WeeklyReport.mockThisWeek(),
-        lastWeekReport = lastWeekReport ?? WeeklyReport.mockLastWeek();
+  });
 
   @override
   State<WasteTrackerPage> createState() => _WasteTrackerPageState();
+}
+
+// Define a class to hold all computed waste data
+class _WasteData {
+  final List<ShoppingHistoryItemModel> allHistoryItems;
+  final WeekPeriod selectedWeek;
+  final List<int> weeklyWasteSeries;
+  final List<int> weeklyConsumedSeries;
+  final List<ShoppingHistoryItemModel> wastedThisWeek;
+  final List<ShoppingHistoryItemModel> consumedThisWeek;
+  final int thisWeekWaste;
+  final int thisWeekConsumed;
+  final int lastWeekWaste;
+  final int lastWeekConsumed;
+  final double thisWeekRate;
+  final double lastWeekRate;
+  final double wasteCost;
+  final int thisWeekWastePct;
+  final int lastWeekWastePct;
+  final String mostWastedCategory;
+
+  _WasteData({
+    required this.allHistoryItems,
+    required this.selectedWeek,
+    required this.weeklyWasteSeries,
+    required this.weeklyConsumedSeries,
+    required this.wastedThisWeek,
+    required this.consumedThisWeek,
+    required this.thisWeekWaste,
+    required this.thisWeekConsumed,
+    required this.lastWeekWaste,
+    required this.lastWeekConsumed,
+    required this.thisWeekRate,
+    required this.lastWeekRate,
+    required this.wasteCost,
+    required this.thisWeekWastePct,
+    required this.lastWeekWastePct,
+    required this.mostWastedCategory,
+  });
+
+  factory _WasteData.fromHistoryItems(List<ShoppingHistoryItemModel> allHistoryItems, WeekPeriod selectedWeek) {
+    final rangeStart = selectedWeek.startDate;
+    final rangeEnd = selectedWeek.endDate.add(const Duration(hours: 23, minutes: 59, seconds: 59));
+
+    bool inRange(DateTime? d) => d != null && !d.isBefore(rangeStart) && !d.isAfter(rangeEnd);
+
+    final wastedThisWeek = allHistoryItems.where((i) => (i.actionType == 'Wasted' || i.actionType == 'Expired Waste') && inRange(i.purchaseDate)).toList();
+    final consumedThisWeek = allHistoryItems.where((i) => i.actionType == 'Consumed' && inRange(i.purchaseDate)).toList();
+
+    final thisWeekWaste = wastedThisWeek.fold<int>(0, (s, i) => s + (i.quantity));
+    final thisWeekConsumed = consumedThisWeek.fold<int>(0, (s, i) => s + (i.quantity));
+
+    final lastStart = rangeStart.subtract(const Duration(days: 7));
+    final lastEnd = rangeEnd.subtract(const Duration(days: 7));
+
+    bool inLastRange(DateTime? d) => d != null && !d.isBefore(lastStart) && !d.isAfter(lastEnd);
+
+    final wastedLastWeek = allHistoryItems.where((i) => (i.actionType == 'Wasted' || i.actionType == 'Expired Waste') && inLastRange(i.purchaseDate)).toList();
+    final consumedLastWeek = allHistoryItems.where((i) => i.actionType == 'Consumed' && inLastRange(i.purchaseDate)).toList();
+
+    final lastWeekWaste = wastedLastWeek.fold<int>(0, (s, i) => s + (i.quantity));
+    final lastWeekConsumed = consumedLastWeek.fold<int>(0, (s, i) => s + (i.quantity));
+
+    final thisOutflow = thisWeekWaste + thisWeekConsumed;
+    final lastOutflow = lastWeekWaste + lastWeekConsumed;
+
+    final double thisWeekRate = thisOutflow == 0 ? 0 : (thisWeekConsumed / thisOutflow * 100);
+    final double lastWeekRate = lastOutflow == 0 ? 0 : (lastWeekConsumed / lastOutflow * 100);
+
+    final double wasteCost = wastedThisWeek.fold<double>(0, (sum, i) => sum + ((i.priceAtAction ?? 0) * (i.quantity)));
+
+    final thisWeekWastePct = thisOutflow == 0 ? 0 : ((thisWeekWaste / thisOutflow) * 100).round();
+    final lastWeekWastePct = lastOutflow == 0 ? 0 : ((lastWeekWaste / lastOutflow) * 100).round();
+
+    final Map<String, int> wastedByCategory = {};
+    for (final i in wastedThisWeek) {
+      final cat = i.category ?? 'Uncategorized';
+      wastedByCategory[cat] = (wastedByCategory[cat] ?? 0) + (i.quantity);
+    }
+    final mostWastedCategory = wastedByCategory.entries.isEmpty
+        ? '—'
+        : wastedByCategory.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+
+    final List<int> weeklyWasteSeries = [];
+    final List<int> weeklyConsumedSeries = [];
+    final now = DateTime.now();
+
+    for (int back = 7; back >= 0; back--) {
+      final end = DateTime(now.year, now.month, now.day).subtract(Duration(days: 7 * back));
+      final start = end.subtract(const Duration(days: 6));
+
+      int w = 0, c = 0;
+      for (final i in allHistoryItems) {
+        final date = i.purchaseDate;
+        if ((i.actionType == 'Wasted' || i.actionType == 'Expired Waste') && date != null && !date.isBefore(start) && !date.isAfter(end)) {
+          w += (i.quantity);
+        }
+        if (i.actionType == 'Consumed' && date != null && !date.isBefore(start) && !date.isAfter(end)) {
+          c += (i.quantity);
+        }
+      }
+      weeklyWasteSeries.add(w);
+      weeklyConsumedSeries.add(c);
+    }
+
+    return _WasteData(
+      allHistoryItems: allHistoryItems,
+      selectedWeek: selectedWeek,
+      weeklyWasteSeries: weeklyWasteSeries,
+      weeklyConsumedSeries: weeklyConsumedSeries,
+      wastedThisWeek: wastedThisWeek,
+      consumedThisWeek: consumedThisWeek,
+      thisWeekWaste: thisWeekWaste,
+      thisWeekConsumed: thisWeekConsumed,
+      lastWeekWaste: lastWeekWaste,
+      lastWeekConsumed: lastWeekConsumed,
+      thisWeekRate: thisWeekRate,
+      lastWeekRate: lastWeekRate,
+      wasteCost: wasteCost,
+      thisWeekWastePct: thisWeekWastePct,
+      lastWeekWastePct: lastWeekWastePct,
+      mostWastedCategory: mostWastedCategory,
+    );
+  }
 }
 
 class _WasteTrackerPageState extends State<WasteTrackerPage> {
@@ -78,13 +196,11 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
 
   String _selectedGraph = 'waste';
 
-  // ===== PDF export state & helpers =====
-  final GlobalKey _trendKey =
-      GlobalKey(); // wraps your BarChart for PNG capture
-  List<PantryItemModel> _latestItems = []; // snapshot for export
+  final _trendKey = GlobalKey();
+  List<ShoppingHistoryItemModel> _latestHistoryItems = [];
 
   Future<Uint8List?> _capturePng(GlobalKey key,
-      {double pixelRatio = 3.0}) async {
+      {double pixelRatio = 1.5}) async {
     try {
       final boundary =
           key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
@@ -105,19 +221,19 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
     bool inRange(DateTime? d) =>
         d != null && !d.isBefore(rangeStart) && !d.isAfter(rangeEnd);
 
-    final wastedThisRange = _latestItems
-        .where((i) => i.status == 'wasted' && inRange(i.wastedAt))
+    final wastedThisRange = _latestHistoryItems
+        .where((i) => (i.actionType == 'Wasted' || i.actionType == 'Expired Waste') && inRange(i.purchaseDate))
         .toList();
-    final consumedThisRange = _latestItems
-        .where((i) => i.status == 'consumed' && inRange(i.consumedAt))
+    final consumedThisRange = _latestHistoryItems
+        .where((i) => i.actionType == 'Consumed' && inRange(i.purchaseDate))
         .toList();
 
     final totalWastedItems =
-        wastedThisRange.fold<int>(0, (s, i) => s + (i.qty ?? 1));
+        wastedThisRange.fold<int>(0, (s, i) => s + (i.quantity));
     final totalItemsOut = totalWastedItems +
-        consumedThisRange.fold<int>(0, (s, i) => s + (i.qty ?? 1));
-    final totalWasteCost =
-        wastedThisRange.fold<double>(0, (s, i) => s + (i.price ?? 0));
+        consumedThisRange.fold<int>(0, (s, i) => s + (i.quantity));
+    final totalWasteCost = wastedThisRange.fold<double>(
+        0, (s, i) => s + ((i.priceAtAction ?? 0) * (i.quantity)));
 
     // Your model has no weight field—use 0.0 and the PDF will hide that KPI
     final totalWasteKg = 0.0;
@@ -128,8 +244,9 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
         in wastedThisRange.map((i) => i.category ?? 'Uncategorized').toSet()) {
       final list =
           wastedThisRange.where((i) => (i.category ?? 'Uncategorized') == cat);
-      final count = list.fold<int>(0, (s, i) => s + (i.qty ?? 1));
-      final cost = list.fold<double>(0, (s, i) => s + (i.price ?? 0));
+      final count = list.fold<int>(0, (s, i) => s + (i.quantity));
+      final cost = list.fold<double>(
+          0, (s, i) => s + ((i.priceAtAction ?? 0) * (i.quantity)));
       categoryRows[cat] =
           CategoryRow(category: cat, itemsWasted: count, totalCost: cost);
     }
@@ -150,11 +267,11 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
     final List<ItemWasteRow> itemRows = wastedThisRange.map((i) {
       return ItemWasteRow(
         category: i.category ?? 'Uncategorized',
-        itemName: i.name ?? 'Unknown',
-        quantity: i.qty ?? 1,
-        cost: i.price,
-        expiryDate: null, // your PantryItemModel has no expiry field
-        wastedAt: i.wastedAt,
+        itemName: i.productName,
+        quantity: i.quantity,
+        cost: i.priceAtAction,
+        expiryDate: null, // ShoppingHistoryItemModel does not have expiryDate
+        wastedAt: i.purchaseDate,
       );
     }).toList();
 
@@ -465,125 +582,55 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
     final firestore = Provider.of<FirestoreService>(context, listen: false);
     final householdId = firestore.selectedHouseholdId;
 
-    // 2) Stream pantry items for the household
-    return StreamBuilder<List<PantryItemModel>>(
+    // 2) Stream shopping history items for the household
+    return StreamBuilder<List<ShoppingHistoryItemModel>>(
       stream: householdId == null
-          ? const Stream<List<PantryItemModel>>.empty()
-          : firestore.getPantryItemsForHousehold(householdId),
+          ? const Stream<List<ShoppingHistoryItemModel>>.empty()
+          : firestore.getShoppingHistoryForHousehold(householdId),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final allItems = snap.data ?? [];
+        final allHistoryItems = snap.data ?? [];
 
-        _latestItems = allItems;
+        _latestHistoryItems = allHistoryItems;
 
+        // Compute all waste data once
+        final wasteData = _WasteData.fromHistoryItems(allHistoryItems, selectedWeek!);
+        
         // 3) Get current week range from the dropdown selection
-        final rangeStart = selectedWeek!.startDate;
-        final rangeEnd = selectedWeek!.endDate
+        final rangeStart = wasteData.selectedWeek.startDate;
+        final rangeEnd = wasteData.selectedWeek.endDate
             .add(const Duration(hours: 23, minutes: 59, seconds: 59));
 
-        bool inRange(DateTime? d) =>
-            d != null && !d.isBefore(rangeStart) && !d.isAfter(rangeEnd);
-
         // 4) Compute “this week”
-        final wastedThisWeek = allItems
-            .where((i) => i.status == 'wasted' && inRange(i.wastedAt))
-            .toList();
-        final consumedThisWeek = allItems
-            .where((i) => i.status == 'consumed' && inRange(i.consumedAt))
-            .toList();
+        final wastedThisWeek = wasteData.wastedThisWeek;
+        final consumedThisWeek = wasteData.consumedThisWeek;
 
-        final thisWeekWaste =
-            wastedThisWeek.fold<int>(0, (s, i) => s + (i.qty ?? 1));
-        final thisWeekConsumed =
-            consumedThisWeek.fold<int>(0, (s, i) => s + (i.qty ?? 1));
+        final thisWeekWaste = wasteData.thisWeekWaste;
+        final thisWeekConsumed = wasteData.thisWeekConsumed;
 
         // 5) Compute “last week” (for comparisons)
-        final lastStart = rangeStart.subtract(const Duration(days: 7));
-        final lastEnd = rangeEnd.subtract(const Duration(days: 7));
-
-        bool inLastRange(DateTime? d) =>
-            d != null && !d.isBefore(lastStart) && !d.isAfter(lastEnd);
-
-        final wastedLastWeek = allItems
-            .where((i) => i.status == 'wasted' && inLastRange(i.wastedAt))
-            .toList();
-        final consumedLastWeek = allItems
-            .where((i) => i.status == 'consumed' && inLastRange(i.consumedAt))
-            .toList();
-
-        final lastWeekWaste =
-            wastedLastWeek.fold<int>(0, (s, i) => s + (i.qty ?? 1));
-        final lastWeekConsumed =
-            consumedLastWeek.fold<int>(0, (s, i) => s + (i.qty ?? 1));
+        final lastWeekWaste = wasteData.lastWeekWaste;
+        final lastWeekConsumed = wasteData.lastWeekConsumed;
 
         // 6) Percentages (outflow-based)
-        final thisOutflow = thisWeekWaste + thisWeekConsumed;
-        final lastOutflow = lastWeekWaste + lastWeekConsumed;
+        final double thisWeekRate = wasteData.thisWeekRate;
+        final double lastWeekRate = wasteData.lastWeekRate;
 
-        // Consumption rates (percent of outflow that was consumed)
-        final double thisWeekRate =
-            thisOutflow == 0 ? 0 : (thisWeekConsumed / thisOutflow * 100);
-        final double lastWeekRate =
-            lastOutflow == 0 ? 0 : (lastWeekConsumed / lastOutflow * 100);
+        // Total wasted money this week (guard nulls)
+        final double wasteCost = wasteData.wasteCost;
 
-// Total wasted money this week (guard nulls)
-        final double wasteCost = wastedThisWeek.fold<double>(
-          0,
-          (sum, i) => sum + ((i.price ?? 0) * (i.qty ?? 1)),
-        );
-
-        final thisWeekWastePct = thisOutflow == 0
-            ? 0
-            : ((thisWeekWaste / thisOutflow) * 100).round();
-        final lastWeekWastePct = lastOutflow == 0
-            ? 0
-            : ((lastWeekWaste / lastOutflow) * 100).round();
+        final thisWeekWastePct = wasteData.thisWeekWastePct;
+        final lastWeekWastePct = wasteData.lastWeekWastePct;
 
         // 7) Category breakdown + most wasted category
-        final Map<String, int> wastedByCategory = {};
-        for (final i in wastedThisWeek) {
-          final cat = i.category ?? 'Uncategorized';
-          wastedByCategory[cat] = (wastedByCategory[cat] ?? 0) + (i.qty ?? 1);
-        }
-        final mostWastedCategory = wastedByCategory.entries.isEmpty
-            ? '—'
-            : wastedByCategory.entries
-                .reduce((a, b) => a.value >= b.value ? a : b)
-                .key;
+        final mostWastedCategory = wasteData.mostWastedCategory;
 
         // 8) Trend series (last 8 weeks) for your charts
-        final List<int> weeklyWasteSeries = [];
-        final List<int> weeklyConsumedSeries = [];
-        final now = DateTime.now();
-
-        for (int back = 7; back >= 0; back--) {
-          final end = DateTime(now.year, now.month, now.day)
-              .subtract(Duration(days: 7 * back));
-          final start = end.subtract(const Duration(days: 6));
-
-          int w = 0, c = 0;
-          for (final i in allItems) {
-            final wa = i.wastedAt;
-            if (i.status == 'wasted' &&
-                wa != null &&
-                !wa.isBefore(start) &&
-                !wa.isAfter(end)) {
-              w += (i.qty ?? 1);
-            }
-            final ca = i.consumedAt;
-            if (i.status == 'consumed' &&
-                ca != null &&
-                !ca.isBefore(start) &&
-                !ca.isAfter(end)) {
-              c += (i.qty ?? 1);
-            }
-          }
-          weeklyWasteSeries.add(w);
-          weeklyConsumedSeries.add(c);
-        }
+        final List<int> weeklyWasteSeries = wasteData.weeklyWasteSeries;
+        final List<int> weeklyConsumedSeries = wasteData.weeklyConsumedSeries;
 
         return Scaffold(
           backgroundColor: const Color(0xFFFFFBE6),
@@ -775,9 +822,14 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                                   2)
                                               .toDouble()),
                                   titlesData: FlTitlesData(
-                                    leftTitles: const AxisTitles(
-                                        sideTitles:
-                                            SideTitles(showTitles: true)),
+                                    leftTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                            showTitles: true,
+                                            interval: 1, // Align numbers to integers
+                                            getTitlesWidget: (value, meta) {
+                                              return Text(value.toInt().toString(),
+                                                  style: const TextStyle(fontSize: 10));
+                                            })),
                                     rightTitles: const AxisTitles(
                                         sideTitles:
                                             SideTitles(showTitles: false)),
@@ -795,7 +847,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                                   : weeklyConsumedSeries.length;
                                           // Show last 8 weeks as W-7 ... W current
                                           if (index >= 0 && index < total) {
-                                            return Text("W${index + 1}",
+                                            return Text("W${8 - index}",
                                                 style: const TextStyle(
                                                     fontSize: 10));
                                           }
@@ -939,8 +991,8 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                         if (showWastedItems)
                           Column(
                             children: wastedThisWeek.map((item) {
-                              final qty = item.qty ?? 1;
-                              final priceEach = item.price ?? 0;
+                              final qty = item.quantity;
+                              final priceEach = item.priceAtAction ?? 0;
                               return Padding(
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 4),
@@ -949,7 +1001,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                       MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
-                                      "($qty) ${item.name}  ${priceEach > 0 ? "₱${priceEach.toStringAsFixed(2)} each" : ""}",
+                                      "($qty) ${item.productName}  ${priceEach > 0 ? "₱${priceEach.toStringAsFixed(2)} each" : ""}",
                                       style: const TextStyle(fontSize: 14),
                                     ),
                                     Text(
@@ -1040,8 +1092,8 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                         if (showConsumedItems)
                           Column(
                             children: consumedThisWeek.map((item) {
-                              final qty = item.qty ?? 1;
-                              final priceEach = item.price ?? 0;
+                              final qty = item.quantity;
+                              final priceEach = item.priceAtAction ?? 0;
                               return Padding(
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 4),
@@ -1050,7 +1102,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                       MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
-                                      "($qty) ${item.name}  ${priceEach > 0 ? "₱${priceEach.toStringAsFixed(2)} each" : ""}",
+                                      "($qty) ${item.productName}  ${priceEach > 0 ? "₱${priceEach.toStringAsFixed(2)} each" : ""}",
                                       style: const TextStyle(fontSize: 14),
                                     ),
                                     Text(

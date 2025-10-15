@@ -9,6 +9,7 @@ class ShoppingHistoryItemModel {
   int quantity;
   DateTime purchaseDate;
   String actionType; // New field: 'Consumed' or 'Deleted'
+  double? priceAtAction; // New field for price at the time of action
 
   ShoppingHistoryItemModel({
     this.id,
@@ -19,6 +20,7 @@ class ShoppingHistoryItemModel {
     required this.quantity,
     required this.purchaseDate,
     this.actionType = 'Consumed', // Default to 'Consumed'
+    this.priceAtAction, // Initialize new field
   });
 
   // Factory constructor to create a ShoppingHistoryItemModel from a Firestore document
@@ -33,7 +35,38 @@ class ShoppingHistoryItemModel {
       quantity: data['quantity'] ?? 1,
       purchaseDate: (data['purchaseDate'] as Timestamp).toDate(),
       actionType: data['actionType'] ?? 'Consumed', // Add actionType to fromFirestore
+      priceAtAction: (data['priceAtAction'] as num?)?.toDouble(), // Add priceAtAction to fromFirestore
     );
+  }
+
+  // Factory constructor to create a ShoppingHistoryItemModel from a JSON map (for local storage)
+  factory ShoppingHistoryItemModel.fromJson(Map<String, dynamic> json) {
+    return ShoppingHistoryItemModel(
+      id: json['id'],
+      householdId: json['householdId'] ?? '',
+      productId: json['productId'],
+      productName: json['productName'] ?? '',
+      category: json['category'],
+      quantity: json['quantity'] ?? 1,
+      purchaseDate: DateTime.parse(json['purchaseDate']),
+      actionType: json['actionType'] ?? 'Consumed',
+      priceAtAction: (json['priceAtAction'] as num?)?.toDouble(),
+    );
+  }
+
+  // Method to convert a ShoppingHistoryItemModel to a JSON map (for local storage)
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'householdId': householdId,
+      'productId': productId,
+      'productName': productName,
+      'category': category,
+      'quantity': quantity,
+      'purchaseDate': purchaseDate.toIso8601String(),
+      'actionType': actionType,
+      'priceAtAction': priceAtAction,
+    };
   }
 
   // Method to convert a ShoppingHistoryItemModel to a Firestore document
@@ -46,6 +79,7 @@ class ShoppingHistoryItemModel {
       'quantity': quantity,
       'purchaseDate': Timestamp.fromDate(purchaseDate),
       'actionType': actionType, // Add actionType to toFirestore
+      'priceAtAction': priceAtAction, // Add priceAtAction to toFirestore
       'timestamp': FieldValue.serverTimestamp(), // Add a timestamp for creation
     };
   }
@@ -60,6 +94,7 @@ class ShoppingHistoryItemModel {
     int? quantity,
     DateTime? purchaseDate,
     String? actionType, // Add actionType to copyWith
+    double? priceAtAction, // Add priceAtAction to copyWith
   }) {
     return ShoppingHistoryItemModel(
       id: id ?? this.id,
@@ -70,6 +105,7 @@ class ShoppingHistoryItemModel {
       quantity: quantity ?? this.quantity,
       purchaseDate: purchaseDate ?? this.purchaseDate,
       actionType: actionType ?? this.actionType, // Use provided actionType or current actionType
+      priceAtAction: priceAtAction ?? this.priceAtAction, // Use provided priceAtAction or current priceAtAction
     );
   }
 }

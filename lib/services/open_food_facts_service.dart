@@ -162,42 +162,54 @@ class OpenFoodFactsService {
 
     List<Map<String, dynamic>> products = [];
 
+    // Prepare all search futures to run in parallel
+    final List<Future<List<Map<String, dynamic>>>> allSearchFutures = [];
+
     // Attempt 1: Search with brand and category
     _logger.i('Attempt 1: Searching for "$productName" with brand: ${brand ?? 'N/A'}, category: ${category ?? 'N/A'}');
-    products = await searchProducts(
+    allSearchFutures.add(searchProducts(
       query: productName,
       brands: brand != null ? [brand] : null,
       categories: category != null ? [category] : null,
       pageSize: 1,
-    );
+    ));
 
-    // Attempt 2: If no results, search with brand only
-    if (products.isEmpty && brand != null) {
-      _logger.i('Attempt 2: No product found with brand and category. Retrying search with brand only for: $productName (brand: $brand)');
-      products = await searchProducts(
+    // Attempt 2: Search with brand only (if brand is available)
+    if (brand != null) {
+      _logger.i('Attempt 2: Searching with brand only for: $productName (brand: $brand)');
+      allSearchFutures.add(searchProducts(
         query: productName,
         brands: [brand],
         pageSize: 1,
-      );
+      ));
     }
 
-    // Attempt 3: If still no results, search with category only
-    if (products.isEmpty && category != null) {
-      _logger.i('Attempt 3: No product found with brand. Retrying search with category only for: $productName (category: $category)');
-      products = await searchProducts(
+    // Attempt 3: Search with category only (if category is available)
+    if (category != null) {
+      _logger.i('Attempt 3: Searching with category only for: $productName (category: $category)');
+      allSearchFutures.add(searchProducts(
         query: productName,
         categories: [category],
         pageSize: 1,
-      );
+      ));
     }
 
-    // Attempt 4: If still no results, search with product name only
-    if (products.isEmpty) {
-      _logger.i('Attempt 4: No product found with brand or category. Retrying search with product name only for: $productName');
-      products = await searchProducts(
-        query: productName,
-        pageSize: 1,
-      );
+    // Attempt 4: Search with product name only
+    _logger.i('Attempt 4: Searching with product name only for: $productName');
+    allSearchFutures.add(searchProducts(
+      query: productName,
+      pageSize: 1,
+    ));
+
+    // Wait for all search futures to complete
+    final List<List<Map<String, dynamic>>> results = await Future.wait(allSearchFutures);
+
+    // Process results in order of preference
+    for (final resultList in results) {
+      if (resultList.isNotEmpty) {
+        products = resultList;
+        break; // Found a product, use this result
+      }
     }
 
     if (products.isNotEmpty) {

@@ -81,7 +81,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   bool get _inSelectMode => _inMultiSelectMode;
 
   ItemStatus _getItemStatus(PantryItemModel item) {
-    if (item.status == 'Consumed') return ItemStatus.consumed;
+    if (item.status == 'consumed') return ItemStatus.consumed;
+    if (item.status == 'wasted') return ItemStatus.expired; // Display 'Expired' for 'wasted' status
 
     if (item.expirationDate == null) {
       return ItemStatus.available;
@@ -284,7 +285,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           if (status != ItemStatus.consumed) return false;
           break;
         case 'Expired':
-          if (status != ItemStatus.expired) return false;
+          if (status != ItemStatus.expired && it.status != 'wasted') return false; // Include items explicitly marked as 'wasted'
           break;
         default:
           break;
@@ -435,36 +436,24 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     );
   }
 
-  // Update item status in Firestore
+  // Update item status
   Future<void> _updateItemStatus(PantryItemModel item, String newStatus, {int? consumedQuantity}) async {
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
 
-    if (widget.isGuest) {
-      List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
-      int itemIndex = currentGuestPantry.indexWhere((element) => element.id == item.id);
-      if (itemIndex != -1) {
-        PantryItemModel updatedItem = item.copyWith(status: newStatus);
-        if (newStatus == 'Consumed' && consumedQuantity != null) {
-          updatedItem = updatedItem.copyWith(qty: updatedItem.qty - consumedQuantity);
-        } else if (newStatus == 'Consumed') {
-          updatedItem = updatedItem.copyWith(qty: 0); // Consume all
-        }
-
-        if (updatedItem.qty <= 0) {
-          currentGuestPantry.removeAt(itemIndex);
-        } else {
-          currentGuestPantry[itemIndex] = updatedItem;
-        }
-        await firestoreService.saveGuestPantryItems(currentGuestPantry);
-      }
+    if (newStatus == 'Consumed') {
+      // Always use recordConsumedItem for 'Consumed' status, it handles both guest and registered users
+      await firestoreService.recordConsumedItem(item, consumedQuantity ?? item.qty);
     } else {
-      if (newStatus == 'Consumed' && consumedQuantity != null) {
-        await firestoreService.recordConsumedItem(item, consumedQuantity);
-      } else if (newStatus == 'Consumed') {
-        // If status is set to consumed without a specific quantity, assume all
-        await firestoreService.recordConsumedItem(item, item.qty);
+      // For other status changes, update the item directly
+      if (widget.isGuest) {
+        List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
+        int itemIndex = currentGuestPantry.indexWhere((element) => element.id == item.id);
+        if (itemIndex != -1) {
+          PantryItemModel updatedItem = item.copyWith(status: newStatus);
+          currentGuestPantry[itemIndex] = updatedItem;
+          await firestoreService.saveGuestPantryItems(currentGuestPantry);
+        }
       } else {
-        // For other status changes, just update the item
         PantryItemModel updatedItem = item.copyWith(status: newStatus);
         await firestoreService.updatePantryItem(updatedItem);
       }
@@ -805,7 +794,13 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                       // Quantity controls
                       IconButton(
                         icon: const Icon(Icons.remove_circle_outline, size: 20),
-                        onPressed: () => _updateItemQuantity(item, item.qty - 1),
+                        onPressed: () {
+                          if (item.qty == 1) {
+                            _updateItemStatus(item, 'consumed', consumedQuantity: 1);
+                          } else {
+                            _updateItemQuantity(item, item.qty - 1);
+                          }
+                        },
                       ),
                       Text('${item.qty}',
                           style: const TextStyle(
@@ -855,20 +850,20 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         extentRatio: 0.25, // For 'Consume'
         children: [
           SlidableAction(
-            onPressed: (_) async {
-              if (item.qty > 1) {
-                await _showQuantityPickerDialog(item);
-              } else {
-                await _updateItemStatus(item, 'Consumed', consumedQuantity: 1);
-              }
-            },
-            backgroundColor: isExpired ? Colors.grey : Colors.green.shade700,
+            backgroundColor: (currentStatus == ItemStatus.consumed || currentStatus == ItemStatus.expired) ? Colors.grey : Colors.green.shade700,
             foregroundColor: Colors.white,
             icon: Icons.restaurant_menu,
             label: 'Consume',
             flex: 1,
-            // Disable consume if expired
-            // enabled: !isExpired,
+            onPressed: (currentStatus == ItemStatus.consumed || currentStatus == ItemStatus.expired)
+                ? null // Disable if consumed or expired
+                : (_) async {
+                    if (item.qty > 1) {
+                      await _showQuantityPickerDialog(item);
+                    } else {
+                      await _updateItemStatus(item, 'consumed', consumedQuantity: 1);
+                    }
+                  },
           ),
         ],
       ),
@@ -885,21 +880,36 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           ),
           SlidableAction(
             onPressed: (_) async {
-              if (isExpired) {
-                await _markAsWasted(item, firestoreService);
+              if (currentStatus == ItemStatus.expired) {
+                await _handleExpiredWaste(item, firestoreService);
               } else {
                 await _deletePantryItem(item, firestoreService);
               }
             },
-            backgroundColor: isExpired ? Colors.orange.shade700 : Colors.red.shade700,
+            backgroundColor: currentStatus == ItemStatus.expired ? Colors.orange.shade700 : Colors.red.shade700,
             foregroundColor: Colors.white,
-            icon: isExpired ? Icons.delete_sweep : Icons.delete_outline,
-            label: isExpired ? 'Wasted' : 'Delete',
+            icon: currentStatus == ItemStatus.expired ? Icons.delete_sweep : Icons.delete_outline,
+            label: currentStatus == ItemStatus.expired ? 'Waste' : 'Delete',
           ),
         ],
       ),
       child: _rowTile(item, idx),
     );
+  }
+
+  // Handle expired waste
+  Future<void> _handleExpiredWaste(PantryItemModel item, FirestoreService firestoreService) async {
+    if (item.id != null) {
+      await firestoreService.recordWastedItem(item, item.qty, actionType: 'Expired Waste');
+      await firestoreService.deletePantryItem(item.id!); // This will now just delete the item from pantry
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Marked "${item.name}" as expired waste and removed from pantry'),
+        ),
+      );
+    }
   }
 
   @override

@@ -390,6 +390,7 @@ class _HouseholdPageState extends State<HouseholdPage> {
                         : IconButton(
                             icon: const Icon(Icons.radio_button_unchecked, color: Colors.grey),
                             onPressed: () {
+                              debugPrint('DEBUG: HouseholdPage - Selecting personal household: ${personalHousehold.id}');
                               firestoreService.selectedHouseholdId = personalHousehold.id;
                             },
                           ),
@@ -468,6 +469,7 @@ class _HouseholdPageState extends State<HouseholdPage> {
                             : IconButton(
                                 icon: const Icon(Icons.radio_button_unchecked, color: Colors.grey),
                                 onPressed: () {
+                                  debugPrint('DEBUG: HouseholdPage - Selecting shared household: ${household.id}');
                                   firestoreService.selectedHouseholdId = household.id;
                                 },
                               ),

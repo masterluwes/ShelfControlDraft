@@ -103,7 +103,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         _isSheetExpanded = false;
       });
       // If the sheet is fully collapsed, restart the scanner
-      if (currentSize <= minSheetSize + 0.01) { // Check if it's at or very near min size
+      if (currentSize <= minSheetSize + 0.01) { // Check if it's at utor very near min size
         _scannerController.start();
         _logger.d('Scanner restarted due to sheet collapse.');
       }
@@ -455,7 +455,21 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                 IconButton(
                                   icon: const Icon(Icons.add, color: Colors.white),
                                   onPressed: () {
-                                    _clearCurrentItemControllers();
+                                    // Create a new empty item
+                                    final newEmptyItem = PantryItemModel(
+                                      householdId: widget.isGuest ? firestoreService.userId! : firestoreService.selectedHouseholdId!,
+                                      name: 'New Item', // Default name
+                                      category: 'Other', // Default category
+                                      barcode: '', // Empty barcode for a new item
+                                      qty: 1,
+                                    );
+
+                                    setState(() {
+                                      _scannedItems.add(newEmptyItem);
+                                      _currentItemIndex = _scannedItems.length - 1;
+                                      _updateControllersForItem(_currentItemIndex); // Populate controllers with new empty item
+                                    });
+
                                     _scannerController.start();
                                     _sheetController.animateTo(0.12, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
                                   },

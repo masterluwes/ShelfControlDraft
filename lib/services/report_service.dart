@@ -416,6 +416,12 @@ class WasteReportService {
           },
           data: summaryRows,
         ),
+        if (stats.weeklyTrendPng != null) ...[
+          spacer(10),
+          pw.Text('Weekly Waste Trend', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          spacer(5),
+          pw.Image(pw.MemoryImage(stats.weeklyTrendPng!), height: 150),
+        ],
         spacer(10),
         pw.Text('Top Wasted Categories', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
         spacer(5),

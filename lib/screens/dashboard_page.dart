@@ -20,6 +20,7 @@ import 'package:shelf_control/screens/scan_item_screen.dart';
 import 'package:shelf_control/screens/history_screen.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:shelf_control/models/household_model.dart';
+import 'package:shelf_control/models/shopping_history_item_model.dart';
 import 'package:collection/collection.dart';
 import 'package:provider/provider.dart';
 import 'package:shelf_control/screens/waste_tracker_page.dart';
@@ -498,21 +499,53 @@ class _DashboardHomeState extends State<DashboardHome> {
             child: Column(
               children: [
                 if (!widget.isGuest && firestoreService.selectedHouseholdId != null) ...[
-                  StreamBuilder<List<PantryItemModel>>(
-                    stream: firestoreService.getPantryItemsForHousehold(firestoreService.selectedHouseholdId!),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (snapshot.hasError) {
-                        // Handle the error, e.g., display a message
-                        return Text('Error loading pantry items: ${snapshot.error}');
-                      }
-                      final items = snapshot.data ?? [];
-                      if (items.isEmpty) {
+                  Consumer<FirestoreService>(
+                    builder: (context, fs, child) {
+                      final householdId = fs.selectedHouseholdId;
+                      if (householdId == null) {
                         return _buildNoDataDashboard();
                       }
-                      return _buildDataDashboard(items);
+                      return StreamBuilder<List<PantryItemModel>>(
+                        stream: fs.getPantryItemsForHousehold(householdId),
+                        builder: (context, pantrySnapshot) {
+                          if (pantrySnapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+                          if (pantrySnapshot.hasError) {
+                            return Text('Error loading pantry items: ${pantrySnapshot.error}');
+                          }
+                          final items = pantrySnapshot.data ?? [];
+                          if (items.isEmpty) {
+                            return _buildNoDataDashboard();
+                          }
+                          return FutureBuilder<Map<String, dynamic>>(
+                            future: fs.getWeeklyWasteAndConsumptionSummary(householdId),
+                            builder: (context, summarySnapshot) {
+                              if (summarySnapshot.connectionState == ConnectionState.waiting) {
+                                return const Center(child: CircularProgressIndicator());
+                              }
+                              if (summarySnapshot.hasError) {
+                                return Text('Error loading summary: ${summarySnapshot.error}');
+                              }
+                              final weeklySummary = summarySnapshot.data ?? {};
+
+                              return StreamBuilder<List<ShoppingHistoryItemModel>>(
+                                stream: fs.getShoppingHistoryForHousehold(householdId),
+                                builder: (context, historySnapshot) {
+                                  if (historySnapshot.connectionState == ConnectionState.waiting) {
+                                    return const Center(child: CircularProgressIndicator());
+                                  }
+                                  if (historySnapshot.hasError) {
+                                    return Text('Error loading history: ${historySnapshot.error}');
+                                  }
+                                  final allHistoryItems = historySnapshot.data ?? [];
+                                  return _buildDataDashboard(items, weeklySummary, allHistoryItems);
+                                },
+                              );
+                            },
+                          );
+                        },
+                      );
                     },
                   ),
                 ]
@@ -526,11 +559,22 @@ class _DashboardHomeState extends State<DashboardHome> {
                       final items = snapshot.data ?? [];
                       final activeItems = items.where((item) => item.status != 'Deleted' && item.status != 'Consumed').toList();
                       if (activeItems.isEmpty) {
-                        return _buildNoDataDashboard();
-                      }
-                      return _buildPantryOverview(activeItems);
-                    },
-                  )
+                      return _buildNoDataDashboard();
+                    }
+                    return FutureBuilder<Widget>(
+                      future: Future.value(_buildPantryOverview(activeItems)),
+                      builder: (context, pantryOverviewSnapshot) {
+                        if (pantryOverviewSnapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+                        if (pantryOverviewSnapshot.hasError) {
+                          return Text('Error building pantry overview: ${pantryOverviewSnapshot.error}');
+                        }
+                        return pantryOverviewSnapshot.data ?? Container();
+                      },
+                    );
+                  },
+                )
                 else
                   _buildNoDataDashboard(),
                 const SizedBox(height: 16),
@@ -543,30 +587,26 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
-  Widget _buildDataDashboard(List<PantryItemModel> items) {
+  Widget _buildDataDashboard(List<PantryItemModel> items, Map<String, dynamic> weeklySummary, List<ShoppingHistoryItemModel> allHistoryItems) {
     final currentMoment = DateTime.now();
     final sevenDaysAgo = currentMoment.subtract(const Duration(days: 7));
 
-    // Filter items that have left the pantry this week (wasted or consumed)
-    final itemsOutThisWeek = items.where((i) =>
-        (i.status == 'wasted' && i.wastedAt != null && i.wastedAt!.isAfter(sevenDaysAgo)) ||
-        (i.status == 'consumed' && i.consumedAt != null && i.consumedAt!.isAfter(sevenDaysAgo))
-    ).toList();
+    final totalConsumedQuantity = weeklySummary['totalConsumedQuantity'] as int;
+    final totalWastedQuantity = weeklySummary['totalWastedQuantity'] as int;
+    final expiredWastedQuantity = weeklySummary['expiredWastedQuantity'] as int;
+    final totalOutflowQuantity = weeklySummary['totalOutflowQuantity'] as int;
 
-    final wastedThisWeek = itemsOutThisWeek.where((i) => i.status == 'wasted').length;
-    final consumedThisWeek = itemsOutThisWeek.where((i) => i.status == 'consumed').length;
 
-    final totalOutflowThisWeek = wastedThisWeek + consumedThisWeek;
-    final wastePct = totalOutflowThisWeek == 0 ? 0 : ((wastedThisWeek / totalOutflowThisWeek) * 100).round();
-    final usageCount = consumedThisWeek;
+    final wasteCount = totalWastedQuantity; // Number of items wasted this week
+    final usageCount = totalConsumedQuantity; // Usage is now directly from the summary
 
     const restockThreshold = 1;
     final lowStockCount = items.where((i) => i.qty <= restockThreshold && i.status != 'Deleted' && i.status != 'Consumed').length;
 
-    final totalConsumedAllTime = items.where((i) => i.status == 'consumed').length;
-    final totalWastedAllTime = items.where((i) => i.status == 'wasted').length;
-    final totalOutflowAllTime = totalConsumedAllTime + totalWastedAllTime;
-    final efficiencyPct = totalOutflowAllTime == 0 ? 0 : ((totalConsumedAllTime / totalOutflowAllTime) * 100).round();
+    final totalConsumedQtyAllTime = allHistoryItems.where((i) => i.actionType == 'Consumed').fold<int>(0, (sum, item) => sum + item.quantity);
+    final totalWastedQtyAllTime = allHistoryItems.where((i) => i.actionType == 'Wasted' || i.actionType == 'Expired Waste').fold<int>(0, (sum, item) => sum + item.quantity);
+    final totalOutflowQtyAllTime = totalConsumedQtyAllTime + totalWastedQtyAllTime;
+    final consumptionRatePct = totalOutflowQtyAllTime == 0 ? 0 : ((totalConsumedQtyAllTime / totalOutflowQtyAllTime) * 100).round();
 
     final expiringSoonItems = items.where((i) =>
         i.expirationDate != null &&
@@ -577,7 +617,8 @@ class _DashboardHomeState extends State<DashboardHome> {
     final expiringSoonCount = expiringSoonItems.length;
 
     final String suggestionText = () {
-      if (wastePct >= 30) return "Waste is high this week — try smaller purchases or prioritize near-expiry items.";
+      if (expiredWastedQuantity > 0) return "You have $expiredWastedQuantity items expired this week. Try to use items before their expiry date.";
+      if (totalWastedQuantity > 0) return "Waste is high this week — try smaller purchases or prioritize near-expiry items.";
       if (lowStockCount > 0) return "You have $lowStockCount low-stock items — consider restocking essentials.";
       if (expiringSoonCount > 0) return "$expiringSoonCount items expiring soon — plan meals to use them first.";
       return "Great job keeping waste low! Rotate stock: use older items before new ones.";
@@ -592,10 +633,10 @@ class _DashboardHomeState extends State<DashboardHome> {
           mainAxisSpacing: 10,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            _metricCard(icon: Icons.delete, label: "Waste", value: "$wastePct%", sublabel: "of items leaving pantry this week"),
-            _metricCard(icon: Icons.bar_chart, label: "Usage", value: "$usageCount", sublabel: "consumed in last 7 days"),
+            _metricCard(icon: Icons.delete, label: "Waste", value: "$wasteCount", sublabel: "items wasted this week"),
+            _metricCard(icon: Icons.bar_chart, label: "Usage", value: "$usageCount", sublabel: "items consumed this week"),
             _metricCard(icon: Icons.shopping_cart, label: "Restock", value: "$lowStockCount", sublabel: "low-stock items (≤1)"),
-            _metricCard(icon: Icons.insights, label: "Efficiency", value: "$efficiencyPct%", sublabel: "consumed vs wasted (all-time)"),
+            _metricCard(icon: Icons.insights, label: "Consumption Rate", value: "$consumptionRatePct%", sublabel: "consumed vs wasted (all-time)"),
             _metricCard(
               icon: Icons.access_alarm,
               label: "Expiring Soon",
@@ -622,6 +663,7 @@ class _DashboardHomeState extends State<DashboardHome> {
           physics: const NeverScrollableScrollPhysics(),
           children: [
             _metricCard(icon: Icons.delete, label: "No data", value: "—", sublabel: "No data available yet!"),
+            _metricCard(icon: Icons.bar_chart, label: "No data", value: "—", sublabel: "No data available yet!"),
             _metricCard(icon: Icons.bar_chart, label: "No data", value: "—", sublabel: "No data available yet!"),
             _metricCard(icon: Icons.shopping_cart, label: "No data", value: "—", sublabel: "No data available yet!"),
             _metricCard(icon: Icons.insights, label: "No data", value: "—", sublabel: "No data available yet!"),
@@ -650,6 +692,27 @@ class _DashboardHomeState extends State<DashboardHome> {
           if (sublabel != null) ...[
             const SizedBox(height: 2),
             Text(sublabel, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _smallMetricCard({required IconData icon, required String label, required String value, String? sublabel}) {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.all(8), // Smaller padding
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 20), // Smaller icon
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), // Smaller value font
+          const SizedBox(height: 2),
+          Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10)), // Smaller label font
+          if (sublabel != null) ...[
+            const SizedBox(height: 1),
+            Text(sublabel, textAlign: TextAlign.center, style: const TextStyle(fontSize: 9, color: Colors.black54)), // Smaller sublabel font
           ],
         ],
       ),
@@ -692,4 +755,5 @@ class _DashboardHomeState extends State<DashboardHome> {
       ),
     );
   }
+
 }

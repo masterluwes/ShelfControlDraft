@@ -143,6 +143,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
     _firestoreService = Provider.of<FirestoreService>(context, listen: false);
     _shoppingListService = ShoppingListService(firestoreService: _firestoreService);
     _householdId = _firestoreService.selectedHouseholdId;
+    debugPrint('DEBUG: Shoppinglist initState - Initial householdId: $_householdId');
     _setupStreams();
   }
 
@@ -172,23 +173,32 @@ class _ShoppinglistState extends State<Shoppinglist> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Re-setup streams if householdId changes (e.g., user switches household)
-    final newHouseholdId = Provider.of<FirestoreService>(context, listen: false).selectedHouseholdId;
+    // Listen to FirestoreService to react to changes in selectedHouseholdId
+    final newHouseholdId = Provider.of<FirestoreService>(context).selectedHouseholdId;
     if (newHouseholdId != _householdId) {
-      _householdId = newHouseholdId;
-      _setupStreams();
+      debugPrint('DEBUG: Shoppinglist didChangeDependencies - HouseholdId changed from $_householdId to $newHouseholdId');
+      setState(() {
+        _householdId = newHouseholdId;
+        _setupStreams();
+      });
+    } else {
+      debugPrint('DEBUG: Shoppinglist didChangeDependencies - HouseholdId is still $_householdId');
     }
   }
 
   void _setupStreams() {
+    debugPrint('DEBUG: Shoppinglist _setupStreams called for householdId: $_householdId');
     if (widget.isGuest) {
       // For guest users, we'll simulate a stream from local storage
       _activeShoppingListStream = _firestoreService.guestShoppingListsStream().map((guestLists) {
+        debugPrint('DEBUG: Shoppinglist _setupStreams - Guest mode, active list count: ${guestLists.length}');
         return guestLists.isNotEmpty ? guestLists.first : null;
       });
       _suggestionsStream = Stream.value([]); // Guests don't get suggestions
     } else if (_householdId != null) {
       _activeShoppingListStream = _firestoreService.streamActiveShoppingList(_householdId!);
       _suggestionsStream = _firestoreService.streamSuggestions(_householdId!).map((generatedSuggestions) {
+        debugPrint('DEBUG: Shoppinglist _setupStreams - Suggestions generated count: ${generatedSuggestions.length}');
         return generatedSuggestions
             .where((item) =>
                 item.name != null &&
@@ -207,6 +217,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
     } else {
       _activeShoppingListStream = Stream.value(null);
       _suggestionsStream = Stream.value([]);
+      debugPrint('DEBUG: Shoppinglist _setupStreams - No householdId, streams set to null/empty.');
     }
     // No setState here, as StreamBuilder will handle rebuilds
   }
@@ -1432,6 +1443,10 @@ class _ShoppinglistState extends State<Shoppinglist> {
         unitPrice: 0.0, // Suggestions don't have unit price initially
         quantity: 1, // Add 1 item from suggestion
         nutrition: suggestion.nutrition?.trim().isEmpty == true ? null : suggestion.nutrition?.trim(),
+        // Add other relevant fields from suggestion if available and needed
+        // For example, if suggestions had a default price or product ID:
+        // productId: suggestion.productId,
+        // unitPrice: suggestion.defaultPrice ?? 0.0,
       );
 
       if (widget.isGuest) {
@@ -1477,6 +1492,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
             ? _reorderByBookmark(activeList!.items)
             : [];
         double totalListPrice = items.fold(0.0, (sum, item) => sum + (item.unitPrice * item.quantity));
+        debugPrint('DEBUG: Shoppinglist StreamBuilder - Active householdId: $_householdId, Active list name: ${activeList?.name ?? 'N/A'}, Items count: ${items.length}');
 
         return Column(
           children: [
@@ -1854,7 +1870,8 @@ class _Suggestion {
   final String? sizeText;
   final String note;
   final String category;
-  final String? nutrition; // keep this
+  final String? nutrition;
+  final double unitPrice; // Add unitPrice to _Suggestion model
 
   _Suggestion({
     required this.id,
@@ -1863,6 +1880,7 @@ class _Suggestion {
     required this.category,
     this.sizeText,
     this.nutrition,
+    this.unitPrice = 0.0, // Default to 0.0 if not provided
   });
 }
 
