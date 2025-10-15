@@ -1,12 +1,13 @@
 // lib/services/meal_planner.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shelf_control/models/user_prefs_model.dart';
 
 class PantryItem {
-  final String name;         // normalized lower-case
-  final int qty;             // quantity available
-  final DateTime? expiryAt;  // nullable
-  final bool consumed;       // default false
-  final bool nearExpiry;     // computed
+  final String name; // normalized lower-case
+  final int qty; // quantity available
+  final DateTime? expiryAt; // nullable
+  final bool consumed; // default false
+  final bool nearExpiry; // computed
 
   PantryItem({
     required this.name,
@@ -20,9 +21,9 @@ class PantryItem {
 class RecipeSuggestion {
   final String name;
   final String imageUrl;
-  final String servingSize;      // string for UI
-  final String calories;         // e.g. "520 kcal"
-  final String time;             // e.g. "25 minutes"
+  final String servingSize; // string for UI
+  final String calories; // e.g. "520 kcal"
+  final String time; // e.g. "25 minutes"
   final String description;
   final List<Map<String, String>> ingredients; // [{name, amount}]
   final List<String> directions;
@@ -39,6 +40,32 @@ class RecipeSuggestion {
   });
 }
 
+// [NEAR_EXPIRY_WINDOW] begin
+bool _isNearExpiry(DateTime? expiry, {int days = 5}) {
+  if (expiry == null) return false;
+  final now = DateTime.now();
+  if (expiry.isBefore(now)) return false; // already expired
+  return expiry.difference(now).inDays <= days;
+}
+// [NEAR_EXPIRY_WINDOW] end
+
+
+// [MEAL_PRIORITY_NEAR_EXPIRY] begin
+double _nearExpiryScoreBump(
+  Iterable<String> usedIngredients,
+  Map<String, DateTime?> expiryMap, {
+  int days = 5,
+  double perItem = 2.0,
+}) {
+  int count = 0;
+  for (final ing in usedIngredients) {
+    final exp = expiryMap[ing];
+    if (_isNearExpiry(exp, days: days)) count++;
+  }
+  return count * perItem;
+}
+// [MEAL_PRIORITY_NEAR_EXPIRY] end
+
 class MealPlanner {
   // --- knobs ---
   static const int defaultNearExpiryDays = 5;
@@ -47,49 +74,103 @@ class MealPlanner {
 
   // Staples ignored when counting "missing"
   static const Set<String> _staples = {
-    'salt','pepper','oil','olive oil','sugar','soy sauce','vinegar',
-    'garlic powder','onion powder','chili flakes','water'
+    'salt',
+    'pepper',
+    'oil',
+    'olive oil',
+    'sugar',
+    'soy sauce',
+    'vinegar',
+    'garlic powder',
+    'onion powder',
+    'chili flakes',
+    'water'
   };
 
   // Items we consider "not pantry-only" (won’t block, but counted as missing)
   static const Set<String> _blocklistFreshOrFrozen = {
-    'chicken','pork','beef','fish fillet','egg','fresh tomato','spinach','lettuce',
-    'carrot','onion fresh','garlic fresh','milk','butter','cheese fresh'
+    'chicken',
+    'pork',
+    'beef',
+    'fish fillet',
+    'egg',
+    'fresh tomato',
+    'spinach',
+    'lettuce',
+    'carrot',
+    'onion fresh',
+    'garlic fresh',
+    'milk',
+    'butter',
+    'cheese fresh'
   };
 
   // More granular shelf lives for specific subcategories/keywords (copied from addpantryitem.dart)
   static final Map<String, Map<String, int>> _subcategoryShelfLives = {
     'Bakery': {
-      'bread': 7, 'cake': 7, 'pastries': 7, 'buns': 7, 'muffin': 7, 'donut': 3,
-      'pandesal': 7, 'ensaymada': 7, 'mamon': 7,
+      'bread': 7,
+      'cake': 7,
+      'pastries': 7,
+      'buns': 7,
+      'muffin': 7,
+      'donut': 3,
+      'pandesal': 7,
+      'ensaymada': 7,
+      'mamon': 7,
     },
     'Dairy': {
-      'fresh milk': 7, 'powdered milk': 270, 'cheese': 60, 'yogurt': 21,
-      'butter': 90, 'eggs': 30,
+      'fresh milk': 7,
+      'powdered milk': 270,
+      'cheese': 60,
+      'yogurt': 21,
+      'butter': 90,
+      'eggs': 30,
     },
     'Beverages': {
-      'fresh juice': 7, 'uht milk': 270, 'coffee': 365, 'tea': 730, 'soda': 180,
+      'fresh juice': 7,
+      'uht milk': 270,
+      'coffee': 365,
+      'tea': 730,
+      'soda': 180,
       'water': 730,
     },
     'Condiments': {
-      'vinegar': 730, 'soy sauce': 365, 'ketchup': 365, 'mustard': 365,
-      'dressing': 180, 'spices': 730, 'powder': 730, 'salt': 1825,
+      'vinegar': 730,
+      'soy sauce': 365,
+      'ketchup': 365,
+      'mustard': 365,
+      'dressing': 180,
+      'spices': 730,
+      'powder': 730,
+      'salt': 1825,
     },
     'Dry Goods': {
-      'rice': 730, 'pasta': 730, 'flour': 180, 'cereal': 180, 'oil': 365,
-      'beans': 730, 'sugar': 1825,
+      'rice': 730,
+      'pasta': 730,
+      'flour': 180,
+      'cereal': 180,
+      'oil': 365,
+      'beans': 730,
+      'sugar': 1825,
     },
     'Snacks': {
-      'chips': 90, 'crackers': 180, 'cookies': 180, 'chocolates': 270,
-      'biscuits': 180, 'packed fudge bars': 180,
+      'chips': 90,
+      'crackers': 180,
+      'cookies': 180,
+      'chocolates': 270,
+      'biscuits': 180,
+      'packed fudge bars': 180,
     }
   };
 
   // Simple name normalization
-  static String _norm(String s) =>
-      s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]+'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  static String _norm(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9 ]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
-  static bool _matchHas(Map<String,int> pantryIndex, String want) {
+  static bool _matchHas(Map<String, int> pantryIndex, String want) {
     // contains-style match: if any pantry key contains the want fragment
     for (final k in pantryIndex.keys) {
       if (k.contains(want)) return true;
@@ -100,31 +181,79 @@ class MealPlanner {
   // Map ingredient name to a broader category for rule matching
   static String _getCategoryForIngredient(String ingredientName) {
     final name = _norm(ingredientName);
-    if (name.contains('bread') || name.contains('cake') || name.contains('pastries') || name.contains('buns') || name.contains('muffin') || name.contains('donut') || name.contains('pandesal') || name.contains('ensaymada') || name.contains('mamon')) {
+    if (name.contains('bread') ||
+        name.contains('cake') ||
+        name.contains('pastries') ||
+        name.contains('buns') ||
+        name.contains('muffin') ||
+        name.contains('donut') ||
+        name.contains('pandesal') ||
+        name.contains('ensaymada') ||
+        name.contains('mamon')) {
       return 'Bakery';
     }
-    if (name.contains('milk') || name.contains('yogurt') || name.contains('cheese') || name.contains('butter') || name.contains('eggs')) {
+    if (name.contains('milk') ||
+        name.contains('yogurt') ||
+        name.contains('cheese') ||
+        name.contains('butter') ||
+        name.contains('eggs')) {
       return 'Dairy';
     }
-    if (name.contains('coffee') || name.contains('tea') || name.contains('juice') || name.contains('soda') || name.contains('water')) {
+    if (name.contains('coffee') ||
+        name.contains('tea') ||
+        name.contains('juice') ||
+        name.contains('soda') ||
+        name.contains('water')) {
       return 'Beverages';
     }
-    if (name.contains('canned') || name.contains('tuna') || name.contains('sardines') || name.contains('corned beef') || name.contains('meat loaf') || name.contains('luncheon meat')) {
+    if (name.contains('canned') ||
+        name.contains('tuna') ||
+        name.contains('sardines') ||
+        name.contains('corned beef') ||
+        name.contains('meat loaf') ||
+        name.contains('luncheon meat')) {
       return 'Canned Protein'; // Specific category for canned meats
     }
-    if (name.contains('rice') || name.contains('pasta') || name.contains('flour') || name.contains('cereal') || name.contains('noodles') || name.contains('oats') || name.contains('sugar')) {
+    if (name.contains('rice') ||
+        name.contains('pasta') ||
+        name.contains('flour') ||
+        name.contains('cereal') ||
+        name.contains('noodles') ||
+        name.contains('oats') ||
+        name.contains('sugar')) {
       return 'Staple Carb';
     }
-    if (name.contains('chips') || name.contains('crackers') || name.contains('cookies') || name.contains('nuts') || name.contains('candies') || name.contains('chocolates') || name.contains('biscuits')) {
+    if (name.contains('chips') ||
+        name.contains('crackers') ||
+        name.contains('cookies') ||
+        name.contains('nuts') ||
+        name.contains('candies') ||
+        name.contains('chocolates') ||
+        name.contains('biscuits')) {
       return 'Snacks';
     }
-    if (name.contains('vinegar') || name.contains('soy sauce') || name.contains('ketchup') || name.contains('mustard') || name.contains('dressing') || name.contains('sauce') || name.contains('spices') || name.contains('salt') || name.contains('garlic powder') || name.contains('onion powder') || name.contains('chili flakes')) {
+    if (name.contains('vinegar') ||
+        name.contains('soy sauce') ||
+        name.contains('ketchup') ||
+        name.contains('mustard') ||
+        name.contains('dressing') ||
+        name.contains('sauce') ||
+        name.contains('spices') ||
+        name.contains('salt') ||
+        name.contains('garlic powder') ||
+        name.contains('onion powder') ||
+        name.contains('chili flakes')) {
       return 'Condiment';
     }
-    if (name.contains('garlic') || name.contains('onion')) { // For fresh garlic/onion, if they are ever added
+    if (name.contains('garlic') || name.contains('onion')) {
+      // For fresh garlic/onion, if they are ever added
       return 'Aromatic';
     }
-    if (name.contains('tomato') || name.contains('spinach') || name.contains('lettuce') || name.contains('carrot') || name.contains('peas')) {
+    if (name.contains('tomato') ||
+        name.contains('spinach') ||
+        name.contains('lettuce') ||
+        name.contains('carrot') ||
+        name.contains('peas')) {
       return 'Vegetable (Canned)'; // For canned vegetables
     }
     if (name.contains('sweetener')) {
@@ -135,7 +264,8 @@ class MealPlanner {
 
   /// Build PantryItem list from Firestore docs (defensive: supports 'qty' or 'quantity';
   /// 'expiryAt' or 'expirationDate'; Timestamp or ISO string).
-  static List<PantryItem> fromSnapshot(QuerySnapshot snap, {int nearExpiryDays = defaultNearExpiryDays}) {
+  static List<PantryItem> fromSnapshot(QuerySnapshot snap,
+      {int nearExpiryDays = defaultNearExpiryDays}) {
     final now = DateTime.now();
     final items = <PantryItem>[];
     for (final d in snap.docs) {
@@ -146,9 +276,11 @@ class MealPlanner {
       final name = _norm(rawName);
       final qty = (data['qty'] ?? data['quantity'] ?? 0) is int
           ? (data['qty'] ?? data['quantity'] ?? 0) as int
-          : int.tryParse((data['qty'] ?? data['quantity'] ?? '0').toString()) ?? 0;
+          : int.tryParse((data['qty'] ?? data['quantity'] ?? '0').toString()) ??
+              0;
 
-      final consumed = (data['consumed'] ?? false) == true || (data['status'] == 'Deleted');
+      final consumed =
+          (data['consumed'] ?? false) == true || (data['status'] == 'Deleted');
 
       DateTime? expiryAt;
       final ex = data['expiryAt'] ?? data['expirationDate'];
@@ -161,7 +293,8 @@ class MealPlanner {
       final expired = expiryAt != null && expiryAt.isBefore(now);
       if (consumed || expired || qty <= 0) continue;
 
-      final near = expiryAt != null && expiryAt.isBefore(now.add(Duration(days: nearExpiryDays)));
+      final near = expiryAt != null &&
+          expiryAt.isBefore(now.add(Duration(days: nearExpiryDays)));
       items.add(PantryItem(
         name: name,
         qty: qty,
@@ -181,9 +314,16 @@ class MealPlanner {
     _Rule(
       id: 'tuna_pasta',
       titleTemplate: 'Tuna Pantry Pasta',
-      imageUrl: 'https://images.unsplash.com/photo-1523986371872-9d3ba2e2f642?q=80&w=1200',
+      imageUrl:
+          'https://images.unsplash.com/photo-1523986371872-9d3ba2e2f642?q=80&w=1200',
       requiredIngredients: {'pasta', 'tuna'},
-      optionalIngredients: {'olive oil','oil','garlic powder','soy sauce','chili flakes'},
+      optionalIngredients: {
+        'olive oil',
+        'oil',
+        'garlic powder',
+        'soy sauce',
+        'chili flakes'
+      },
       baseTimeMin: 20,
       baseKcalPerServing: 520,
       servings: 2,
@@ -194,32 +334,46 @@ class MealPlanner {
         'Add a splash of pasta water and toss pasta in the pan.',
         'Season to taste and serve hot.',
       ],
-      aliases: {'canned tuna':'tuna'},
+      aliases: {'canned tuna': 'tuna'},
     ),
     _Rule(
       id: 'sardines_pasta',
       titleTemplate: 'Sardines Aglio e Olio',
-      imageUrl: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?q=80&w=1200',
-      requiredIngredients: {'pasta','sardines'},
-      optionalIngredients: {'olive oil','oil','garlic powder','chili flakes'},
+      imageUrl:
+          'https://images.unsplash.com/photo-1512058564366-18510be2db19?q=80&w=1200',
+      requiredIngredients: {'pasta', 'sardines'},
+      optionalIngredients: {
+        'olive oil',
+        'oil',
+        'garlic powder',
+        'chili flakes'
+      },
       baseTimeMin: 18,
       baseKcalPerServing: 500,
       servings: 2,
-      descriptionTemplate: 'Spicy garlic oil pasta upgraded with canned sardines.',
+      descriptionTemplate:
+          'Spicy garlic oil pasta upgraded with canned sardines.',
       stepsTemplate: [
         'Cook pasta until al dente.',
         'Sauté oil with garlic powder and chili flakes.',
         'Fold in sardines, add pasta and a bit of pasta water.',
         'Toss to coat and serve.',
       ],
-      aliases: {'canned sardines':'sardines'},
+      aliases: {'canned sardines': 'sardines'},
     ),
     _Rule(
       id: 'fried_rice',
       titleTemplate: 'Pantry Fried Rice',
-      imageUrl: 'https://images.unsplash.com/photo-1598866594230-a7c12756260c?q=80&w=1200',
+      imageUrl:
+          'https://images.unsplash.com/photo-1598866594230-a7c12756260c?q=80&w=1200',
       requiredIngredients: {'rice', 'soy sauce'},
-      optionalIngredients: {'corned beef','tuna','sardines','garlic powder','onion powder'},
+      optionalIngredients: {
+        'corned beef',
+        'tuna',
+        'sardines',
+        'garlic powder',
+        'onion powder'
+      },
       baseTimeMin: 15,
       baseKcalPerServing: 480,
       servings: 2,
@@ -230,32 +384,44 @@ class MealPlanner {
         'Add rice and soy sauce, stir-fry until heated through.',
         'Adjust seasoning and serve.',
       ],
-      aliases: {'canned corned beef':'corned beef'},
+      aliases: {'canned corned beef': 'corned beef'},
     ),
     _Rule(
       id: 'rice_beans',
       titleTemplate: 'Rice & Beans Bowl',
-      imageUrl: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?q=80&w=1200',
-      requiredIngredients: {'rice','beans'},
-      optionalIngredients: {'soy sauce','chili flakes','garlic powder','oil'},
+      imageUrl:
+          'https://images.unsplash.com/photo-1568605114967-8130f3a36994?q=80&w=1200',
+      requiredIngredients: {'rice', 'beans'},
+      optionalIngredients: {
+        'soy sauce',
+        'chili flakes',
+        'garlic powder',
+        'oil'
+      },
       baseTimeMin: 20,
       baseKcalPerServing: 520,
       servings: 2,
-      descriptionTemplate: 'Hearty rice and canned beans with pantry seasonings.',
+      descriptionTemplate:
+          'Hearty rice and canned beans with pantry seasonings.',
       stepsTemplate: [
         'Warm beans in a pot with seasonings.',
         'Stir through cooked rice.',
         'Finish with soy sauce or chili flakes to taste.',
         'Serve hot.',
       ],
-      aliases: {'canned beans':'beans','kidney beans':'beans','baked beans':'beans'},
+      aliases: {
+        'canned beans': 'beans',
+        'kidney beans': 'beans',
+        'baked beans': 'beans'
+      },
     ),
     _Rule(
       id: 'garlic_oil_pasta',
       titleTemplate: 'Garlic Oil Pasta (Pantry)',
-      imageUrl: 'https://images.unsplash.com/photo-1526318472351-c75fcf070305?q=80&w=1200',
-      requiredIngredients: {'pasta','oil'},
-      optionalIngredients: {'garlic powder','chili flakes','soy sauce'},
+      imageUrl:
+          'https://images.unsplash.com/photo-1526318472351-c75fcf070305?q=80&w=1200',
+      requiredIngredients: {'pasta', 'oil'},
+      optionalIngredients: {'garlic powder', 'chili flakes', 'soy sauce'},
       baseTimeMin: 12,
       baseKcalPerServing: 480,
       servings: 2,
@@ -270,9 +436,17 @@ class MealPlanner {
     _Rule(
       id: 'noodles_upgrade',
       titleTemplate: 'Upgraded Instant Noodles',
-      imageUrl: 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=1200',
+      imageUrl:
+          'https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=1200',
       requiredIngredients: {'instant noodles'},
-      optionalIngredients: {'corned beef','tuna','sardines','soy sauce','garlic powder','chili flakes'},
+      optionalIngredients: {
+        'corned beef',
+        'tuna',
+        'sardines',
+        'soy sauce',
+        'garlic powder',
+        'chili flakes'
+      },
       baseTimeMin: 8,
       baseKcalPerServing: 430,
       servings: 1,
@@ -282,19 +456,21 @@ class MealPlanner {
         'Stir in canned add-ins and seasonings.',
         'Serve hot.',
       ],
-      aliases: {'ramen':'instant noodles'},
+      aliases: {'ramen': 'instant noodles'},
     ),
     // --- New rules for dynamic meal ideas (Filipino hacks, supermarket focus) ---
     _Rule(
       id: 'breakfast_combo_fast_expiring',
       titleTemplate: '{Bakery Item} with {Dairy Item}',
-      imageUrl: 'https://images.unsplash.com/photo-1583339752135-c1923795795e?q=80&w=1200', // Generic breakfast image
+      imageUrl:
+          'https://images.unsplash.com/photo-1583339752135-c1923795795e?q=80&w=1200', // Generic breakfast image
       requiredCategories: {'Bakery', 'Dairy'},
       optionalCategories: {'Sweetener'},
       baseTimeMin: 5,
       baseKcalPerServing: 300,
       servings: 1,
-      descriptionTemplate: 'A quick Filipino breakfast to use up expiring items.',
+      descriptionTemplate:
+          'A quick Filipino breakfast to use up expiring items.',
       stepsTemplate: [
         'Serve {Bakery Item} with {Dairy Item}.',
         'Add {Sweetener} if desired.',
@@ -303,24 +479,31 @@ class MealPlanner {
     _Rule(
       id: 'ginisang_canned_goods',
       titleTemplate: 'Ginisang {Canned Protein}',
-      imageUrl: 'https://images.unsplash.com/photo-1621996383325-e477b1b7f8b7?q=80&w=1200', // Generic Filipino dish image
+      imageUrl:
+          'https://images.unsplash.com/photo-1621996383325-e477b1b7f8b7?q=80&w=1200', // Generic Filipino dish image
       requiredCategories: {'Canned Protein', 'Aromatic'},
       optionalCategories: {'Vegetable (Canned)', 'Condiment', 'Staple Carb'},
       baseTimeMin: 15,
       baseKcalPerServing: 450,
       servings: 2,
-      descriptionTemplate: 'A classic Filipino sautéed dish using pantry staples.',
+      descriptionTemplate:
+          'A classic Filipino sautéed dish using pantry staples.',
       stepsTemplate: [
         'Sauté {Aromatic}.',
         'Add {Canned Protein} and {Vegetable (Canned)} if available.',
         'Season with {Condiment} and serve with {Staple Carb} if available.',
       ],
-      aliases: {'canned tuna':'tuna', 'canned sardines':'sardines', 'canned corned beef':'corned beef'},
+      aliases: {
+        'canned tuna': 'tuna',
+        'canned sardines': 'sardines',
+        'canned corned beef': 'corned beef'
+      },
     ),
     _Rule(
       id: 'instant_noodle_boost',
       titleTemplate: 'Upgraded {Instant Noodles}',
-      imageUrl: 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=1200', // Instant noodles image
+      imageUrl:
+          'https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=1200', // Instant noodles image
       requiredCategories: {'Instant Noodles'},
       optionalCategories: {'Egg', 'Canned Protein', 'Spice'},
       baseTimeMin: 8,
@@ -333,17 +516,32 @@ class MealPlanner {
         'Season with {Spice} if available.',
         'Serve hot.',
       ],
-      aliases: {'ramen':'instant noodles'},
+      aliases: {'ramen': 'instant noodles'},
     ),
   ];
 
   /// Generate suggestions from pantry items (pure local rules).
+  // [GENERATE_SIGNATURE] begin
   static List<RecipeSuggestion> generate({
     required List<PantryItem> pantry,
-    int nearExpiryDays = defaultNearExpiryDays,
-    int maxMissing = defaultMaxMissing,
-    int maxResults = defaultMaxResults,
+    required UserPrefs prefs,
+    int limit = 12,
+    int nearExpiryDays = 5,
+    bool pantryOnly = false,
+    bool preferNearExpiry = false,
+    Map<String, DateTime?>? expiryMap,
   }) {
+    // [LOOKUPS_INIT] begin
+    final Set<String> pantryNames = {
+      for (final p in pantry) p.name, // normalizeName already baked into p.name
+    };
+
+    final Map<String, DateTime?> expMap = expiryMap ??
+        {
+          for (final p in pantry) p.name: p.expiryAt,
+        };
+// [LOOKUPS_INIT] end
+
     final now = DateTime.now();
     final atRiskDays = 2; // Define "at-risk" as expiring within 2 days
 
@@ -367,10 +565,16 @@ class MealPlanner {
           ifAbsent: () => [p.name]);
     }
 
-    final results = <({RecipeSuggestion s, int score, int missingCount, List<String> missingIngredients})>[];
+    final results = <({
+      RecipeSuggestion s,
+      int score,
+      int missingCount,
+      List<String> missingIngredients
+    })>[];
 
     for (final rule in _rules) {
-      final matchedIngredients = <String, String>{}; // Placeholder -> actual ingredient
+      final matchedIngredients =
+          <String, String>{}; // Placeholder -> actual ingredient
       final currentMissing = <String>[];
       var currentNearHits = 0;
       var currentAtRiskHits = 0;
@@ -382,12 +586,21 @@ class MealPlanner {
         if (_matchHas(pantryIndex, normalizedReqIng)) {
           // Find the actual pantry item that matches
           final actualItem = pantryMap.values.firstWhere(
-              (p) => _norm(p.name).contains(normalizedReqIng) || normalizedReqIng.contains(_norm(p.name)),
-              orElse: () => PantryItem(name: '', qty: 0, consumed: false, nearExpiry: false, expiryAt: null));
+              (p) =>
+                  _norm(p.name).contains(normalizedReqIng) ||
+                  normalizedReqIng.contains(_norm(p.name)),
+              orElse: () => PantryItem(
+                  name: '',
+                  qty: 0,
+                  consumed: false,
+                  nearExpiry: false,
+                  expiryAt: null));
           if (actualItem.name.isNotEmpty) {
             matchedIngredients[reqIng] = actualItem.name;
             if (actualItem.nearExpiry) currentNearHits++;
-            if (actualItem.expiryAt != null && actualItem.expiryAt!.isBefore(now.add(Duration(days: atRiskDays)))) {
+            if (actualItem.expiryAt != null &&
+                actualItem.expiryAt!
+                    .isBefore(now.add(Duration(days: atRiskDays)))) {
               currentAtRiskHits++;
             }
           }
@@ -398,7 +611,8 @@ class MealPlanner {
 
       // --- Check required categories ---
       for (final reqCat in rule.requiredCategories) {
-        if (pantryCategoryMap.containsKey(reqCat) && pantryCategoryMap[reqCat]!.isNotEmpty) {
+        if (pantryCategoryMap.containsKey(reqCat) &&
+            pantryCategoryMap[reqCat]!.isNotEmpty) {
           // Pick one available ingredient from the category, prioritize expiring/at-risk
           String? bestMatch;
           int bestScore = -1; // Higher score is better
@@ -408,7 +622,9 @@ class MealPlanner {
             if (item != null) {
               int score = 0;
               if (item.nearExpiry) score += 1;
-              if (item.expiryAt != null && item.expiryAt!.isBefore(now.add(Duration(days: atRiskDays)))) {
+              if (item.expiryAt != null &&
+                  item.expiryAt!
+                      .isBefore(now.add(Duration(days: atRiskDays)))) {
                 score += 2; // Higher score for at-risk
               }
               if (score > bestScore) {
@@ -421,14 +637,17 @@ class MealPlanner {
             matchedIngredients[reqCat] = bestMatch;
             final item = pantryMap[bestMatch]!;
             if (item.nearExpiry) currentNearHits++;
-            if (item.expiryAt != null && item.expiryAt!.isBefore(now.add(Duration(days: atRiskDays)))) {
+            if (item.expiryAt != null &&
+                item.expiryAt!.isBefore(now.add(Duration(days: atRiskDays)))) {
               currentAtRiskHits++;
             }
             // Add to category expiry score
-            final categoryShelfLife = _subcategoryShelfLives[reqCat]?[_norm(bestMatch)];
+            final categoryShelfLife =
+                _subcategoryShelfLives[reqCat]?[_norm(bestMatch)];
             if (categoryShelfLife != null && item.expiryAt != null) {
               final daysRemaining = item.expiryAt!.difference(now).inDays;
-              if (daysRemaining <= categoryShelfLife ~/ 2) { // If less than half shelf life remaining
+              if (daysRemaining <= categoryShelfLife ~/ 2) {
+                // If less than half shelf life remaining
                 categoryExpiryScore++;
               }
             }
@@ -440,7 +659,7 @@ class MealPlanner {
         }
       }
 
-      if (currentMissing.length > maxMissing) continue;
+      if (pantryOnly && currentMissing.isNotEmpty) continue;
 
       // --- Collect optional ingredients/categories that are present ---
       final availableOptionalIngredients = <String>[];
@@ -448,19 +667,29 @@ class MealPlanner {
         final normalizedOptIng = _norm(optIng);
         if (_matchHas(pantryIndex, normalizedOptIng)) {
           final actualItem = pantryMap.values.firstWhere(
-              (p) => _norm(p.name).contains(normalizedOptIng) || normalizedOptIng.contains(_norm(p.name)),
-              orElse: () => PantryItem(name: '', qty: 0, consumed: false, nearExpiry: false, expiryAt: null));
+              (p) =>
+                  _norm(p.name).contains(normalizedOptIng) ||
+                  normalizedOptIng.contains(_norm(p.name)),
+              orElse: () => PantryItem(
+                  name: '',
+                  qty: 0,
+                  consumed: false,
+                  nearExpiry: false,
+                  expiryAt: null));
           if (actualItem.name.isNotEmpty) {
             availableOptionalIngredients.add(actualItem.name);
             if (actualItem.nearExpiry) currentNearHits++;
-            if (actualItem.expiryAt != null && actualItem.expiryAt!.isBefore(now.add(Duration(days: atRiskDays)))) {
+            if (actualItem.expiryAt != null &&
+                actualItem.expiryAt!
+                    .isBefore(now.add(Duration(days: atRiskDays)))) {
               currentAtRiskHits++;
             }
           }
         }
       }
       for (final optCat in rule.optionalCategories) {
-        if (pantryCategoryMap.containsKey(optCat) && pantryCategoryMap[optCat]!.isNotEmpty) {
+        if (pantryCategoryMap.containsKey(optCat) &&
+            pantryCategoryMap[optCat]!.isNotEmpty) {
           // Pick one available ingredient from the category
           String? bestMatch;
           int bestScore = -1;
@@ -470,7 +699,9 @@ class MealPlanner {
             if (item != null) {
               int score = 0;
               if (item.nearExpiry) score += 1;
-              if (item.expiryAt != null && item.expiryAt!.isBefore(now.add(Duration(days: atRiskDays)))) {
+              if (item.expiryAt != null &&
+                  item.expiryAt!
+                      .isBefore(now.add(Duration(days: atRiskDays)))) {
                 score += 2;
               }
               if (score > bestScore) {
@@ -483,10 +714,12 @@ class MealPlanner {
             availableOptionalIngredients.add(bestMatch);
             final item = pantryMap[bestMatch]!;
             if (item.nearExpiry) currentNearHits++;
-            if (item.expiryAt != null && item.expiryAt!.isBefore(now.add(Duration(days: atRiskDays)))) {
+            if (item.expiryAt != null &&
+                item.expiryAt!.isBefore(now.add(Duration(days: atRiskDays)))) {
               currentAtRiskHits++;
             }
-            final categoryShelfLife = _subcategoryShelfLives[optCat]?[_norm(bestMatch)];
+            final categoryShelfLife =
+                _subcategoryShelfLives[optCat]?[_norm(bestMatch)];
             if (categoryShelfLife != null && item.expiryAt != null) {
               final daysRemaining = item.expiryAt!.difference(now).inDays;
               if (daysRemaining <= categoryShelfLife ~/ 2) {
@@ -508,24 +741,37 @@ class MealPlanner {
       matchedIngredients.forEach((placeholder, actualIng) {
         allUsedIngredients.add(actualIng);
         filledTitle = filledTitle.replaceAll('{$placeholder}', actualIng);
-        filledDescription = filledDescription.replaceAll('{$placeholder}', actualIng);
-        filledSteps = filledSteps.map((step) => step.replaceAll('{$placeholder}', actualIng)).toList();
+        filledDescription =
+            filledDescription.replaceAll('{$placeholder}', actualIng);
+        filledSteps = filledSteps
+            .map((step) => step.replaceAll('{$placeholder}', actualIng))
+            .toList();
       });
       for (final optIng in availableOptionalIngredients) {
         allUsedIngredients.add(optIng);
       }
 
       for (final ingName in allUsedIngredients) {
-        ingredientsList.add({'name': ingName, 'amount': ''}); // Amount can be added if rules specify
+        ingredientsList.add({
+          'name': ingName,
+          'amount': ''
+        }); // Amount can be added if rules specify
       }
 
       // Final score calculation
       // Prioritize: (1) At-risk items, (2) Near-expiry items, (3) Fast-expiring categories, (4) Fewer missing
       int score = 0;
       score += currentAtRiskHits * 1000; // High weight for at-risk
-      score += currentNearHits * 100;    // Medium weight for near-expiry
+      score += currentNearHits * 100; // Medium weight for near-expiry
       score += categoryExpiryScore * 50; // Weight for fast-expiring categories
       score -= currentMissing.length * 10; // Penalty for missing ingredients
+
+      if (preferNearExpiry) {
+        // allUsedIngredients is already built above; expMap & nearExpiryDays are in scope
+        final bump = _nearExpiryScoreBump(allUsedIngredients, expMap,
+            days: nearExpiryDays);
+        score += bump.toInt(); // cast double -> int to match your score type
+      }
 
       final s = RecipeSuggestion(
         name: filledTitle,
@@ -538,7 +784,12 @@ class MealPlanner {
         directions: filledSteps,
       );
 
-      results.add((s: s, score: score, missingCount: currentMissing.length, missingIngredients: currentMissing));
+      results.add((
+        s: s,
+        score: score,
+        missingCount: currentMissing.length,
+        missingIngredients: currentMissing
+      ));
     }
 
     // Rank: (1) higher score, (2) fewer missing
@@ -548,7 +799,7 @@ class MealPlanner {
       return a.missingCount.compareTo(b.missingCount);
     });
 
-    return results.take(maxResults).map((e) => e.s).toList();
+    return results.take(limit).map((e) => e.s).toList();
   }
 }
 
@@ -565,7 +816,7 @@ class _Rule {
   final int servings;
   final String descriptionTemplate; // Use template for dynamic descriptions
   final List<String> stepsTemplate; // Use template for dynamic steps
-  final Map<String,String> aliases; // 'canned tuna' -> 'tuna'
+  final Map<String, String> aliases; // 'canned tuna' -> 'tuna'
 
   _Rule({
     required this.id,
