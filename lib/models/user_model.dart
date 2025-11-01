@@ -12,7 +12,13 @@ class UserModel {
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    final data = doc.data();
+    if (data == null || data is! Map<String, dynamic>) {
+      // Log an error or throw an exception if data is not in the expected format
+      // This will provide a more specific error if the Firestore document data is not a Map.
+      throw StateError('User document data for UID ${doc.id} is null or not a Map<String, dynamic>: $data');
+    }
+    
     return UserModel(
       uid: doc.id,
       email: data['email'] ?? '',
