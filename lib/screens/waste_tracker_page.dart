@@ -675,7 +675,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                         child: Text(
                           "Waste Tracker",
                           style: TextStyle(
-                            fontSize: 24,
+                            fontSize: 20, // Reduced font size to prevent overflow
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF2E7D32),
                           ),
@@ -996,18 +996,25 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                               return Padding(
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 4),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      "($qty) ${item.productName}  ${priceEach > 0 ? "₱${priceEach.toStringAsFixed(2)} each" : ""}",
-                                      style: const TextStyle(fontSize: 14),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            "($qty) ${item.productName}  ${priceEach > 0 ? "₱${priceEach.toStringAsFixed(2)} each" : ""}",
+                                            style: const TextStyle(fontSize: 14),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     Text(
                                       item.category ?? "Uncategorized",
                                       style: const TextStyle(
-                                          color: Colors.black54),
+                                          fontSize: 12, color: Colors.black54),
                                     ),
                                   ],
                                 ),
@@ -1097,18 +1104,25 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                               return Padding(
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 4),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      "($qty) ${item.productName}  ${priceEach > 0 ? "₱${priceEach.toStringAsFixed(2)} each" : ""}",
-                                      style: const TextStyle(fontSize: 14),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            "($qty) ${item.productName}  ${priceEach > 0 ? "₱${priceEach.toStringAsFixed(2)} each" : ""}",
+                                            style: const TextStyle(fontSize: 14),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     Text(
                                       item.category ?? "Uncategorized",
                                       style: const TextStyle(
-                                          color: Colors.black54),
+                                          fontSize: 12, color: Colors.black54),
                                     ),
                                   ],
                                 ),

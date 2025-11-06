@@ -2027,8 +2027,6 @@ class _ShoppingRow extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text(
                   item.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -2085,62 +2083,64 @@ class _ShoppingRow extends StatelessWidget {
           splashRadius: 20,
           tooltip: item.isBookmarked ? 'Unpin' : 'Pin (priority)',
         ),
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // Compact quantity controls
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: Icon(Icons.remove_circle_outline_rounded, color: grey, size: 20),
-                    onPressed: onDecrement,
-                    splashRadius: 18,
+        Flexible(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              // Compact quantity controls
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: Icon(Icons.remove_circle_outline_rounded, color: grey, size: 20),
+                      onPressed: onDecrement,
+                      splashRadius: 18,
+                    ),
                   ),
-                ),
-                Container(
-                  width: 30,
-                  alignment: Alignment.center,
-                  child: Text(
-                    '${item.quantity}',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  Container(
+                    width: 30,
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${item.quantity}',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
                   ),
-                ),
-                SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: Icon(Icons.add_circle_outline_rounded, color: grey, size: 20),
-                    onPressed: onIncrement,
-                    splashRadius: 18,
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: Icon(Icons.add_circle_outline_rounded, color: grey, size: 20),
+                      onPressed: onIncrement,
+                      splashRadius: 18,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            // Unit price (smaller)
-            Text(
-              '₱${item.unitPrice.toStringAsFixed(2)}/item',
-              style: TextStyle(
-                fontSize: 11,
-                color: selected ? Colors.grey.shade500 : Colors.grey.shade600,
+                ],
               ),
-            ),
-            // Total price for quantity
-            Text(
-              '₱${(item.unitPrice * item.quantity).toStringAsFixed(2)}',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: selected ? Colors.grey.shade600 : headerGreen,
+              // Unit price (smaller)
+              Text(
+                '₱${item.unitPrice.toStringAsFixed(2)}/item',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: selected ? Colors.grey.shade500 : Colors.grey.shade600,
+                ),
               ),
-            ),
-          ],
+              // Total price for quantity
+              Text(
+                '₱${(item.unitPrice * item.quantity).toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: selected ? Colors.grey.shade600 : headerGreen,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

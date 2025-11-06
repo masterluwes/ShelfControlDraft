@@ -671,4 +671,5 @@ Future<WeatherAlert> _computeAlert() async {
         .format(now.add(const Duration(hours: 24)));
     return '$start - $end';
   }
+
 }

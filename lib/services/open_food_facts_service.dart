@@ -1,3 +1,4 @@
+import 'dart:async'; // Import for TimeoutException
 import 'dart:convert';
 import 'dart:io'; // Import dart:io for platform checks
 import 'package:http/http.dart' as http;
@@ -57,7 +58,7 @@ class OpenFoodFactsService {
           // Set a custom User-Agent to identify our app
           'User-Agent': 'ShelfControl - $platform - Version 1.0',
         },
-      );
+      ).timeout(const Duration(seconds: 10)); // Add timeout here
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
@@ -71,6 +72,9 @@ class OpenFoodFactsService {
         _logger.w('Failed to load product for barcode $barcode. Status code: ${response.statusCode}'); // Use logger.w for warnings
         return null;
       }
+    } on TimeoutException catch (e) {
+      _logger.e('Timeout fetching product for barcode $barcode: $e');
+      return null;
     } catch (e) {
       _logger.e('Error fetching product for barcode $barcode: $e'); // Use logger.e for errors
       return null;
@@ -124,7 +128,7 @@ class OpenFoodFactsService {
         headers: {
           'User-Agent': 'ShelfControl - $platform - Version 1.0',
         },
-      );
+      ).timeout(const Duration(seconds: 10)); // Add timeout here
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
@@ -138,6 +142,9 @@ class OpenFoodFactsService {
         _logger.w('Failed to search products for query $query. Status code: ${response.statusCode}');
         return [];
       }
+    } on TimeoutException catch (e) {
+      _logger.e('Timeout searching products for query $query: $e');
+      return [];
     } catch (e) {
       _logger.e('Error searching products for query $query: $e');
       return [];
@@ -201,14 +208,12 @@ class OpenFoodFactsService {
       pageSize: 1,
     ));
 
-    // Wait for all search futures to complete
-    final List<List<Map<String, dynamic>>> results = await Future.wait(allSearchFutures);
-
-    // Process results in order of preference
-    for (final resultList in results) {
+    // Execute search futures sequentially and stop on first success
+    for (final searchFuture in allSearchFutures) {
+      final resultList = await searchFuture;
       if (resultList.isNotEmpty) {
         products = resultList;
-        break; // Found a product, use this result
+        break; // Found a product, use this result and stop
       }
     }
 

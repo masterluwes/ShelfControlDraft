@@ -96,12 +96,15 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     _logger.d('Scanner initialized with key: $_scannerKey');
   }
 
-  void _resetScanner() {
+  void _resetScanner() async { // Make the method async
     _scannerController.dispose(); // Dispose the old controller
+    await Future.delayed(const Duration(milliseconds: 500)); // Add a delay for resource release
+    if (!mounted) return; // Check if the widget is still mounted after the delay
     setState(() {
       _scannerKey = UniqueKey(); // Change the key to force rebuild
       _initializeScanner(); // Initialize a new controller
     });
+    _scannerController.start(); // Explicitly start the scanner
     _logger.d('Scanner reset with new key: $_scannerKey');
   }
 
@@ -120,23 +123,19 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       });
       // If the sheet is fully collapsed, restart the scanner
       if (currentSize <= minSheetSize + 0.01) { // Check if it's at or very near min size
-        // Add a small delay before restarting to allow resources to be fully released
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) {
-            // Instead of just _scannerController.start(), reset the scanner
-            _resetScanner();
-            _logger.d('Scanner reset due to sheet collapse after delay.');
-          }
-        });
+        if (mounted) {
+          // Instead of just _scannerController.start(), reset the scanner
+          _resetScanner();
+          _logger.d('Scanner reset due to sheet collapse.');
+        }
       }
     } else if (!wasExpanded && isNowExpanded) {
       // Sheet is expanding
       setState(() {
         _isSheetExpanded = true;
       });
-      // Stop scanner when sheet expands
-      _scannerController.stop();
-      _logger.d('Scanner stopped due to sheet expansion.');
+      // Scanner is already stopped in onDetect, no need to stop again here.
+      _logger.d('Sheet expanded, scanner was already stopped in onDetect.');
     }
   }
 
@@ -188,9 +187,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
   }
 
   Future<void> _fetchProductDetails(String barcode, FirestoreService firestoreService) async {
-    // Stop the scanner immediately after a barcode is detected and before processing
-    _scannerController.stop();
-    _logger.d('Scanner stopped explicitly after barcode detection.');
+    _logger.d('Processing barcode: $barcode');
     // Add a small delay here to allow camera resources to be released
     await Future.delayed(const Duration(milliseconds: 200));
 
@@ -207,32 +204,53 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         _logger.d('Scanner reset due to missing household ID.');
         return;
       }
-      // Extract category from product data
+      // Extract product name for keyword-based category detection
+      String productName = product['product_name'] ?? 'Unknown Product';
       String detectedCategory = 'Other'; // Default to 'Other'
-      if (product['categories_tags'] != null && product['categories_tags'] is List && product['categories_tags'].isNotEmpty) {
-        // categories_tags often look like "en:dairy-products", so we extract the last part
+
+      // 1. Keyword-based category detection from product name
+      final Map<String, String> keywordCategoryMap = {
+        'bread': 'Bakery', 'pastries': 'Bakery', 'cake': 'Bakery', 'buns': 'Bakery', 'muffin': 'Bakery', 'donut': 'Bakery', 'pandesal': 'Bakery', 'ensaymada': 'Bakery', 'mamon': 'Bakery',
+        'milk': 'Dairy', 'yogurt': 'Dairy', 'cheese': 'Dairy', 'butter': 'Dairy', 'eggs': 'Dairy',
+        'juice': 'Beverages', 'soda': 'Beverages', 'coffee': 'Beverages', 'tea': 'Beverages', 'water': 'Beverages',
+        'cream of mushroom': 'Condiments', // Specific entry for cream of mushroom
+        'canned': 'Canned Goods', 'sardines': 'Canned Goods', 'tuna': 'Canned Goods',
+        'sauce': 'Condiments', 'ketchup': 'Condiments', 'mustard': 'Condiments', 'vinegar': 'Condiments', 'soy sauce': 'Condiments', 'dressing': 'Condiments', 'spices': 'Condiments', 'powder': 'Condiments', 'salt': 'Condiments',
+        'rice': 'Dry Goods', 'pasta': 'Dry Goods', 'flour': 'Dry Goods', 'cereal': 'Dry Goods', 'oil': 'Dry Goods', 'beans': 'Dry Goods', 'sugar': 'Dry Goods',
+        'chips': 'Snacks', 'cookies': 'Snacks', 'crackers': 'Snacks', 'chocolates': 'Snacks', 'biscuits': 'Snacks', 'fudge bars': 'Snacks',
+      };
+
+      String lowerCaseProductName = productName.toLowerCase();
+      for (var entry in keywordCategoryMap.entries) {
+        if (lowerCaseProductName.contains(entry.key)) {
+          detectedCategory = entry.value;
+          break;
+        }
+      }
+
+      // 2. Fallback to Open Food Facts categories if keyword detection didn't yield a specific category
+      if (detectedCategory == 'Other' && product['categories_tags'] != null && product['categories_tags'] is List && product['categories_tags'].isNotEmpty) {
         String rawCategory = product['categories_tags'][0].toString();
-        detectedCategory = rawCategory.split(':').last.replaceAll('-', ' ').capitalize();
-        // Map to our predefined categories if necessary
-        if (!_categoryShelfLives.keys.contains(detectedCategory)) {
-          // Simple mapping for common categories
-          if (detectedCategory.contains('milk') || detectedCategory.contains('yogurt') || detectedCategory.contains('cheese')) {
-            detectedCategory = 'Dairy';
-          } else if (detectedCategory.contains('bread') || detectedCategory.contains('pastries')) {
-            detectedCategory = 'Bakery';
-          } else if (detectedCategory.contains('beverages') || detectedCategory.contains('juice') || detectedCategory.contains('soda')) {
-            detectedCategory = 'Beverages';
-          } else if (detectedCategory.contains('canned')) {
-            detectedCategory = 'Canned Goods';
-          } else if (detectedCategory.contains('condiments') || detectedCategory.contains('sauce')) {
-            detectedCategory = 'Condiments';
-          } else if (detectedCategory.contains('dry goods') || detectedCategory.contains('pasta') || detectedCategory.contains('rice') || detectedCategory.contains('flour')) {
-            detectedCategory = 'Dry Goods';
-          } else if (detectedCategory.contains('snacks') || detectedCategory.contains('chips') || detectedCategory.contains('cookies')) {
-            detectedCategory = 'Snacks';
-          } else {
-            detectedCategory = 'Other';
-          }
+        String apiCategory = rawCategory.split(':').last.replaceAll('-', ' ').capitalize();
+
+        // Map common API categories to our existing broader categories (Option B)
+        final Map<String, String> apiCategoryMapping = {
+          'Instant Noodles': 'Dry Goods',
+          'Desserts': 'Snacks',
+          'Breakfast': 'Dry Goods', // e.g., cereals
+          'Frozen Foods': 'Other', // Can be refined further if a 'Frozen' category is added
+          'Spreads': 'Condiments',
+          'Sweet snacks': 'Snacks',
+          'Salty snacks': 'Snacks',
+          'Meals': 'Other', // Generic, keep as Other for now
+          'Groceries': 'Other', // Generic, keep as Other for now
+        };
+
+        String mappedApiCategory = apiCategoryMapping[apiCategory] ?? apiCategory;
+
+        // Only use API category if it's more specific than 'Other' and is one of our known categories
+        if (mappedApiCategory != 'Other' && _categoryShelfLives.keys.contains(mappedApiCategory)) {
+          detectedCategory = mappedApiCategory;
         }
       }
 
@@ -394,6 +412,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                 final String? barcodeScanRes = barcodes.first.rawValue;
                 if (barcodeScanRes != null && barcodeScanRes.isNotEmpty) {
                   _logger.d('Scanned barcode: $barcodeScanRes');
+                  _scannerController.stop(); // Stop scanner immediately
                   _processBarcode(barcodeScanRes, firestoreService);
                 }
               }
