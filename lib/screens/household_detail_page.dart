@@ -560,52 +560,54 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
             onPressed: _popWithUpdatedData,
           ),
           actions: [
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Colors.white),
-              onSelected: (value) async {
-                if (value == "leave") {
-                  _showLeaveConfirmationDialog();
-                } else if (value == "delete") {
-                  _showDeleteConfirmationDialog();
-                } else if (value == "share") {
-                  Clipboard.setData(ClipboardData(text: widget.household.joinCode));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Pantry code copied to clipboard!"),
-                      behavior: SnackBarBehavior.floating,
-                      margin: EdgeInsets.only(top: 20, left: 20, right: 20),
-                    ),
-                  );
-                }
-              },
-              itemBuilder: (context) {
-                return [
-                  if (widget.household.ownerId != _currentUserId) // Only show "Leave Group" if not the owner
-                    const PopupMenuItem(
-                      value: "leave",
-                      child: Text(
-                        "Leave Group",
-                        style: TextStyle(color: Colors.black),
+            if (!widget.household.isPersonal) // Only show PopupMenuButton if not a personal household
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.white),
+                onSelected: (value) async {
+                  if (value == "leave") {
+                    _showLeaveConfirmationDialog();
+                  } else if (value == "delete") {
+                    _showDeleteConfirmationDialog();
+                  } else if (value == "share") {
+                    Clipboard.setData(ClipboardData(text: widget.household.joinCode));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Pantry code copied to clipboard!"),
+                        behavior: SnackBarBehavior.floating,
+                        margin: EdgeInsets.only(top: 20, left: 20, right: 20),
                       ),
-                    ),
-                  if (widget.household.ownerId == _currentUserId && !widget.household.isPersonal) // Only owner can delete, and not for personal households
-                    const PopupMenuItem(
-                      value: "delete",
-                      child: Text(
-                        "Delete Group",
-                        style: TextStyle(color: Colors.black),
+                    );
+                  }
+                },
+                itemBuilder: (context) {
+                  return [
+                    if (widget.household.ownerId != _currentUserId) // Only show "Leave Group" if not the owner
+                      const PopupMenuItem(
+                        value: "leave",
+                        child: Text(
+                          "Leave Group",
+                          style: TextStyle(color: Colors.black),
+                        ),
                       ),
-                    ),
-                  const PopupMenuItem(
-                    value: "share",
-                    child: Text(
-                      "Share Group",
-                      style: TextStyle(color: Colors.black),
-                    ),
-                  ),
-                ];
-              },
-            ),
+                    if (widget.household.ownerId == _currentUserId && !widget.household.isPersonal) // Only owner can delete, and not for personal households
+                      const PopupMenuItem(
+                        value: "delete",
+                        child: Text(
+                          "Delete Group",
+                          style: TextStyle(color: Colors.black),
+                        ),
+                      ),
+                    if (!widget.household.isPersonal) // Only show "Share Group" if not a personal household
+                      const PopupMenuItem(
+                        value: "share",
+                        child: Text(
+                          "Share Group",
+                          style: TextStyle(color: Colors.black),
+                        ),
+                      ),
+                  ];
+                },
+              ),
           ],
         ),
         body: Padding(
@@ -641,29 +643,30 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                     ),
                 ],
               ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "Pantry Code: ${widget.household.joinCode}",
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.black87,
+              if (!widget.household.isPersonal) // Only show Pantry Code if not a personal household
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "Pantry Code: ${widget.household.joinCode}",
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.copy, size: 18),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: widget.household.joinCode));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Pantry code copied!"),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
+                    IconButton(
+                      icon: const Icon(Icons.copy, size: 18),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: widget.household.joinCode));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Pantry code copied!"),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               const SizedBox(height: 20),
               Expanded(
                 child: ListView.builder(

@@ -14,6 +14,9 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shelf_control/models/shopping_history_item_model.dart';
+import 'package:shelf_control/models/waste_report_model.dart'; // Import WasteReportModel
+import 'package:uuid/uuid.dart'; // For generating unique IDs
+import 'package:shelf_control/screens/view_reports_page.dart'; // Import the new page
 
 // for the week dropdown
 class WeekPeriod {
@@ -169,8 +172,8 @@ class _WasteData {
     return _WasteData(
       allHistoryItems: allHistoryItems,
       selectedWeek: selectedWeek,
-      weeklyWasteSeries: weeklyWasteSeries,
-      weeklyConsumedSeries: weeklyConsumedSeries,
+      weeklyWasteSeries: weeklyWasteSeries.reversed.toList(),
+      weeklyConsumedSeries: weeklyConsumedSeries.reversed.toList(),
       wastedThisWeek: wastedThisWeek,
       consumedThisWeek: consumedThisWeek,
       thisWeekWaste: thisWeekWaste,
@@ -190,14 +193,16 @@ class _WasteData {
 class _WasteTrackerPageState extends State<WasteTrackerPage> {
   List<WeekPeriod> weeks = [];
   WeekPeriod? selectedWeek;
+  WeekPeriod? _startWeekForCustomRange; // New state variable
+  WeekPeriod? _endWeekForCustomRange;   // New state variable
 
   bool showWastedItems = false;
   bool showConsumedItems = false;
 
-  String _selectedGraph = 'waste';
-
   final _trendKey = GlobalKey();
+  final _consumptionTrendKey = GlobalKey();
   List<ShoppingHistoryItemModel> _latestHistoryItems = [];
+  final Uuid _uuid = const Uuid(); // Instantiate Uuid
 
   Future<Uint8List?> _capturePng(GlobalKey key,
       {double pixelRatio = 1.5}) async {
@@ -215,8 +220,20 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
 
   Future<void> _exportWeeklyPdfForRange(
       DateTime rangeStart, DateTime rangeEnd) async {
+    // Get FirestoreService and user/household IDs
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final userId = firestoreService.userId;
+    final householdId = firestoreService.selectedHouseholdId;
+
+    if (userId == null || householdId == null) {
+      // Handle case where user or household is not selected/logged in
+      debugPrint('ERROR: User not logged in or household not selected. Cannot save report.');
+      return;
+    }
+
     // Ensure the chart is on-screen for capture
     final trendPng = await _capturePng(_trendKey);
+    final consumptionTrendPng = await _capturePng(_consumptionTrendKey);
 
     bool inRange(DateTime? d) =>
         d != null && !d.isBefore(rangeStart) && !d.isAfter(rangeEnd);
@@ -232,8 +249,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
         wastedThisRange.fold<int>(0, (s, i) => s + (i.quantity));
     final totalItemsOut = totalWastedItems +
         consumedThisRange.fold<int>(0, (s, i) => s + (i.quantity));
-    final totalWasteCost = wastedThisRange.fold<double>(
-        0, (s, i) => s + ((i.priceAtAction ?? 0) * (i.quantity)));
+    final totalWasteCost = wastedThisRange.fold<double>(0, (sum, i) => sum + ((i.priceAtAction ?? 0) * (i.quantity)));
 
     // Your model has no weight field—use 0.0 and the PDF will hide that KPI
     final totalWasteKg = 0.0;
@@ -305,19 +321,49 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
       behavioralInsights: insights,
       baseRecommendations: suggestions,
       weeklyTrendPng: trendPng,
-      costByCategoryPng: null, // add if you make a second chart later
+      costByCategoryPng: consumptionTrendPng,
     );
 
     await initializeDateFormatting('en_PH');
 
-// Now build and share the PDF
+    // Build the PDF
     final pdfBytes = await WasteReportService().buildWeeklyPdf(stats);
+
+    // Calculate most wasted category for the report
+    final Map<String, int> wastedByCategory = {};
+    for (final i in wastedThisRange) {
+      final cat = i.category ?? 'Uncategorized';
+      wastedByCategory[cat] = (wastedByCategory[cat] ?? 0) + (i.quantity);
+    }
+    final mostWastedCategoryForReport = wastedByCategory.entries.isEmpty
+        ? '—'
+        : wastedByCategory.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+
+    // Save report to Firebase
+    final reportId = _uuid.v4();
+    final wasteReport = WasteReportModel(
+      id: reportId,
+      userId: userId,
+      householdId: householdId,
+      weekStart: rangeStart,
+      weekEnd: rangeEnd,
+      generatedAt: DateTime.now(),
+      totalWastedItems: totalWastedItems,
+      totalWasteCost: totalWasteCost,
+      mostWastedCategory: mostWastedCategoryForReport,
+      pdfStoragePath: '', // Will be updated by saveWasteReport
+    );
+    await firestoreService.saveWasteReport(wasteReport, pdfBytes);
+    debugPrint('📁 Waste report saved to Firebase.');
+
+    // Share PDF (existing functionality)
     await Printing.sharePdf(
       bytes: pdfBytes,
       filename:
           'ShelfControl_Waste_${DateFormat('yyyyMMdd').format(rangeEnd)}.pdf',
     );
 
+    // Save PDF locally (existing functionality)
     final dir = await getApplicationDocumentsDirectory();
     final filename =
         'ShelfControl_Waste_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf';
@@ -373,18 +419,26 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
   void initState() {
     super.initState();
 
-    // Build the last 8 week periods ending today
+    // Build the last 8 week periods, with the most recent week being Week 8
     final now = DateTime.now();
-    weeks = List.generate(8, (i) {
-      final end = DateTime(now.year, now.month, now.day)
-          .subtract(Duration(days: 7 * i));
-      final start = end.subtract(const Duration(days: 6));
-      // If you don't need calendar week numbers, just use i+1
-      final weekNumber = i + 1;
-      return WeekPeriod(weekNumber: weekNumber, startDate: start, endDate: end);
-    }).reversed.toList(); // oldest → newest (reverse if you want newest first)
+    final today = DateTime(now.year, now.month, now.day); // Normalize to start of day
 
-    selectedWeek = weeks.last; // default to current week
+    // Find the start of the current week (Monday)
+    DateTime currentWeekStart = today.subtract(Duration(days: today.weekday - 1));
+    if (today.weekday == DateTime.sunday) { // If today is Sunday, currentWeekStart should be last Monday
+      currentWeekStart = today.subtract(const Duration(days: 6));
+    }
+
+    weeks = List.generate(8, (i) {
+      final start = currentWeekStart.subtract(Duration(days: 7 * (7 - i))); // Week 1 is 7 weeks ago, Week 8 is current
+      final end = start.add(const Duration(days: 6));
+      final weekNumber = i + 1; // Week 1 to Week 8
+      return WeekPeriod(weekNumber: weekNumber, startDate: start, endDate: end);
+    }).toList(); // oldest → newest
+
+    selectedWeek = weeks.last; // default to the current (newest) week
+    _startWeekForCustomRange = weeks.first; // Default start to oldest week
+    _endWeekForCustomRange = weeks.last;   // Default end to newest week
   }
 
   void _showInfoDialog(BuildContext context) {
@@ -524,19 +578,35 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
-                    DropdownButton<WeekPeriod>(
-                      value: weeks.first,
-                      items: weeks.map((w) {
-                        return DropdownMenuItem(value: w, child: Text(w.label));
-                      }).toList(),
-                      onChanged: (_) {},
+                    StatefulBuilder(
+                      builder: (BuildContext context, StateSetter dropDownState) {
+                        return DropdownButton<WeekPeriod>(
+                          value: _startWeekForCustomRange,
+                          items: weeks.map((w) {
+                            return DropdownMenuItem(value: w, child: Text(w.label));
+                          }).toList(),
+                          onChanged: (value) {
+                            dropDownState(() {
+                              _startWeekForCustomRange = value;
+                            });
+                          },
+                        );
+                      },
                     ),
-                    DropdownButton<WeekPeriod>(
-                      value: weeks.last,
-                      items: weeks.map((w) {
-                        return DropdownMenuItem(value: w, child: Text(w.label));
-                      }).toList(),
-                      onChanged: (_) {},
+                    StatefulBuilder(
+                      builder: (BuildContext context, StateSetter dropDownState) {
+                        return DropdownButton<WeekPeriod>(
+                          value: _endWeekForCustomRange,
+                          items: weeks.map((w) {
+                            return DropdownMenuItem(value: w, child: Text(w.label));
+                          }).toList(),
+                          onChanged: (value) {
+                            dropDownState(() {
+                              _endWeekForCustomRange = value;
+                            });
+                          },
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(
@@ -544,13 +614,13 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                         Navigator.pop(context);
                         // Minimal: export full span from first to last week in the dropdowns
                         final start = DateTime(
-                            weeks.first.startDate.year,
-                            weeks.first.startDate.month,
-                            weeks.first.startDate.day);
+                            _startWeekForCustomRange!.startDate.year,
+                            _startWeekForCustomRange!.startDate.month,
+                            _startWeekForCustomRange!.startDate.day);
                         final end = DateTime(
-                            weeks.last.endDate.year,
-                            weeks.last.endDate.month,
-                            weeks.last.endDate.day,
+                            _endWeekForCustomRange!.endDate.year,
+                            _endWeekForCustomRange!.endDate.month,
+                            _endWeekForCustomRange!.endDate.day,
                             23,
                             59,
                             59);
@@ -760,6 +830,36 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                               ),
                             ),
                           ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 1,
+                            child: SizedBox(
+                              height: 40,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const ViewReportsPage(),
+                                    ),
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blueGrey[600],
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  textStyle: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                child: const Text("View Reports"),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -774,28 +874,15 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Radio<String>(
-                                value: "waste",
-                                groupValue: _selectedGraph,
-                                onChanged: (v) =>
-                                    setState(() => _selectedGraph = v!),
-                              ),
-                              const Text("Waste"),
-                              Radio<String>(
-                                value: "consumption",
-                                groupValue: _selectedGraph,
-                                onChanged: (v) =>
-                                    setState(() => _selectedGraph = v!),
-                              ),
-                              const Text("Consumption"),
-                            ],
+                        const Text(
+                          "Weekly Waste Trend",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2E7D32),
                           ),
                         ),
+                        const SizedBox(height: 12),
                         RepaintBoundary(
                           key: _trendKey,
                           child: SizedBox(
@@ -808,16 +895,9 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                   gridData: const FlGridData(
                                       show: true, drawVerticalLine: false),
                                   alignment: BarChartAlignment.spaceAround,
-                                  maxY: _selectedGraph == "waste"
-                                      ? (weeklyWasteSeries.isEmpty
+                                  maxY: (weeklyWasteSeries.isEmpty
                                           ? 5
                                           : (weeklyWasteSeries.reduce(
-                                                      (a, b) => a > b ? a : b) +
-                                                  2)
-                                              .toDouble())
-                                      : (weeklyConsumedSeries.isEmpty
-                                          ? 5
-                                          : (weeklyConsumedSeries.reduce(
                                                       (a, b) => a > b ? a : b) +
                                                   2)
                                               .toDouble()),
@@ -841,12 +921,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                         showTitles: true,
                                         getTitlesWidget: (value, meta) {
                                           final index = value.toInt();
-                                          final total =
-                                              _selectedGraph == "waste"
-                                                  ? weeklyWasteSeries.length
-                                                  : weeklyConsumedSeries.length;
-                                          // Show last 8 weeks as W-7 ... W current
-                                          if (index >= 0 && index < total) {
+                                          if (index >= 0 && index < weeklyWasteSeries.length) {
                                             return Text("W${8 - index}",
                                                 style: const TextStyle(
                                                     fontSize: 10));
@@ -857,17 +932,11 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                     ),
                                   ),
                                   barGroups: List.generate(
-                                    (_selectedGraph == "waste"
-                                        ? weeklyWasteSeries.length
-                                        : weeklyConsumedSeries.length),
+                                    weeklyWasteSeries.length,
                                     (index) {
-                                      final data = _selectedGraph == "waste"
-                                          ? weeklyWasteSeries
-                                          : weeklyConsumedSeries;
-                                      final y =
-                                          (index >= 0 && index < data.length)
-                                              ? data[index].toDouble()
-                                              : 0.0;
+                                      final y = (index >= 0 && index < weeklyWasteSeries.length)
+                                          ? weeklyWasteSeries[index].toDouble()
+                                          : 0.0;
                                       return BarChartGroupData(
                                         x: index,
                                         barRods: [
@@ -1049,7 +1118,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                 children: [
                                   const Text("This week's consumption:"),
                                   Text(
-                                      "${thisWeekWastePct.toStringAsFixed(1)}%"),
+                                      "${thisWeekRate.toStringAsFixed(1)}%"),
                                 ],
                               ),
                               Row(
@@ -1058,7 +1127,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                 children: [
                                   const Text("Last week's consumption:"),
                                   Text(
-                                      "${lastWeekWastePct.toStringAsFixed(1)}%"),
+                                      "${lastWeekRate.toStringAsFixed(1)}%"),
                                 ],
                               ),
                               const SizedBox(height: 12),
@@ -1129,6 +1198,89 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                               );
                             }).toList(),
                           ),
+
+                        const SizedBox(height: 24),
+                        const Text(
+                          "Weekly Consumption Trend",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2E7D32),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        RepaintBoundary(
+                          key: _consumptionTrendKey,
+                          child: SizedBox(
+                            height: 250,
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16.0),
+                              child: BarChart(
+                                BarChartData(
+                                  gridData: const FlGridData(
+                                      show: true, drawVerticalLine: false),
+                                  alignment: BarChartAlignment.spaceAround,
+                                  maxY: (weeklyConsumedSeries.isEmpty
+                                          ? 5
+                                          : (weeklyConsumedSeries.reduce(
+                                                      (a, b) => a > b ? a : b) +
+                                                  2)
+                                              .toDouble()),
+                                  titlesData: FlTitlesData(
+                                    leftTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                            showTitles: true,
+                                            interval: 1, // Align numbers to integers
+                                            getTitlesWidget: (value, meta) {
+                                              return Text(value.toInt().toString(),
+                                                  style: const TextStyle(fontSize: 10));
+                                            })),
+                                    rightTitles: const AxisTitles(
+                                        sideTitles:
+                                            SideTitles(showTitles: false)),
+                                    topTitles: const AxisTitles(
+                                        sideTitles:
+                                            SideTitles(showTitles: false)),
+                                    bottomTitles: AxisTitles(
+                                      sideTitles: SideTitles(
+                                        showTitles: true,
+                                        getTitlesWidget: (value, meta) {
+                                          final index = value.toInt();
+                                          if (index >= 0 && index < weeklyConsumedSeries.length) {
+                                            return Text("W${8 - index}",
+                                                style: const TextStyle(
+                                                    fontSize: 10));
+                                          }
+                                          return const SizedBox.shrink();
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  barGroups: List.generate(
+                                    weeklyConsumedSeries.length,
+                                    (index) {
+                                      final y = (index >= 0 && index < weeklyConsumedSeries.length)
+                                          ? weeklyConsumedSeries[index].toDouble()
+                                          : 0.0;
+                                      return BarChartGroupData(
+                                        x: index,
+                                        barRods: [
+                                          BarChartRodData(
+                                            toY: y,
+                                            width: 14,
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),

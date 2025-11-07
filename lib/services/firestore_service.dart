@@ -19,6 +19,8 @@ import 'package:shelf_control/models/user_prefs_model.dart';
 import 'package:shelf_control/services/normalization.dart';
 import 'package:firebase_storage/firebase_storage.dart'; // Import Firebase Storage
 import 'dart:io'; // For File type
+import 'package:shelf_control/models/waste_report_model.dart'; // Import WasteReportModel
+import 'package:flutter/foundation.dart'; // For Uint8List
 
 class FirestoreService extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -1685,6 +1687,54 @@ class FirestoreService extends ChangeNotifier {
       'fileUrl': fileUrl,
       'createdAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  // Save a waste report (metadata and PDF) to Firebase
+  Future<void> saveWasteReport(WasteReportModel report, Uint8List pdfBytes) async {
+    if (userId == null) {
+      throw Exception("User not logged in.");
+    }
+    debugPrint('DEBUG: saveWasteReport called for householdId: ${report.householdId}, week: ${report.weekStart.toIso8601String()}');
+
+    // 1. Upload PDF to Firebase Storage
+    final String storagePath = 'waste_reports/${report.userId}/${report.householdId}/report_${report.id}.pdf';
+    final Reference ref = _storage.ref().child(storagePath);
+    final UploadTask uploadTask = ref.putData(pdfBytes);
+    await uploadTask.whenComplete(() {});
+    debugPrint('DEBUG: PDF uploaded to Storage at path: $storagePath');
+
+    // 2. Save report metadata to Firestore, storing the path instead of the URL
+    final updatedReport = report.copyWith(pdfStoragePath: storagePath);
+    await _db.collection('wasteReports').doc(report.id).set(updatedReport.toFirestore());
+    debugPrint('DEBUG: Waste report metadata saved to Firestore: ${report.id}');
+  }
+
+  // Get a stream of waste reports for a household
+  Stream<List<WasteReportModel>> getWasteReportsForHousehold(String householdId) {
+    debugPrint("DEBUG: Querying wasteReports for householdId: $householdId");
+    return _db
+        .collection("wasteReports")
+        .where("householdId", isEqualTo: householdId)
+        .orderBy("generatedAt", descending: true)
+        .snapshots()
+        .map((snapshot) {
+          debugPrint("DEBUG: getWasteReportsForHousehold found ${snapshot.docs.length} reports for householdId: $householdId");
+          return snapshot.docs
+            .map((doc) => WasteReportModel.fromFirestore(doc))
+            .toList();
+        });
+  }
+
+  // Get the download URL for a report PDF from its storage path
+  Future<String?> getReportPdfUrl(String storagePath) async {
+    try {
+      // Get the download URL from the storage path
+      final String downloadUrl = await _storage.ref(storagePath).getDownloadURL();
+      return downloadUrl;
+    } catch (e) {
+      debugPrint("Error getting report PDF URL for path $storagePath: $e");
+      return null;
+    }
   }
 
   // --- Household Task Methods ---

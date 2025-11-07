@@ -48,7 +48,7 @@ service cloud.firestore {
         (!isHouseholdMember(householdId) &&
           request.resource.data.members.size() == resource.data.members.size() + 1 &&
           request.resource.data.members.hasAll(resource.data.members.concat([request.auth.uid])) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']) // Only members field changed
         )
       );
       allow delete: if request.auth.uid == resource.data.ownerId; // Only owner can delete
@@ -56,17 +56,9 @@ service cloud.firestore {
 
     // Allow read/write for pantry items within a household
     match /pantryItems/{pantryItemId} {
-      function isHouseholdMember(hid) {
-        return get(/databases/$(database)/documents/households/$(hid)).data.members.hasAny([request.auth.uid]);
-      }
-
-      allow read: if request.auth.uid != null && isHouseholdMember(resource.data.householdId);
-      allow create: if request.auth.uid != null && isHouseholdMember(request.resource.data.householdId);
-      allow update: if request.auth.uid != null && isHouseholdMember(resource.data.householdId) && (
-        // Allow updates to any field by a household member
-        request.resource.data.diff(resource.data).affectedKeys().hasAny(['name', 'category', 'qty', 'quantityUnit', 'netWeight', 'price', 'expirationDate', 'manufacturedDate', 'barcode', 'status', 'nutrition', 'suggestionStatus'])
-      );
-      allow delete: if request.auth.uid != null && isHouseholdMember(resource.data.householdId);
+      allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
     }
 
     // Allow authenticated users to read from the local_products_ph collection
@@ -106,7 +98,7 @@ service cloud.firestore {
     match /shoppingHistory/{historyItemId} {
       allow read: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
       allow create: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members.hasAny([request.auth.uid]);
-      allow delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
+      allow update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members.hasAny([request.auth.uid]);
     }
 
     // Rules for the root-level appNotifications collection
@@ -152,5 +144,42 @@ service cloud.firestore {
       // Allow delete if the user is the one who assigned the task (owner)
       allow delete: if request.auth.uid != null && resource.data.assignedByUserId == request.auth.uid;
     }
+    
+    match /pantryItems/{itemId} {
+      function isHouseholdMember(hid) {
+        return get(/databases/$(database)/documents/households/$(hid))
+               .data.members.hasAny([request.auth.uid]);
+      }
+      allow read: if request.auth != null
+              && (
+                   (resource.data.ownerId == request.auth.uid)
+                   ||
+                   (resource.data.householdId is string
+                    && isHouseholdMember(resource.data.householdId))
+                 );
+
+  		allow list: if request.auth != null
+              && (
+                   (resource.data.ownerId == request.auth.uid)
+                   ||
+                   (resource.data.householdId is string
+                    && isHouseholdMember(resource.data.householdId))
+                 );
+      
+    }
+    // Allow each signed-in user to manage everything under their own user doc
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /wasteReports/{reportId} {
+      function isHouseholdMember(hid) {
+        return get(/databases/$(database)/documents/households/$(hid)).data.members.hasAny([request.auth.uid]);
+      }
+      allow read: if request.auth.uid != null && isHouseholdMember(resource.data.householdId);
+      allow create: if request.auth.uid != null && isHouseholdMember(request.resource.data.householdId);
+      allow update, delete: if request.auth.uid != null && isHouseholdMember(resource.data.householdId);
+    }
+
   }
 }
