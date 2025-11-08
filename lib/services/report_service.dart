@@ -79,23 +79,23 @@ class ItemWasteRow {
 }
 
 class WasteReportService {
-  final _date = DateFormat('MMM d, yyyy'); // no locale param
-  final _dateTime = DateFormat('MMM d, yyyy h:mm a'); // no locale param
-  final _money = NumberFormat.currency(name: 'PHP', symbol: '₱');
+  final _date = DateFormat("MMM d, yyyy"); // no locale param
+  final _dateTime = DateFormat("MMM d, yyyy h:mm a"); // no locale param
+  final _money = NumberFormat.currency(name: "PHP", symbol: "₱");
 
   // --- Compact KPI row (4–5 small tiles on one line/wrap) ---
   pw.Widget _kpiRowCompact(WasteWeeklyStats s) {
     final tiles = <pw.Widget>[
-      _kpiCardCompact('Wasted', '${s.totalWastedItems}'),
-      _kpiCardCompact('Waste %', '${s.wastePercent.toStringAsFixed(1)}%'),
-      _kpiCardCompact('Waste Cost', _money.format(s.totalWasteCost)),
-      _kpiCardCompact('Efficiency', '${s.efficiencyRate.toStringAsFixed(1)}%'),
+      _kpiCardCompact("Wasted", "${s.totalWastedItems}"),
+      _kpiCardCompact("Waste %", "${s.wastePercent.toStringAsFixed(1)}%"),
+      _kpiCardCompact("Waste Cost", _money.format(s.totalWasteCost)),
+      _kpiCardCompact("Efficiency", "${s.efficiencyRate.toStringAsFixed(1)}%"),
     ];
 
     // Show weight only if non-zero
     if (s.totalWasteWeightKg > 0) {
       tiles.insert(3,
-          _kpiCardCompact('Waste Kg', s.totalWasteWeightKg.toStringAsFixed(2)));
+          _kpiCardCompact("Waste Kg", s.totalWasteWeightKg.toStringAsFixed(2)));
     }
 
     return pw.Wrap(spacing: 6, runSpacing: 6, children: tiles);
@@ -126,7 +126,7 @@ class WasteReportService {
 // --- Compact bullets (kept short for 1–2 pages max) ---
   pw.Widget _bulletsCompact(List<String> lines, {double fontSize = 10}) {
     if (lines.isEmpty) {
-      return pw.Text('No data available for this section.',
+      return pw.Text("No data available for this section.",
           style: pw.TextStyle(fontSize: fontSize));
     }
     return pw.Column(
@@ -137,7 +137,7 @@ class WasteReportService {
           child: pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text('• ', style: pw.TextStyle(fontSize: fontSize)),
+              pw.Text("• ", style: pw.TextStyle(fontSize: fontSize)),
               pw.Expanded(
                   child: pw.Text(t, style: pw.TextStyle(fontSize: fontSize))),
             ],
@@ -154,10 +154,10 @@ class WasteReportService {
 
     try {
       fontRegular = pw.Font.ttf(
-        await rootBundle.load('assets/fonts/NotoSans.ttf'),
+        await rootBundle.load("assets/fonts/NotoSans.ttf"),
       );
       fontBold = pw.Font.ttf(
-        await rootBundle.load('assets/fonts/NotoSans.ttf'),
+        await rootBundle.load("assets/fonts/NotoSans.ttf"),
       );
     } catch (e, st) {
       // This is the most common runtime error — wrong path or pubspec not updated.
@@ -165,7 +165,7 @@ class WasteReportService {
       // (Default Helvetica won’t render ₱ / bullets perfectly, but avoids a crash.)
       // You can also rethrow to fail hard if you prefer.
       // ignore: avoid_print
-      print('[WasteReportService] Font load failed: $e\n$st');
+      print("[WasteReportService] Font load failed: $e\n$st");
       // Fallback: use the built-in font so the app does not crash
       fontRegular = pw.Font.helvetica();
       fontBold = pw.Font.helveticaBold();
@@ -185,7 +185,7 @@ class WasteReportService {
     doc.addPage(
       pw.MultiPage(
         pageTheme: _pageTheme(theme),
-        header: (context) => _header(title: 'SHELFCONTROL WASTE TRACKER REPORT'),
+        header: (context) => _header(title: "SHELFCONTROL WASTE TRACKER REPORT"),
         build: (context) => [
           _buildReportBody(stats),
         ],
@@ -242,21 +242,21 @@ class WasteReportService {
 
   pw.Widget _kpiRow(WasteWeeklyStats s) {
     final tiles = <pw.Widget>[
-      _kpiCard('Total Wasted Items', '${s.totalWastedItems}'),
-      _kpiCard('Waste % of Outflow', '${s.wastePercent.toStringAsFixed(1)}%'),
-      _kpiCard('Total Cost of Waste', _money.format(s.totalWasteCost)),
-      _kpiCard('Efficiency Rate', '${s.efficiencyRate.toStringAsFixed(1)}%'),
+      _kpiCard("Total Wasted Items", "${s.totalWastedItems}"),
+      _kpiCard("Waste % of Outflow", "${s.wastePercent.toStringAsFixed(1)}%"),
+      _kpiCard("Total Cost of Waste", _money.format(s.totalWasteCost)),
+      _kpiCard("Efficiency Rate", "${s.efficiencyRate.toStringAsFixed(1)}%"),
     ];
 
     pw.Widget _kpiRowCompact(WasteWeeklyStats s) {
       final tiles = <pw.Widget>[
-        // _kpiCardCompact('Wasted', '${s.totalWastedItems}'),
-        // _kpiCardCompact('Waste %', '${s.wastePercent.toStringAsFixed(1)}%'),
-        // _kpiCardCompact('Waste Cost', _money.format(s.totalWasteCost)),
-        // _kpiCardCompact('Efficiency', '${s.efficiencyRate.toStringAsFixed(1)}%'),
+        // _kpiCardCompact("Wasted", "${s.totalWastedItems}"),
+        // _kpiCardCompact("Waste %", "${s.wastePercent.toStringAsFixed(1)}%"),
+        // _kpiCardCompact("Waste Cost", _money.format(s.totalWasteCost)),
+        // _kpiCardCompact("Efficiency", "${s.efficiencyRate.toStringAsFixed(1)}%"),
       ];
       // if (s.totalWasteWeightKg > 0) {
-      //   tiles.insert(3, _kpiCardCompact('Waste Kg', '${s.totalWasteWeightKg.toStringAsFixed(2)}'));
+      //   tiles.insert(3, _kpiCardCompact("Waste Kg", "${s.totalWasteWeightKg.toStringAsFixed(2)}"));
       // }
       return pw.Wrap(spacing: 6, runSpacing: 6, children: tiles);
     }
@@ -284,7 +284,7 @@ class WasteReportService {
 
     pw.Widget _bulletsCompact(List<String> lines, {double fontSize = 10}) {
       if (lines.isEmpty) {
-        return pw.Text('No data available for this section.',
+        return pw.Text("No data available for this section.",
             style: pw.TextStyle(fontSize: fontSize));
       }
       return pw.Column(
@@ -295,7 +295,7 @@ class WasteReportService {
             child: pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('• ', style: pw.TextStyle(fontSize: fontSize)),
+                pw.Text("• ", style: pw.TextStyle(fontSize: fontSize)),
                 pw.Expanded(
                     child: pw.Text(t, style: pw.TextStyle(fontSize: fontSize))),
               ],
@@ -309,8 +309,8 @@ class WasteReportService {
     if (s.totalWasteWeightKg > 0) {
       tiles.insert(
         3,
-        _kpiCard('Total Waste Weight',
-            '${s.totalWasteWeightKg.toStringAsFixed(2)} kg'),
+        _kpiCard("Total Waste Weight",
+            "${s.totalWasteWeightKg.toStringAsFixed(2)} kg"),
       );
     }
 
@@ -327,16 +327,16 @@ class WasteReportService {
     final top = rows.take(8).toList();
 
     return pw.Table.fromTextArray(
-      headers: const ['Category', 'Item', 'Qty', 'Cost', 'Expiry'],
+      headers: const ["Category", "Item", "Qty", "Cost", "Expiry"],
       data: top
           .map((r) => [
                 r.category,
                 r.itemName,
                 r.quantity.toString(),
-                r.cost == null ? '-' : _money.format(r.cost),
+                r.cost == null ? "-" : _money.format(r.cost),
                 r.expiryDate == null
-                    ? '-'
-                    : DateFormat('MMM d', 'en_PH').format(r.expiryDate!),
+                    ? "-"
+                    : DateFormat("MMM d", "en_PH").format(r.expiryDate!),
               ])
           .toList(),
       headerStyle:
@@ -362,7 +362,7 @@ class WasteReportService {
           child: pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text('•  ', style: const pw.TextStyle(fontSize: 9)),
+              pw.Text("•  ", style: const pw.TextStyle(fontSize: 9)),
               pw.Expanded(
                   child: pw.Text(t, style: const pw.TextStyle(fontSize: 9))),
             ],
@@ -376,10 +376,10 @@ class WasteReportService {
     pw.Widget spacer(double h) => pw.SizedBox(height: h);
 
     final summaryRows = <List<String>>[
-      ['Total Wasted Items', '${stats.totalWastedItems}', 'Items marked as wasted'],
-      ['Waste Percentage', '${stats.wastePercent.toStringAsFixed(1)}%', 'Relative to all items leaving pantry'],
-      ['Total Cost of Waste', _money.format(stats.totalWasteCost), 'Estimated financial loss'],
-      ['Efficiency Rate', '${stats.efficiencyRate.toStringAsFixed(1)}%', 'Consumed vs wasted ratio'],
+      ["Total Wasted Items", "${stats.totalWastedItems}", "Items marked as wasted"],
+      ["Waste Percentage", "${stats.wastePercent.toStringAsFixed(1)}%", "Relative to all items leaving pantry"],
+      ["Total Cost of Waste", _money.format(stats.totalWasteCost), "Estimated financial loss"],
+      ["Efficiency Rate", "${stats.efficiencyRate.toStringAsFixed(1)}%", "Consumed vs wasted ratio"],
     ];
 
     final catValues = stats.categoryRows.values.toList()
@@ -398,14 +398,14 @@ class WasteReportService {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text('Household: ${stats.householdName}', style: const pw.TextStyle(fontSize: 11)),
-        pw.Text('Week: ${_date.format(stats.weekStart)} – ${_date.format(stats.weekEnd)}', style: const pw.TextStyle(fontSize: 11)),
-        pw.Text('Generated: ${_dateTime.format(stats.generatedAt)}', style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+        pw.Text("Household: ${stats.householdName}", style: const pw.TextStyle(fontSize: 11)),
+        pw.Text("Week: ${stats.weekStart.day == 1 ? 'Week 1' : 'Week ${((stats.weekStart.difference(stats.weekEnd).inDays / 7).round().abs() + 1)}'} ${_date.format(stats.weekStart)} – ${_date.format(stats.weekEnd)}", style: const pw.TextStyle(fontSize: 11)),
+        pw.Text("Generated: ${_dateTime.format(stats.generatedAt)}", style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
         spacer(10),
-        pw.Text('Weekly Summary', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+        pw.Text("Weekly Summary", style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
         spacer(5),
         pw.Table.fromTextArray(
-          headers: const ['Metric', 'Value', 'Description'],
+          headers: const ["Metric", "Value", "Description"],
           headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
           headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey),
           cellStyle: const pw.TextStyle(fontSize: 8),
@@ -416,24 +416,47 @@ class WasteReportService {
           },
           data: summaryRows,
         ),
-        if (stats.weeklyTrendPng != null) ...[
+        if (stats.weeklyTrendPng != null || stats.costByCategoryPng != null) ...[
           spacer(10),
-          pw.Text('Weekly Waste Trend', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
-          spacer(5),
-          pw.Image(pw.MemoryImage(stats.weeklyTrendPng!), height: 150),
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              if (stats.weeklyTrendPng != null) pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text("Weekly Waste Trend", style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                    spacer(5),
+                    pw.Image(pw.MemoryImage(stats.weeklyTrendPng!), height: 150),
+                  ]
+                )
+              ),
+              if (stats.weeklyTrendPng != null && stats.costByCategoryPng != null) spacer(10),
+              if (stats.costByCategoryPng != null) pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text("Weekly Consumption Trend", style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                    spacer(5),
+                    pw.Image(pw.MemoryImage(stats.costByCategoryPng!), height: 150),
+                  ]
+                )
+              ),
+            ]
+          ),
         ],
         spacer(10),
-        pw.Text('Top Wasted Categories', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+        pw.Text("Top Wasted Categories", style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
         spacer(5),
         pw.Table.fromTextArray(
-          headers: const ['Category', 'Items Wasted', 'Total Cost (₱)'],
+          headers: const ["Category", "Items Wasted", "Total Cost (₱)"],
           headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
           headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo),
           cellStyle: const pw.TextStyle(fontSize: 8),
           data: categoryRows,
         ),
         spacer(10),
-        pw.Text('Insights & Recommendations', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+        pw.Text("Insights & Recommendations", style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
         spacer(4),
         _bullets(compactInsights),
         spacer(4),
@@ -448,8 +471,8 @@ class WasteReportService {
 
     // 1) High waste% → process tweak
     if (s.wastePercent >= 20) {
-      out.add('Waste rate is ${s.wastePercent.toStringAsFixed(1)}%. '
-          'Do a 10-minute expiry sweep every weekend and move at-risk items to the front.');
+      out.add("Waste rate is ${s.wastePercent.toStringAsFixed(1)}%. "
+          "Do a 10-minute expiry sweep every weekend and move at-risk items to the front.");
     }
 
     // 2) Category driver
@@ -459,7 +482,7 @@ class WasteReportService {
             .reduce((a, b) => a.totalCost >= b.totalCost ? a : b);
     if (topCat != null && topCat.itemsWasted >= 2) {
       out.add(
-          'Most waste is in ${topCat.category}. Buy smaller pack sizes next week and adopt FIFO for this category.');
+          "Most waste is in ${topCat.category}. Buy smaller pack sizes next week and adopt FIFO for this category.");
     }
 
     // 3) SKU repeats
@@ -470,9 +493,9 @@ class WasteReportService {
     final frequent = repeats.entries.where((e) => e.value >= 3).toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     if (frequent.isNotEmpty) {
-      final names = frequent.take(3).map((e) => e.key).join(', ');
+      final names = frequent.take(3).map((e) => e.key).join(", ");
       out.add(
-          'Repeated waste detected: $names — buy smaller quantities and delay restock until consumed.');
+          "Repeated waste detected: $names — buy smaller quantities and delay restock until consumed.");
     }
 
     // 4) Upcoming expiries → cook plan
@@ -483,16 +506,16 @@ class WasteReportService {
       return days >= 0 && days <= 3;
     }).toList();
     if (soon.isNotEmpty) {
-      final names = soon.take(5).map((r) => r.itemName).join(', ');
+      final names = soon.take(5).map((r) => r.itemName).join(", ");
       out.add(
-          'Cook soon (expiring ≤3 days): $names. Plan 2 quick meals using these first.');
+          "Cook soon (expiring ≤3 days): $names. Plan 2 quick meals using these first.");
     }
 
     // 5) Budget angle
     if (s.totalWasteCost >= 200) {
       out.add(
-          'You lost ${_money.format(s.totalWasteCost)} this week due to waste. '
-          'Cap snack restocks at 1 pack per week and review on Sundays.');
+          "You lost ${_money.format(s.totalWasteCost)} this week due to waste. "
+          "Cap snack restocks at 1 pack per week and review on Sundays.");
     }
 
     // Merge with base suggestions

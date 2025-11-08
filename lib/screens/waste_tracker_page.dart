@@ -17,6 +17,7 @@ import 'package:shelf_control/models/shopping_history_item_model.dart';
 import 'package:shelf_control/models/waste_report_model.dart'; // Import WasteReportModel
 import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shelf_control/screens/view_reports_page.dart'; // Import the new page
+import 'package:shelf_control/models/household_model.dart'; // Import HouseholdModel
 
 // for the week dropdown
 class WeekPeriod {
@@ -104,11 +105,11 @@ class _WasteData {
     required this.mostWastedCategory,
   });
 
-  factory _WasteData.fromHistoryItems(List<ShoppingHistoryItemModel> allHistoryItems, WeekPeriod selectedWeek) {
+  factory _WasteData.fromHistoryItems(List<ShoppingHistoryItemModel> allHistoryItems, WeekPeriod selectedWeek, List<WeekPeriod> weeks) {
     final rangeStart = selectedWeek.startDate;
     final rangeEnd = selectedWeek.endDate.add(const Duration(hours: 23, minutes: 59, seconds: 59));
 
-    bool inRange(DateTime? d) => d != null && !d.isBefore(rangeStart) && !d.isAfter(rangeEnd);
+    bool inRange(DateTime d) => !d.isBefore(rangeStart) && !d.isAfter(rangeEnd);
 
     final wastedThisWeek = allHistoryItems.where((i) => (i.actionType == 'Wasted' || i.actionType == 'Expired Waste') && inRange(i.purchaseDate)).toList();
     final consumedThisWeek = allHistoryItems.where((i) => i.actionType == 'Consumed' && inRange(i.purchaseDate)).toList();
@@ -147,33 +148,39 @@ class _WasteData {
         ? '—'
         : wastedByCategory.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
 
-    final List<int> weeklyWasteSeries = [];
-    final List<int> weeklyConsumedSeries = [];
-    final now = DateTime.now();
+    final List<int> weeklyWasteSeries = List.filled(8, 0);
+    final List<int> weeklyConsumedSeries = List.filled(8, 0);
 
-    for (int back = 7; back >= 0; back--) {
-      final end = DateTime(now.year, now.month, now.day).subtract(Duration(days: 7 * back));
-      final start = end.subtract(const Duration(days: 6));
+    // Iterate through the last 8 weeks, from newest to oldest
+    for (int i = 0; i < 8; i++) {
+      final weekPeriod = weeks[i]; // Use the pre-calculated week periods (now newest to oldest)
+      final start = weekPeriod.startDate;
+      final end = weekPeriod.endDate.add(const Duration(hours: 23, minutes: 59, seconds: 59));
 
       int w = 0, c = 0;
-      for (final i in allHistoryItems) {
-        final date = i.purchaseDate;
-        if ((i.actionType == 'Wasted' || i.actionType == 'Expired Waste') && date != null && !date.isBefore(start) && !date.isAfter(end)) {
-          w += (i.quantity);
-        }
-        if (i.actionType == 'Consumed' && date != null && !date.isBefore(start) && !date.isAfter(end)) {
-          c += (i.quantity);
+      for (final item in allHistoryItems) {
+        final date = item.purchaseDate;
+        if (date != null && !date.isBefore(start) && !date.isAfter(end)) {
+          if (item.actionType == 'Wasted' || item.actionType == 'Expired Waste') {
+            w += (item.quantity);
+          } else if (item.actionType == 'Consumed') {
+            c += (item.quantity);
+          }
         }
       }
-      weeklyWasteSeries.add(w);
-      weeklyConsumedSeries.add(c);
+      weeklyWasteSeries[i] = w;
+      weeklyConsumedSeries[i] = c;
     }
+
+    // No need to reverse, as weeks are already ordered newest to oldest
+    // weeklyWasteSeries = weeklyWasteSeries.reversed.toList();
+    // weeklyConsumedSeries = weeklyConsumedSeries.reversed.toList();
 
     return _WasteData(
       allHistoryItems: allHistoryItems,
       selectedWeek: selectedWeek,
-      weeklyWasteSeries: weeklyWasteSeries.reversed.toList(),
-      weeklyConsumedSeries: weeklyConsumedSeries.reversed.toList(),
+      weeklyWasteSeries: weeklyWasteSeries,
+      weeklyConsumedSeries: weeklyConsumedSeries,
       wastedThisWeek: wastedThisWeek,
       consumedThisWeek: consumedThisWeek,
       thisWeekWaste: thisWeekWaste,
@@ -191,7 +198,7 @@ class _WasteData {
 }
 
 class _WasteTrackerPageState extends State<WasteTrackerPage> {
-  List<WeekPeriod> weeks = [];
+  late final List<WeekPeriod> weeks = _generateWeeks();
   WeekPeriod? selectedWeek;
   WeekPeriod? _startWeekForCustomRange; // New state variable
   WeekPeriod? _endWeekForCustomRange;   // New state variable
@@ -203,6 +210,19 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
   final _consumptionTrendKey = GlobalKey();
   List<ShoppingHistoryItemModel> _latestHistoryItems = [];
   final Uuid _uuid = const Uuid(); // Instantiate Uuid
+
+  List<WeekPeriod> _generateWeeks() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    DateTime currentWeekStart = today.subtract(Duration(days: today.weekday - DateTime.monday));
+
+    return List.generate(8, (i) {
+      final start = currentWeekStart.subtract(Duration(days: 7 * i));
+      final end = start.add(const Duration(days: 6));
+      final weekNumber = 8 - i;
+      return WeekPeriod(weekNumber: weekNumber, startDate: start, endDate: end);
+    }).toList();
+  }
 
   Future<Uint8List?> _capturePng(GlobalKey key,
       {double pixelRatio = 1.5}) async {
@@ -218,6 +238,8 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
     }
   }
 
+
+
   Future<void> _exportWeeklyPdfForRange(
       DateTime rangeStart, DateTime rangeEnd) async {
     // Get FirestoreService and user/household IDs
@@ -227,7 +249,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
 
     if (userId == null || householdId == null) {
       // Handle case where user or household is not selected/logged in
-      debugPrint('ERROR: User not logged in or household not selected. Cannot save report.');
+      debugPrint("ERROR: User not logged in or household not selected. Cannot save report.");
       return;
     }
 
@@ -307,8 +329,11 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
       'Keep perishable goods (like Dairy) in front (FIFO).',
     ];
 
+    final householdDoc = await firestoreService.db.collection("households").doc(householdId).get();
+    final householdName = (householdDoc.data()?["name"] as String?) ?? 'Household';
+
     final stats = WasteWeeklyStats(
-      householdName: 'Household', // plug actual name if you have it
+      householdName: householdName,
       weekStart: rangeStart,
       weekEnd: rangeEnd,
       generatedAt: DateTime.now(),
@@ -418,27 +443,9 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
   @override
   void initState() {
     super.initState();
-
-    // Build the last 8 week periods, with the most recent week being Week 8
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day); // Normalize to start of day
-
-    // Find the start of the current week (Monday)
-    DateTime currentWeekStart = today.subtract(Duration(days: today.weekday - 1));
-    if (today.weekday == DateTime.sunday) { // If today is Sunday, currentWeekStart should be last Monday
-      currentWeekStart = today.subtract(const Duration(days: 6));
-    }
-
-    weeks = List.generate(8, (i) {
-      final start = currentWeekStart.subtract(Duration(days: 7 * (7 - i))); // Week 1 is 7 weeks ago, Week 8 is current
-      final end = start.add(const Duration(days: 6));
-      final weekNumber = i + 1; // Week 1 to Week 8
-      return WeekPeriod(weekNumber: weekNumber, startDate: start, endDate: end);
-    }).toList(); // oldest → newest
-
-    selectedWeek = weeks.last; // default to the current (newest) week
-    _startWeekForCustomRange = weeks.first; // Default start to oldest week
-    _endWeekForCustomRange = weeks.last;   // Default end to newest week
+    selectedWeek = weeks.first;
+    _startWeekForCustomRange = weeks.last;
+    _endWeekForCustomRange = weeks.first;
   }
 
   void _showInfoDialog(BuildContext context) {
@@ -667,7 +674,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
         _latestHistoryItems = allHistoryItems;
 
         // Compute all waste data once
-        final wasteData = _WasteData.fromHistoryItems(allHistoryItems, selectedWeek!);
+        final wasteData = _WasteData.fromHistoryItems(allHistoryItems, selectedWeek!, weeks);
         
         // 3) Get current week range from the dropdown selection
         final rangeStart = wasteData.selectedWeek.startDate;
@@ -699,8 +706,8 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
         final mostWastedCategory = wasteData.mostWastedCategory;
 
         // 8) Trend series (last 8 weeks) for your charts
-        final List<int> weeklyWasteSeries = wasteData.weeklyWasteSeries;
-        final List<int> weeklyConsumedSeries = wasteData.weeklyConsumedSeries;
+        List<int> weeklyWasteSeries = wasteData.weeklyWasteSeries;
+        List<int> weeklyConsumedSeries = wasteData.weeklyConsumedSeries;
 
         return Scaffold(
           backgroundColor: const Color(0xFFFFFBE6),
@@ -921,7 +928,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                         showTitles: true,
                                         getTitlesWidget: (value, meta) {
                                           final index = value.toInt();
-                                          if (index >= 0 && index < weeklyWasteSeries.length) {
+                                          if (index >= 0 && index < weeks.length) {
                                             return Text("W${8 - index}",
                                                 style: const TextStyle(
                                                     fontSize: 10));
@@ -1247,8 +1254,8 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                         showTitles: true,
                                         getTitlesWidget: (value, meta) {
                                           final index = value.toInt();
-                                          if (index >= 0 && index < weeklyConsumedSeries.length) {
-                                            return Text("W${8 - index}",
+                                          if (index >= 0 && index < weeks.length) {
+                                            return Text("W${weeks[index].weekNumber}",
                                                 style: const TextStyle(
                                                     fontSize: 10));
                                           }

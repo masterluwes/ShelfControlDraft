@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:shelf_control/models/app_notification_model.dart'; // Import AppNotificationModel
 import 'package:dropdown_button2/dropdown_button2.dart'; // Import for custom dropdown
+import 'dart:convert'; // Import for jsonDecode
 
 class NotificationPage extends StatefulWidget {
   final Function(int unreadCount, bool isSnoozed)? onStatusChanged; // Changed to int unreadCount
@@ -512,9 +513,20 @@ class _NotificationPageState extends State<NotificationPage> {
                                   fontSize: 16,
                                 ),
                               ),
-                              subtitle: Text(
-                                notif.body,
-                                style: const TextStyle(color: Colors.black54),
+                              subtitle: FutureBuilder<String>(
+                                future: _getNotificationSubtitle(notif),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                    return const Text('Loading...', style: TextStyle(color: Colors.black54));
+                                  } else if (snapshot.hasError) {
+                                    return Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red));
+                                  } else {
+                                    return Text(
+                                      snapshot.data ?? notif.body, // Use the formatted subtitle or fallback to original body
+                                      style: const TextStyle(color: Colors.black54),
+                                    );
+                                  }
+                                },
                               ),
                               trailing: notif.isRead
                                   ? null
@@ -552,6 +564,51 @@ class _NotificationPageState extends State<NotificationPage> {
       default:
         return Icons.notifications;
     }
+  }
+
+  Future<String> _getNotificationSubtitle(AppNotificationModel notif) async {
+    print('[_getNotificationSubtitle] Notification Type: ${notif.type}');
+    print('[_getNotificationSubtitle] Notification Payload: ${notif.payload}');
+
+    if (notif.type == 'pantry_summary' && notif.payload != null) {
+      try {
+        final Map<String, dynamic> payload = jsonDecode(notif.payload!);
+        print('[_getNotificationSubtitle] Parsed Payload: $payload');
+        final List<String> expired = List<String>.from(payload['expiredItemNames'] ?? []);
+        final List<String> atRisk = List<String>.from(payload['atRiskItemNames'] ?? []);
+
+        String subtitleText = '';
+        // Fetch household name
+        final household = await _firestoreService.getHousehold(notif.householdId);
+        final householdName = household?.name ?? 'Your Pantry';
+
+        List<String> parts = [];
+        if (expired.isNotEmpty) {
+          parts.add('You have ${expired.length} expired item(s): ${expired.join(', ')}');
+        }
+        if (atRisk.isNotEmpty) {
+          parts.add('You have ${atRisk.length} item(s) at risk of expiring soon: ${atRisk.join(', ')}');
+        }
+
+        if (parts.isNotEmpty) {
+          subtitleText = '$householdName:\n${parts.join('\n')}';
+        } else {
+          // If payload parsing didn't yield specific items, but notif.body has details, use notif.body
+          if (notif.body.isNotEmpty && notif.body != notif.title) {
+            subtitleText = '$householdName: ${notif.body}';
+          } else {
+            subtitleText = '$householdName: No specific alerts.';
+          }
+        }
+        print('[_getNotificationSubtitle] Generated Subtitle: $subtitleText');
+        return subtitleText;
+      } catch (e) {
+        print('[_getNotificationSubtitle] Error parsing pantry_summary payload: $e');
+        return notif.body; // Fallback to original body if JSON parsing fails
+      }
+    }
+    print('[_getNotificationSubtitle] Returning original body: ${notif.body}');
+    return notif.body;
   }
 
   void _showFilterSortBottomSheet() {

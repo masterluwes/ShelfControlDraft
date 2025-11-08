@@ -126,8 +126,8 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/households/$(taskDoc.householdId)).data.members.hasAny([request.auth.uid]);
       }
 
-      // Allow read if the user is a member of the household the task belongs to
-      allow read: if request.auth.uid != null && isTaskHouseholdMember(resource.data);
+      // Allow read if the user is a member of the household the task belongs to, or if the task is assigned to the user
+      allow read: if request.auth.uid != null && (isTaskHouseholdMember(resource.data) || resource.data.assignedToUserId == request.auth.uid);
 
       // Allow create if the user is the owner of the household and the assigned user is a member
       allow create: if request.auth.uid != null &&

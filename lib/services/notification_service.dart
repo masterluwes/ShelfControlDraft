@@ -96,6 +96,10 @@ class NotificationService {
   }
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
+    print('[_showLocalNotification] Received foreground message:');
+    print('[_showLocalNotification] Message data: ${message.data}');
+    print('[_showLocalNotification] Message notification body: ${message.notification?.body}');
+
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
       'high_importance_channel', // id
@@ -107,13 +111,21 @@ class NotificationService {
     );
     const NotificationDetails platformChannelSpecifics =
         NotificationDetails(android: androidPlatformChannelSpecifics);
+    String? notificationBody = message.notification?.body;
+    if (message.data['action'] == 'view_pantry_alerts') {
+      // Override with a generalized message for push notifications
+      notificationBody = 'You have items expiring soon. Check your pantry!';
+      print('[_showLocalNotification] Overriding notification body for pantry_summary: $notificationBody');
+    }
+
     await _flutterLocalNotificationsPlugin.show(
       0,
       message.notification?.title,
-      message.notification?.body,
+      notificationBody, // Use the generalized body
       platformChannelSpecifics,
       payload: message.data['payload'],
     );
+    print('[_showLocalNotification] Local notification shown with title: ${message.notification?.title}, body: $notificationBody, payload: ${message.data['payload']}');
   }
 
   // Schedule a weekly recurring pantry review notification
@@ -235,7 +247,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // make sure to call `initializeApp` before using them.
   await Firebase.initializeApp(); // Initialize Firebase for background processing
 
-  print("Handling a background message: ${message.messageId}");
+  print("[_firebaseMessagingBackgroundHandler] Handling a background message: ${message.messageId}");
+  print("[_firebaseMessagingBackgroundHandler] Message data: ${message.data}");
+  print("[_firebaseMessagingBackgroundHandler] Message notification body: ${message.notification?.body}");
 
   // Initialize FirestoreService and FirebaseAuth for background processing
   final FirestoreService firestoreService = FirestoreService();
@@ -250,7 +264,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       if (itemDoc.exists) {
         final item = PantryItemModel.fromFirestore(itemDoc);
         await firestoreService.recordConsumedItem(item, 1);
-        print('Consumed 1 unit of ${item.name} from background notification.');
+        print('[_firebaseMessagingBackgroundHandler] Consumed 1 unit of ${item.name} from background notification.');
 
         // Optionally, add an in-app notification for confirmation
         await firestoreService.addAppNotification(
@@ -266,10 +280,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           ),
         );
       } else {
-        print('Pantry item ${message.data['itemId']} not found for background consumption.');
+        print('[_firebaseMessagingBackgroundHandler] Pantry item ${message.data['itemId']} not found for background consumption.');
       }
     } else {
-      print('No user logged in for background consume action.');
+      print('[_firebaseMessagingBackgroundHandler] No user logged in for background consume action.');
     }
   }
 
@@ -288,12 +302,20 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     );
     const NotificationDetails platformChannelSpecifics =
         NotificationDetails(android: androidPlatformChannelSpecifics);
+    String? notificationBody = message.notification?.body;
+    if (message.data['action'] == 'view_pantry_alerts') {
+      // Override with a generalized message for push notifications
+      notificationBody = 'You have items expiring soon. Check your pantry!';
+      print('[_firebaseMessagingBackgroundHandler] Overriding notification body for pantry_summary: $notificationBody');
+    }
+
     await flutterLocalNotificationsPlugin.show(
       0,
       message.notification?.title,
-      message.notification?.body,
+      notificationBody, // Use the generalized body
       platformChannelSpecifics,
       payload: jsonEncode(message.data), // Use the full data payload for interactive handling
     );
+    print('[_firebaseMessagingBackgroundHandler] Local notification shown with title: ${message.notification?.title}, body: $notificationBody, payload: ${jsonEncode(message.data)}');
   }
 }

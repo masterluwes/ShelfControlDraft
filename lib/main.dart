@@ -65,8 +65,38 @@ class ShelfControlApp extends StatelessWidget {
   }
 }
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && !user.isAnonymous) {
+        // Update lastLoginAt when the app resumes and user is logged in
+        Provider.of<FirestoreService>(context, listen: false)
+            .updateLastLoginAt(user.uid);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,6 +107,11 @@ class AuthWrapper extends StatelessWidget {
           final User? user = snapshot.data;
           if (user == null) {
             return const WelcomePage();
+          }
+          // Update lastLoginAt when user is authenticated (e.g., after login or app start)
+          if (!user.isAnonymous) {
+            Provider.of<FirestoreService>(context, listen: false)
+                .updateLastLoginAt(user.uid);
           }
           return const HouseholdSetupPage();
         }

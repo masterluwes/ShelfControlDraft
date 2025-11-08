@@ -410,6 +410,12 @@ class FirestoreService extends ChangeNotifier {
             });
           }
 
+          // After processing pantry items, generate/update the pantry summary notification
+          // Ensure userId is not null before calling
+          if (_auth.currentUser?.uid != null) {
+            generatePantrySummaryNotification(_auth.currentUser!.uid, householdId, items);
+          }
+
           return items;
         });
   }
@@ -1604,6 +1610,7 @@ class FirestoreService extends ChangeNotifier {
         'isRead': false, // Mark as unread
         'title': notification.title, // Update title
         'body': notification.body, // Update body
+        'payload': notification.payload, // Update payload
       });
       debugPrint('DEBUG: Updated existing notification: ${existingNotificationDoc.id}');
     } else {
@@ -1776,5 +1783,88 @@ class FirestoreService extends ChangeNotifier {
   Future<void> deleteHouseholdTask(String taskId) async {
     debugPrint('DEBUG: deleteHouseholdTask called for taskId: $taskId');
     await _db.collection('householdTasks').doc(taskId).delete();
+  }
+
+  // Update the lastLoginAt field for a user
+  Future<void> updateLastLoginAt(String userId) async {
+    debugPrint('DEBUG: updateLastLoginAt called for userId: $userId');
+    await _db.collection('users').doc(userId).set(
+        {
+          'lastLoginAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true));
+  }
+
+  // Get household data by ID
+  Future<Household?> getHousehold(String householdId) async {
+    debugPrint('DEBUG: getHousehold called for householdId: $householdId');
+    final doc = await _db.collection('households').doc(householdId).get();
+    if (doc.exists) {
+      return Household.fromFirestore(doc);
+    }
+    debugPrint('DEBUG: Household $householdId not found.');
+    return null;
+  }
+
+  // Generate and add/update a pantry summary notification for a specific household
+  Future<void> generatePantrySummaryNotification(String userId, String householdId, List<PantryItemModel> pantryItems) async {
+    debugPrint('DEBUG: generatePantrySummaryNotification called for userId: $userId, householdId: $householdId with ${pantryItems.length} items');
+    final now = DateTime.now();
+    final int daysForAtRisk = 7; // Default to 7 days for at-risk
+
+    final List<String> expiredItemNames = [];
+    final List<String> atRiskItemNames = [];
+
+    for (final item in pantryItems) {
+      if (item.expirationDate != null) {
+        final daysUntilExpiry = item.expirationDate!.difference(now).inDays;
+
+        // An item is considered "expired" for the notification if its expiration date is in the past
+        // AND its status is still 'Available' or 'wasted'.
+        if (daysUntilExpiry < 0 && (item.status == 'Available' || item.status == 'wasted')) {
+          expiredItemNames.add(item.name);
+        }
+        // An item is considered "at risk" if its expiration date is within the threshold
+        // AND its status is still 'Available'.
+        else if (daysUntilExpiry >= 0 && daysUntilExpiry <= daysForAtRisk && item.status == 'Available') {
+          atRiskItemNames.add(item.name);
+        }
+      }
+    }
+
+    String title = 'Pantry Alert!';
+    String body = '';
+    if (expiredItemNames.isNotEmpty || atRiskItemNames.isNotEmpty) {
+      if (expiredItemNames.isNotEmpty) {
+        body += 'You have ${expiredItemNames.length} expired item(s): ${expiredItemNames.join(', ')}. ';
+      }
+      if (atRiskItemNames.isNotEmpty) {
+        body += 'You have ${atRiskItemNames.length} item(s) at risk of expiring soon: ${atRiskItemNames.join(', ')}.';
+      }
+    } else {
+      body = 'All items in your pantry are fresh!';
+    }
+
+    final household = await getHousehold(householdId);
+    final householdName = household?.name ?? 'Your Pantry';
+
+    final payload = jsonEncode({
+      'householdId': householdId,
+      'expiredItemNames': expiredItemNames,
+      'atRiskItemNames': atRiskItemNames,
+    });
+
+    await addAppNotification(
+      AppNotificationModel(
+        userId: userId,
+        householdId: householdId,
+        title: '[$householdName] $title',
+        body: body.trim(),
+        type: 'pantry_summary',
+        createdAt: Timestamp.now(),
+        isRead: false,
+        payload: payload,
+      ),
+    );
   }
 }

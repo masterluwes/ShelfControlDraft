@@ -12,6 +12,7 @@ import 'package:shelf_control/models/app_notification_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shelf_control/screens/addpantryitem.dart';
+import 'dart:convert'; // Import for jsonEncode
 
 class Pantryinventory extends StatefulWidget {
   final bool isGuest;
@@ -116,10 +117,10 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       lastCheck = DateTime.tryParse(lastCheckString);
     }
 
-    // Only run the check if it hasn't been run within the interval
-    if (lastCheck != null && DateTime.now().difference(lastCheck) < _notificationCheckInterval) {
-      return;
-    }
+    // // Only run the check if it hasn't been run within the interval
+    // if (lastCheck != null && DateTime.now().difference(lastCheck) < _notificationCheckInterval) {
+    //   return;
+    // }
 
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     final userId = firestoreService.userId;
@@ -137,10 +138,11 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
 
     for (var item in pantryItemsSnapshot) {
       final status = _getItemStatus(item); // Use the helper to get status without generating notifications
-      if (status == ItemStatus.expired && (_notificationSettings?['expiredItems'] ?? false)) {
+      // For testing: always generate notifications if items are expired/at risk
+      if (status == ItemStatus.expired /* && (_notificationSettings?['expiredItems'] ?? false) */) {
         expiredCount++;
         expiredItemNames.add(item.name);
-      } else if (status == ItemStatus.atRisk && (_notificationSettings?['atRiskItems'] ?? false)) {
+      } else if (status == ItemStatus.atRisk /* && (_notificationSettings?['atRiskItems'] ?? false) */) {
         atRiskCount++;
         atRiskItemNames.add(item.name);
       }
@@ -151,32 +153,47 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       String title = 'Pantry Alert!';
       String body = '';
       String type = 'pantry_summary';
-      String payload = '{"type": "pantry_summary", "householdId": "$householdId"}';
 
+      // Construct detailed body for in-app notification
       if (expiredCount > 0 && atRiskCount > 0) {
-        body = 'You have $expiredCount expired item(s) and $atRiskCount item(s) at risk of expiring soon.';
+        body = 'You have $expiredCount expired item(s) (${expiredItemNames.join(', ')}) and $atRiskCount item(s) at risk of expiring soon (${atRiskItemNames.join(', ')}).';
       } else if (expiredCount > 0) {
-        body = 'You have $expiredCount expired item(s).';
+        body = 'You have $expiredCount expired item(s): ${expiredItemNames.join(', ')}.';
       } else if (atRiskCount > 0) {
-        body = 'You have $atRiskCount item(s) at risk of expiring soon.';
+        body = 'You have $atRiskCount item(s) at risk of expiring soon: ${atRiskItemNames.join(', ')}.';
       }
+
+      // Construct detailed payload for in-app notification
+      String payload = jsonEncode({
+        "type": "pantry_summary",
+        "householdId": householdId,
+        "expiredItemNames": expiredItemNames,
+        "atRiskItemNames": atRiskItemNames,
+      });
+
+      print('[_checkAndGenerateNotifications] Expired Item Names: $expiredItemNames');
+      print('[_checkAndGenerateNotifications] At Risk Item Names: $atRiskItemNames');
+      print('[_checkAndGenerateNotifications] AppNotificationModel Title: $title');
+      print('[_checkAndGenerateNotifications] AppNotificationModel Body: $body');
+      print('[_checkAndGenerateNotifications] AppNotificationModel Type: $type');
+      print('[_checkAndGenerateNotifications] AppNotificationModel Payload: $payload');
 
       await firestoreService.addAppNotification(
         AppNotificationModel(
           userId: userId,
           householdId: householdId,
           title: title,
-          body: body,
+          body: body, // Detailed body for in-app
           type: type,
           createdAt: Timestamp.now(),
           isRead: false,
-          payload: payload,
+          payload: payload, // Detailed payload
         ),
       );
     }
 
-    // Update the last check timestamp
-    await prefs.setString(_lastNotificationCheckKey, DateTime.now().toIso8601String());
+    // // Update the last check timestamp
+    // await prefs.setString(_lastNotificationCheckKey, DateTime.now().toIso8601String());
   }
 
   String _getExpiresText(PantryItemModel item) {
