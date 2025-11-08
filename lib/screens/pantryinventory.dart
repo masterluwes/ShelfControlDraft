@@ -74,7 +74,6 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     if (userId != null) {
       _notificationSettings = await firestoreService.getNotificationSettings(userId);
       setState(() {}); // Update UI if settings affect anything visible
-      _checkAndGenerateNotifications(); // Call after loading settings
     }
   }
 
@@ -148,52 +147,9 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       }
     }
 
-    // Generate a single summary notification if there are any expired or at-risk items
-    if (expiredCount > 0 || atRiskCount > 0) {
-      String title = 'Pantry Alert!';
-      String body = '';
-      String type = 'pantry_summary';
-
-      // Construct detailed body for in-app notification
-      if (expiredCount > 0 && atRiskCount > 0) {
-        body = 'You have $expiredCount expired item(s) (${expiredItemNames.join(', ')}) and $atRiskCount item(s) at risk of expiring soon (${atRiskItemNames.join(', ')}).';
-      } else if (expiredCount > 0) {
-        body = 'You have $expiredCount expired item(s): ${expiredItemNames.join(', ')}.';
-      } else if (atRiskCount > 0) {
-        body = 'You have $atRiskCount item(s) at risk of expiring soon: ${atRiskItemNames.join(', ')}.';
-      }
-
-      // Construct detailed payload for in-app notification
-      String payload = jsonEncode({
-        "type": "pantry_summary",
-        "householdId": householdId,
-        "expiredItemNames": expiredItemNames,
-        "atRiskItemNames": atRiskItemNames,
-      });
-
-      print('[_checkAndGenerateNotifications] Expired Item Names: $expiredItemNames');
-      print('[_checkAndGenerateNotifications] At Risk Item Names: $atRiskItemNames');
-      print('[_checkAndGenerateNotifications] AppNotificationModel Title: $title');
-      print('[_checkAndGenerateNotifications] AppNotificationModel Body: $body');
-      print('[_checkAndGenerateNotifications] AppNotificationModel Type: $type');
-      print('[_checkAndGenerateNotifications] AppNotificationModel Payload: $payload');
-
-      await firestoreService.addAppNotification(
-        AppNotificationModel(
-          userId: userId,
-          householdId: householdId,
-          title: title,
-          body: body, // Detailed body for in-app
-          type: type,
-          createdAt: Timestamp.now(),
-          isRead: false,
-          payload: payload, // Detailed payload
-        ),
-      );
-    }
-
-    // // Update the last check timestamp
-    // await prefs.setString(_lastNotificationCheckKey, DateTime.now().toIso8601String());
+    // The actual notification generation and rate-limiting is handled by FirestoreService.generatePantrySummaryNotification
+    // This method only needs to ensure that the pantry items are fetched, which triggers the FirestoreService method.
+    // No direct notification generation logic is needed here.
   }
 
   String _getExpiresText(PantryItemModel item) {

@@ -21,6 +21,7 @@ import 'package:firebase_storage/firebase_storage.dart'; // Import Firebase Stor
 import 'dart:io'; // For File type
 import 'package:shelf_control/models/waste_report_model.dart'; // Import WasteReportModel
 import 'package:flutter/foundation.dart'; // For Uint8List
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences for rate limiting
 
 class FirestoreService extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -28,6 +29,10 @@ class FirestoreService extends ChangeNotifier {
   final FirebaseStorage _storage = FirebaseStorage.instance; // Instantiate Firebase Storage
   final Uuid _uuid = const Uuid(); // Instantiate Uuid
   final ValueNotifier<String?> householdIdNotifier = ValueNotifier<String?>(null);
+
+  // Key for storing the last notification check timestamp in SharedPreferences
+  static const String _lastPantrySummaryNotificationCheckKey = 'lastPantrySummaryNotificationCheck_';
+  static const Duration _notificationCheckInterval = Duration(hours: 24); // Default to 24 hours
 
   FirebaseFirestore get db => _db; // Public getter for _db
 
@@ -408,12 +413,6 @@ class FirestoreService extends ChangeNotifier {
             }).catchError((error) {
               debugPrint('ERROR: Batch commit for expired items failed: $error');
             });
-          }
-
-          // After processing pantry items, generate/update the pantry summary notification
-          // Ensure userId is not null before calling
-          if (_auth.currentUser?.uid != null) {
-            generatePantrySummaryNotification(_auth.currentUser!.uid, householdId, items);
           }
 
           return items;
@@ -1809,6 +1808,20 @@ class FirestoreService extends ChangeNotifier {
   // Generate and add/update a pantry summary notification for a specific household
   Future<void> generatePantrySummaryNotification(String userId, String householdId, List<PantryItemModel> pantryItems) async {
     debugPrint('DEBUG: generatePantrySummaryNotification called for userId: $userId, householdId: $householdId with ${pantryItems.length} items');
+
+    final prefs = await SharedPreferences.getInstance();
+    final lastCheckString = prefs.getString(_lastPantrySummaryNotificationCheckKey + householdId);
+    DateTime? lastCheck;
+    if (lastCheckString != null) {
+      lastCheck = DateTime.tryParse(lastCheckString);
+    }
+
+    // Only generate a new notification if the interval has passed or it's the first time
+    if (lastCheck != null && DateTime.now().difference(lastCheck) < _notificationCheckInterval) {
+      debugPrint('DEBUG: Skipping pantry summary notification for household $householdId. Last check was ${DateTime.now().difference(lastCheck).inMinutes} minutes ago.');
+      return;
+    }
+
     final now = DateTime.now();
     final int daysForAtRisk = 7; // Default to 7 days for at-risk
 
@@ -1866,5 +1879,8 @@ class FirestoreService extends ChangeNotifier {
         payload: payload,
       ),
     );
+
+    // Update the last check timestamp after generating a notification
+    await prefs.setString(_lastPantrySummaryNotificationCheckKey + householdId, DateTime.now().toIso8601String());
   }
 }

@@ -245,7 +245,10 @@ class NotificationService {
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // If you're going to use other Firebase services in the background, such as Firestore,
   // make sure to call `initializeApp` before using them.
-  await Firebase.initializeApp(); // Initialize Firebase for background processing
+  // Ensure Firebase is initialized only once in the background handler.
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp();
+  }
 
   print("[_firebaseMessagingBackgroundHandler] Handling a background message: ${message.messageId}");
   print("[_firebaseMessagingBackgroundHandler] Message data: ${message.data}");
