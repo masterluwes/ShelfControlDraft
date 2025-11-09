@@ -1,5 +1,6 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { onDocumentDeleted } from "firebase-functions/v2/firestore"; // Updated for removed functions
+import { onSchedule } from "firebase-functions/v2/scheduler"; // Added for scheduled functions
 import * as admin from "firebase-admin";
 import { defineSecret } from "firebase-functions/params";
 
@@ -14,7 +15,7 @@ interface NotificationSettings {
     expiredItems: boolean;
     atRiskItems: boolean;
     daysForAtRisk: number;
-    // Add other settings if they are relevant for filtering notifications
+    inactivityReminder: boolean; // New setting for inactivity reminders
 }
 
 interface PantryItem {
@@ -105,15 +106,19 @@ async function runPantryCheckLogic(targetUserId?: string) {
 
     for (const userDoc of usersSnapshot.docs) {
         const userId = userDoc.id;
-        // Bypass notification settings for testing
+        const userSettings = userDoc.data()?.notificationSettings;
         const settings: NotificationSettings = {
-            expiredItems: true,
-            atRiskItems: true,
-            daysForAtRisk: 7, // Hardcoded to 7 days for testing
+            expiredItems: userSettings?.expiredItems ?? true,
+            atRiskItems: userSettings?.atRiskItems ?? true,
+            daysForAtRisk: userSettings?.daysForAtRisk ?? 7,
+            inactivityReminder: userSettings?.inactivityReminder ?? true, // Added for interface consistency
         };
-        console.log(`Using hardcoded notification settings for user ${userId}:`, settings);
+        console.log(`Using notification settings for user ${userId}:`, settings);
 
-        // The check for disabled notifications is removed as settings are hardcoded to true
+        if (!settings.expiredItems && !settings.atRiskItems) {
+            console.log(`Notifications are disabled for user ${userId}. Skipping pantry check for this user.`);
+            continue;
+        }
 
         const userHouseholdsSnapshot = await db.collection("households").where("members", "array-contains", userId).get();
 
@@ -341,25 +346,25 @@ export const onPantryItemDelete = onDocumentDeleted("pantryItems/{itemId}", asyn
 
 // 1. dailyPantryCheck Cloud Function
 // Runs every day at 3:00 AM in the specified timezone.
-// export const dailyPantryCheck = onSchedule({
-//     schedule: "every day 03:00",
-//     timeZone: "Asia/Manila",
-// }, async (context) => {
-//     console.log("Executing dailyPantryCheck trigger");
-//     await runPantryCheckLogic();
-// });
+export const dailyPantryCheck = onSchedule({
+    schedule: "every day 03:00",
+    timeZone: "Asia/Manila",
+}, async () => { // Removed unused context parameter
+    console.log("Executing dailyPantryCheck trigger");
+    await runPantryCheckLogic();
+});
 
 
-// // 2. sendReminderNotifications Cloud Function
-// // Runs every day at 9:00 AM in the specified timezone.
-// export const sendReminderNotifications = onSchedule({
-//     schedule: "every day 09:00",
-//     timeZone: "Asia/Manila",
-// }, async (context) => {
-//     console.log("Executing sendReminderNotifications");
-//     await processAndSendNotifications();
-//     console.log("sendReminderNotifications finished.");
-// });
+// 2. sendReminderNotifications Cloud Function
+// Runs every day at 9:00 AM in the specified timezone.
+export const sendReminderNotifications = onSchedule({
+    schedule: "every day 09:00",
+    timeZone: "Asia/Manila",
+}, async () => { // Removed unused context parameter
+    console.log("Executing sendReminderNotifications");
+    await processAndSendNotifications();
+    console.log("sendReminderNotifications finished.");
+});
 
 // Temporary HTTP-triggered function for testing notifications
 export const testSendReminderNotifications = onRequest(async (req, res) => {
@@ -385,6 +390,74 @@ export const testDailyPantryCheck = onRequest(async (req, res) => {
         console.error("Error in testDailyPantryCheck:", error);
         res.status(500).send(`Error executing testDailyPantryCheck: ${error}`);
     }
+});
+
+// 3. sendInactivityReminder Cloud Function
+// Runs weekly (e.g., every Sunday at 10:00 AM) to remind inactive users.
+export const sendInactivityReminder = onSchedule({
+    schedule: "every sunday 10:00",
+    timeZone: "Asia/Manila",
+}, async () => { // Removed unused context parameter
+    console.log("Executing sendInactivityReminder trigger");
+    const now = admin.firestore.Timestamp.now();
+    const sevenDaysAgo = new admin.firestore.Timestamp(now.seconds - (7 * 24 * 60 * 60), now.nanoseconds);
+
+    const usersSnapshot = await db.collection("users")
+        .where("lastActivity", "<", sevenDaysAgo)
+        .get();
+
+    for (const userDoc of usersSnapshot.docs) {
+        const userId = userDoc.id;
+        const userProfile = userDoc.data() as UserProfile | undefined;
+        const userSettings = userDoc.data()?.notificationSettings;
+        const settings: NotificationSettings = {
+            expiredItems: userSettings?.expiredItems ?? true,
+            atRiskItems: userSettings?.atRiskItems ?? true,
+            daysForAtRisk: userSettings?.daysForAtRisk ?? 7,
+            inactivityReminder: userSettings?.inactivityReminder ?? true, // Default to true
+        };
+
+        if (!userProfile?.fcmToken) {
+            console.log(`User ${userId} has no FCM token. Skipping inactivity reminder.`);
+            continue;
+        }
+
+        if (!settings.inactivityReminder) {
+            console.log(`Inactivity reminders disabled for user ${userId}. Skipping.`);
+            continue;
+        }
+
+        const message: admin.messaging.Message = {
+            token: userProfile.fcmToken,
+            notification: {
+                title: "ShelfControl: Don't forget your pantry!",
+                body: "It's been a while! Check your pantry, update items, and plan your next meal.",
+            },
+            data: {
+                action: "open_app", // Or a specific screen if desired
+            },
+            android: {
+                notification: {
+                    clickAction: "FLUTTER_NOTIFICATION_CLICK",
+                },
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        category: "INACTIVITY_REMINDER_CATEGORY",
+                    },
+                },
+            },
+        };
+
+        try {
+            await messaging.send(message);
+            console.log(`Sent inactivity reminder to user ${userId}`);
+        } catch (error) {
+            console.error(`Failed to send inactivity reminder to user ${userId}:`, error);
+        }
+    }
+    console.log("Inactivity reminder check finished.");
 });
 
 // Find recipes by ingredients (pantry → candidates)
