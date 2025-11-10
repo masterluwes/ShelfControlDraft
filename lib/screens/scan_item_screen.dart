@@ -27,12 +27,30 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
 
   final List<PantryItemModel> _scannedItems = [];
   int _currentItemIndex = 0;
+  late PageController _pageController; // Declare PageController
 
   // Controllers for editable fields in the bottom sheet
   final TextEditingController _productNameController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
   final TextEditingController _netWeightController = TextEditingController(); // New controller for net weight
   String _selectedCategory = 'Uncategorized'; // Default category
+
+  // Define brand-to-category mapping for local products
+  final Map<String, String> _brandCategoryMap = {
+    'Gardenia': 'Bakery',
+    'Lucky Me': 'Dry Goods',
+    'Del Monte': 'Condiments',
+    'Knorr': 'Condiments',
+    'Purefoods': 'Canned Goods', // Example for Purefoods
+    'SM Bonus': 'Other', // Example for a generic brand, can be refined
+    'Magnolia': 'Dairy',
+    'Nestlé': 'Beverages', // Or other common categories for Nestle products
+    'Alaska': 'Dairy',
+    'CDO': 'Canned Goods',
+    'Bounty Fresh': 'Other', // Can be refined
+    'Coles': 'Other', // Can be refined
+    'Sunkist': 'Beverages',
+  };
 
   // Shelf-life related fields
   bool _useManufacturedAndShelfLife = false;
@@ -84,7 +102,11 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
   void initState() {
     super.initState();
     _initializeScanner(); // Call a new method to initialize
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scannerController.start(); // Start the scanner explicitly after the first frame is rendered
+    });
     _sheetController.addListener(_onSheetScrolled);
+    _pageController = PageController(initialPage: _currentItemIndex); // Initialize PageController
   }
 
   void _initializeScanner() {
@@ -92,20 +114,24 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       detectionSpeed: DetectionSpeed.normal,
       facing: CameraFacing.back,
       torchEnabled: false,
+      autoStart: false, // Disable autoStart
     );
     _logger.d('Scanner initialized with key: $_scannerKey');
   }
 
-  void _resetScanner() async { // Make the method async
+  void _resetScanner() async {
+    await _scannerController.stop(); // Stop the current scanner before disposing
     _scannerController.dispose(); // Dispose the old controller
-    await Future.delayed(const Duration(milliseconds: 500)); // Add a delay for resource release
+    await Future.delayed(const Duration(milliseconds: 1000)); // Increased delay for resource release
     if (!mounted) return; // Check if the widget is still mounted after the delay
     setState(() {
       _scannerKey = UniqueKey(); // Change the key to force rebuild
       _initializeScanner(); // Initialize a new controller
     });
-    _scannerController.start(); // Explicitly start the scanner
-    _logger.d('Scanner reset with new key: $_scannerKey');
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _scannerController.start(); // Explicitly start the scanner and await it after the frame is rendered
+      _logger.d('Scanner reset with new key: $_scannerKey');
+    });
   }
 
   void _onSheetScrolled() {
@@ -148,6 +174,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     _scannerController.dispose(); // Dispose the scanner controller
     _sheetController.removeListener(_onSheetScrolled);
     _sheetController.dispose();
+    _pageController.dispose(); // Dispose PageController
     super.dispose();
   }
 
@@ -207,50 +234,95 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       // Extract product name for keyword-based category detection
       String productName = product['product_name'] ?? 'Unknown Product';
       String detectedCategory = 'Other'; // Default to 'Other'
+      String? productBrand = product['brands']?.toString().split(',').first.trim(); // Get the first brand
 
-      // 1. Keyword-based category detection from product name
-      final Map<String, String> keywordCategoryMap = {
-        'bread': 'Bakery', 'pastries': 'Bakery', 'cake': 'Bakery', 'buns': 'Bakery', 'muffin': 'Bakery', 'donut': 'Bakery', 'pandesal': 'Bakery', 'ensaymada': 'Bakery', 'mamon': 'Bakery',
-        'milk': 'Dairy', 'yogurt': 'Dairy', 'cheese': 'Dairy', 'butter': 'Dairy', 'eggs': 'Dairy',
-        'juice': 'Beverages', 'soda': 'Beverages', 'coffee': 'Beverages', 'tea': 'Beverages', 'water': 'Beverages',
-        'cream of mushroom': 'Condiments', // Specific entry for cream of mushroom
-        'canned': 'Canned Goods', 'sardines': 'Canned Goods', 'tuna': 'Canned Goods',
-        'sauce': 'Condiments', 'ketchup': 'Condiments', 'mustard': 'Condiments', 'vinegar': 'Condiments', 'soy sauce': 'Condiments', 'dressing': 'Condiments', 'spices': 'Condiments', 'powder': 'Condiments', 'salt': 'Condiments',
-        'rice': 'Dry Goods', 'pasta': 'Dry Goods', 'flour': 'Dry Goods', 'cereal': 'Dry Goods', 'oil': 'Dry Goods', 'beans': 'Dry Goods', 'sugar': 'Dry Goods',
-        'chips': 'Snacks', 'cookies': 'Snacks', 'crackers': 'Snacks', 'chocolates': 'Snacks', 'biscuits': 'Snacks', 'fudge bars': 'Snacks',
-      };
+      // Helper function to check if a category is one of our known categories
+      bool _isKnownCategory(String category) {
+        return _categoryShelfLives.keys.contains(category);
+      }
 
-      String lowerCaseProductName = productName.toLowerCase();
-      for (var entry in keywordCategoryMap.entries) {
-        if (lowerCaseProductName.contains(entry.key)) {
-          detectedCategory = entry.value;
-          break;
+      // 1. Prioritize Open Food Facts Main Category
+      if (product['categories_tags'] != null && product['categories_tags'] is List && product['categories_tags'].isNotEmpty) {
+        for (String rawTag in List<String>.from(product['categories_tags'])) {
+          String apiCategory = rawTag.split(':').last.replaceAll('-', ' ').capitalize();
+
+          // Map common API categories to our existing broader categories
+          final Map<String, String> apiCategoryMapping = {
+            'Instant Noodles': 'Dry Goods',
+            'Desserts': 'Snacks',
+            'Breakfast': 'Dry Goods', // e.g., cereals
+            'Frozen Foods': 'Other', // Can be refined further if a 'Frozen' category is added
+            'Spreads': 'Condiments',
+            'Sweet snacks': 'Snacks',
+            'Salty snacks': 'Snacks',
+            'Meals': 'Other', // Generic, keep as Other for now
+            'Groceries': 'Other', // Generic, keep as Other for now
+            'Dairies': 'Dairy',
+            'Milks': 'Dairy',
+            'Cheeses': 'Dairy',
+            'Yogurts': 'Dairy',
+            'Breads': 'Bakery',
+            'Pastries': 'Bakery',
+            'Biscuits and cakes': 'Snacks',
+            'Beverages': 'Beverages',
+            'Juices': 'Beverages',
+            'Coffees': 'Beverages',
+            'Teas': 'Beverages',
+            'Canned foods': 'Canned Goods',
+            'Condiments': 'Condiments',
+            'Sauces': 'Condiments',
+            'Spices': 'Condiments',
+            'Rice': 'Dry Goods',
+            'Pasta': 'Dry Goods',
+            'Flours': 'Dry Goods',
+            'Sugars': 'Dry Goods',
+            'Chips': 'Snacks',
+            'Cookies': 'Snacks',
+            'Crackers': 'Snacks',
+            'Chocolates': 'Snacks',
+          };
+
+          String mappedApiCategory = apiCategoryMapping[apiCategory] ?? apiCategory;
+
+          if (_isKnownCategory(mappedApiCategory)) {
+            detectedCategory = mappedApiCategory;
+            _logger.d('Category detected from Open Food Facts: $detectedCategory (from tag: $rawTag)');
+            break; // Found a good category, stop searching
+          }
         }
       }
 
-      // 2. Fallback to Open Food Facts categories if keyword detection didn't yield a specific category
-      if (detectedCategory == 'Other' && product['categories_tags'] != null && product['categories_tags'] is List && product['categories_tags'].isNotEmpty) {
-        String rawCategory = product['categories_tags'][0].toString();
-        String apiCategory = rawCategory.split(':').last.replaceAll('-', ' ').capitalize();
+      // 2. Brand-Based Categorization (if not already detected)
+      if (detectedCategory == 'Other' && productBrand != null) {
+        String? brandCategory = _brandCategoryMap[productBrand];
+        if (brandCategory != null && _isKnownCategory(brandCategory)) {
+          detectedCategory = brandCategory;
+          _logger.d('Category detected from Brand Map: $detectedCategory (brand: $productBrand)');
+        }
+      }
 
-        // Map common API categories to our existing broader categories (Option B)
-        final Map<String, String> apiCategoryMapping = {
-          'Instant Noodles': 'Dry Goods',
-          'Desserts': 'Snacks',
-          'Breakfast': 'Dry Goods', // e.g., cereals
-          'Frozen Foods': 'Other', // Can be refined further if a 'Frozen' category is added
-          'Spreads': 'Condiments',
-          'Sweet snacks': 'Snacks',
-          'Salty snacks': 'Snacks',
-          'Meals': 'Other', // Generic, keep as Other for now
-          'Groceries': 'Other', // Generic, keep as Other for now
+      // 3. Enhanced Keyword-Based Product Name Detection (if not already detected)
+      if (detectedCategory == 'Other') {
+        final Map<String, String> keywordCategoryMap = {
+          'bread': 'Bakery', 'pastries': 'Bakery', 'cake': 'Bakery', 'buns': 'Bakery', 'muffin': 'Bakery', 'donut': 'Bakery', 'pandesal': 'Bakery', 'ensaymada': 'Bakery', 'mamon': 'Bakery',
+          'milk': 'Dairy', 'yogurt': 'Dairy', 'cheese': 'Dairy', 'butter': 'Dairy', 'eggs': 'Dairy',
+          'juice': 'Beverages', 'soda': 'Beverages', 'coffee': 'Beverages', 'tea': 'Beverages', 'water': 'Beverages',
+          'cream of mushroom': 'Condiments', // Specific entry for cream of mushroom
+          'canned': 'Canned Goods', 'sardines': 'Canned Goods', 'tuna': 'Canned Goods',
+          'sauce': 'Condiments', 'ketchup': 'Condiments', 'mustard': 'Condiments', 'vinegar': 'Condiments', 'soy sauce': 'Condiments', 'dressing': 'Condiments', 'spices': 'Condiments', 'powder': 'Condiments', 'salt': 'Condiments',
+          'rice': 'Dry Goods', 'pasta': 'Dry Goods', 'flour': 'Dry Goods', 'cereal': 'Dry Goods', 'oil': 'Dry Goods', 'beans': 'Dry Goods', 'sugar': 'Dry Goods',
+          'chips': 'Snacks', 'cookies': 'Snacks', 'crackers': 'Snacks', 'chocolates': 'Snacks', 'biscuits': 'Snacks', 'fudge bars': 'Snacks',
+          'instant noodles': 'Dry Goods', // Added based on user feedback (Lucky Me)
+          'broth': 'Condiments', // Added based on user feedback (Chicken Broth Cubes)
         };
 
-        String mappedApiCategory = apiCategoryMapping[apiCategory] ?? apiCategory;
-
-        // Only use API category if it's more specific than 'Other' and is one of our known categories
-        if (mappedApiCategory != 'Other' && _categoryShelfLives.keys.contains(mappedApiCategory)) {
-          detectedCategory = mappedApiCategory;
+        String lowerCaseProductName = productName.toLowerCase();
+        for (var entry in keywordCategoryMap.entries) {
+          if (lowerCaseProductName.contains(entry.key)) {
+            detectedCategory = entry.value;
+            _logger.d('Category detected from Keyword Map: $detectedCategory (keyword: ${entry.key})');
+            break;
+          }
         }
       }
 
@@ -283,6 +355,10 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         _manufacturedDate = manufacturedDate; // Update manufacturedDate for UI
         _expirationDate = expirationDate; // Update expirationDate for UI
         _updateControllersForItem(_currentItemIndex);
+        // Only jump to page if the controller is attached to a PageView
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(_currentItemIndex); // Jump to the new item's page
+        }
       });
 
       // Expand the sheet after a successful scan, ensuring it happens after the build
@@ -404,7 +480,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
           MobileScanner(
             key: _scannerKey, // Assign the key here
             controller: _scannerController,
-            onDetect: (capture) {
+            onDetect: (capture) async { // Mark onDetect as async
               if (_isProcessingBarcode) return; // Prevent processing if already busy
 
               final List<Barcode> barcodes = capture.barcodes;
@@ -412,7 +488,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                 final String? barcodeScanRes = barcodes.first.rawValue;
                 if (barcodeScanRes != null && barcodeScanRes.isNotEmpty) {
                   _logger.d('Scanned barcode: $barcodeScanRes');
-                  _scannerController.stop(); // Stop scanner immediately
+                  await _scannerController.stop(); // Stop scanner immediately and await it
                   _processBarcode(barcodeScanRes, firestoreService);
                 }
               }
@@ -449,7 +525,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
 
           // Barcode Count
           Positioned(
-            top: kToolbarHeight + MediaQuery.of(context).padding.top + 16,
+            top: kToolbarHeight + MediaQuery.of(context).size.height * 0.05, // Adjusted position
             left: 0,
             right: 0,
             child: Text(
@@ -527,36 +603,6 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                             Row(
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.add, color: Colors.white),
-                                  onPressed: () {
-                                    // Create a new empty item
-                                    final newEmptyItem = PantryItemModel(
-                                      householdId: widget.isGuest ? firestoreService.userId! : firestoreService.selectedHouseholdId!,
-                                      name: 'New Item', // Default name
-                                      category: 'Other', // Default category
-                                      barcode: '', // Empty barcode for a new item
-                                      qty: 1,
-                                    );
-
-                                    setState(() {
-                                      _scannedItems.add(newEmptyItem);
-                                      _currentItemIndex = _scannedItems.length - 1;
-                                      _updateControllersForItem(_currentItemIndex); // Populate controllers with new empty item
-                                    });
-
-                                    // Only reset scanner if sheet is collapsed
-                                    if (!_isSheetExpanded) {
-                                      _resetScanner();
-                                      _logger.d('Scanner reset after adding new item (sheet collapsed).');
-                                    }
-                                    if (_sheetController.isAttached) { // Add this check
-                                      _sheetController.animateTo(0.12, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-                                    } else {
-                                      _logger.d('DraggableScrollableSheet not attached, cannot animate after adding new item.');
-                                    }
-                                  },
-                                ),
-                                IconButton(
                                   icon: const Icon(Icons.check, color: Colors.white),
                                   onPressed: () => _saveAllItems(firestoreService),
                                 ),
@@ -591,7 +637,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                           ? const Center(child: Text('No items scanned yet.'))
                           : PageView.builder(
                               itemCount: _scannedItems.length,
-                              controller: PageController(initialPage: _currentItemIndex),
+                              controller: _pageController, // Use the state PageController
                               onPageChanged: (index) {
                                 setState(() {
                                   _currentItemIndex = index;
@@ -622,6 +668,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                       const SizedBox(height: 10),
                                       TextFormField(
                                         controller: _productNameController,
+                                        readOnly: item.barcode != null && item.barcode!.isNotEmpty, // Make read-only if barcode exists
                                         decoration: InputDecoration(
                                           labelText: 'Product Name',
                                           border: OutlineInputBorder(
@@ -645,6 +692,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                       const SizedBox(height: 10),
                                       TextFormField(
                                         controller: _netWeightController,
+                                        readOnly: item.barcode != null && item.barcode!.isNotEmpty, // Make read-only if barcode exists
                                         decoration: InputDecoration(
                                           labelText: 'Net Weight',
                                           border: OutlineInputBorder(
@@ -669,12 +717,14 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                             child: Text(value),
                                           );
                                         }).toList(),
-                                        onChanged: (String? newValue) {
-                                          setState(() {
-                                            _selectedCategory = newValue!;
-                                            _scannedItems[_currentItemIndex].category = newValue;
-                                          });
-                                        },
+                                        onChanged: (item.barcode != null && item.barcode!.isNotEmpty)
+                                            ? null // Disable if barcode exists
+                                            : (String? newValue) {
+                                                setState(() {
+                                                  _selectedCategory = newValue!;
+                                                  _scannedItems[_currentItemIndex].category = newValue;
+                                                });
+                                              },
                                       ),
                                       const SizedBox(height: 20),
                                       // Shelf-life and Dates

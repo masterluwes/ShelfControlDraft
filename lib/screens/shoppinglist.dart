@@ -21,6 +21,8 @@ import 'package:shelf_control/services/firestore_service.dart'; // Import Firest
 import 'package:shelf_control/services/open_food_facts_service.dart'; // Import OpenFoodFactsService
 import 'package:uuid/uuid.dart'; // Import Uuid for generating unique IDs
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
+import 'package:shelf_control/models/product_model.dart'; // Import Product model
+import 'package:intl/intl.dart'; // Import for DateFormat
 
 class Shoppinglist extends StatefulWidget {
   final bool isGuest; // New parameter to indicate guest mode
@@ -145,6 +147,35 @@ class _ShoppinglistState extends State<Shoppinglist> {
     _setupStreams();
   }
 
+  String? _suggestCategoryFromName(String itemName) {
+    itemName = itemName.toLowerCase();
+
+    final Map<String, List<String>> categoryKeywords = {
+      'Bakery': ['bread', 'cake', 'pastries', 'baking needs', 'buns', 'muffin', 'donut', 'pandesal', 'ensaymada', 'mamon'],
+      'Dairy': ['milk', 'yogurt', 'cheese', 'butter', 'margarine', 'spread', 'cream', 'eggs', 'evaporada', 'condensada'],
+      'Beverages': ['coffee', 'tea', 'juice', 'soda', 'water', 'chocolate drink', 'malt', 'drink', 'softdrink', 'powdered drink'],
+      'Canned Goods': ['canned', 'beans', 'soup', 'tuna', 'sardines', 'corned beef', 'meat loaf', 'luncheon meat', 'fruit cocktail'],
+      'Dry Goods': ['rice', 'pasta', 'flour', 'cereal', 'grains', 'seeds', 'oil', 'legumes', 'beans', 'soup mix', 'broth', 'noodles', 'sago', 'oats', 'oatmeal', 'sugar'],
+      'Snacks': [
+        'chips', 'crackers', 'cookies', 'nuts', 'candies', 'chocolates', 'biscuits', 'dips', 'wafer', 'bar', 'pastillas', 'polvoron',
+        'packed fudge bars'
+      ],
+      'Condiments': ['vinegar', 'soy sauce', 'ketchup', 'mustard', 'dressing', 'sauce', 'spices', 'powder', 'salt', 'bbq', 'seasoning', 'garlic bits', 'bagoong', 'chili', 'patis', 'fish sauce'],
+      'Other': [],
+    };
+
+    for (final categoryEntry in categoryKeywords.entries) {
+      final category = categoryEntry.key;
+      final keywords = categoryEntry.value;
+      for (final keyword in keywords) {
+        if (itemName.contains(keyword)) {
+          return category;
+        }
+      }
+    }
+    return 'Other';
+  }
+
   DateTime? _getExpirationDateForCategory(String category, String itemName, DateTime manufacturedDate) {
     int? shelfLife = _categoryShelfLives[category];
     itemName = itemName.toLowerCase();
@@ -209,6 +240,9 @@ class _ShoppinglistState extends State<Shoppinglist> {
                   note: item.suggestionStatus ?? 'Suggested',
                   category: item.category ?? 'Other',
                   nutrition: item.nutrition,
+                  unitPrice: item.unitPrice, // Pass unit price
+                  originalPantryItemId: item.originalPantryItemId, // Pass original pantry item ID
+                  expirationDate: item.expirationDate, // Pass expiration date
                 ))
             .toList();
       });
@@ -252,6 +286,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
         .where('householdId', isEqualTo: _householdId)
         .where('name', isEqualTo: item.name)
         .where('netWeight', isEqualTo: item.netWeight)
+        .where('category', isEqualTo: item.category) // Add category to duplicate check
         .get();
 
     final DateTime manufacturedDate = DateTime.now();
@@ -280,20 +315,38 @@ class _ShoppinglistState extends State<Shoppinglist> {
     if (existingPantryItemsSnapshot.docs.isNotEmpty) {
       final existingPantryItem = PantryItemModel.fromFirestore(existingPantryItemsSnapshot.docs.first);
 
-      // If expiration dates are different, add as a new item. Otherwise, combine quantities.
-      // For simplicity, if a duplicate is found, we combine quantities.
-      final updatedPantryItem = existingPantryItem.copyWith(
-        qty: existingPantryItem.qty + item.quantity,
-        // If the existing item doesn't have an expiration date, or if the new item has one, update it.
-        expirationDate: existingPantryItem.expirationDate ?? expirationDate,
-        manufacturedDate: existingPantryItem.manufacturedDate ?? manufacturedDate,
-      );
-      await firestoreService.db.collection('pantryItems').doc(existingPantryItem.id).update(updatedPantryItem.toFirestore());
-      // Item quantity updated in pantry!
+      // If a duplicate is found, check if it should be combined or added as a new item.
+      // Items are combined only if all relevant details (name, netWeight, category, and expiration date) are the same.
+      // If the existing item has an expiration date and it's different from the new item's,
+      // or if the existing item has a manufactured date and it's different, treat as a new item.
+      bool shouldCombine = true;
+      if (existingPantryItem.expirationDate != null && expirationDate != null &&
+          existingPantryItem.expirationDate!.difference(expirationDate).inDays != 0) {
+        shouldCombine = false;
+      }
+      if (existingPantryItem.manufacturedDate != null && manufacturedDate != null &&
+          existingPantryItem.manufacturedDate!.difference(manufacturedDate).inDays != 0) {
+        shouldCombine = false;
+      }
+
+      if (shouldCombine) {
+        final updatedPantryItem = existingPantryItem.copyWith(
+          qty: existingPantryItem.qty + item.quantity,
+          // Update expiration/manufactured dates only if the existing item doesn't have them
+          expirationDate: existingPantryItem.expirationDate ?? expirationDate,
+          manufacturedDate: existingPantryItem.manufacturedDate ?? manufacturedDate,
+        );
+        await firestoreService.db.collection('pantryItems').doc(existingPantryItem.id).update(updatedPantryItem.toFirestore());
+        debugPrint('DEBUG: _addPurchasedItemToPantry - Combined item: ${item.name}, new quantity: ${updatedPantryItem.qty}');
+      } else {
+        // Treat as a new item if not combinable (e.g., different expiration date)
+        await firestoreService.db.collection('pantryItems').doc(newPantryItem.id).set(newPantryItem.toFirestore());
+        debugPrint('DEBUG: _addPurchasedItemToPantry - Added new item (not combined): ${item.name}');
+      }
     } else {
-      // No duplicate, add new item
+      // No duplicate found, add new item
       await firestoreService.db.collection('pantryItems').doc(newPantryItem.id).set(newPantryItem.toFirestore());
-      // Item added to pantry!
+      debugPrint('DEBUG: _addPurchasedItemToPantry - Added new item: ${item.name}');
     }
 
     // Add to shopping history
@@ -352,17 +405,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
     }
 
     for (var item in purchasedItems) {
-      // Add to shopping history
-      await firestoreService.db.collection('shoppingHistory').doc().set(ShoppingHistoryItemModel(
-        householdId: _householdId!,
-        productId: item.productId,
-        productName: item.name,
-        category: item.category,
-        quantity: item.quantity,
-        purchaseDate: DateTime.now(),
-        actionType: 'Purchased',
-      ).toFirestore());
-
       // Remove from shopping list
       if (widget.isGuest) {
         List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
@@ -667,12 +709,14 @@ class _ShoppinglistState extends State<Shoppinglist> {
     }
 
     final formKey = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController();
+    final nameFocusNode = FocusNode();
+    final nameTextController = TextEditingController();
     final sizeCtrl = TextEditingController();
     final unitPriceCtrl = TextEditingController(text: '0.00');
-    final nutritionCtrl = TextEditingController();
+    final expirationDateCtrl = TextEditingController();
     String? selectedCategory;
     int itemQuantity = 1; // Initialize quantity to 1
+    DateTime? _selectedExpDate; // To store the actual expiration date
 
     InputDecoration deco() => InputDecoration(
       filled: true,
@@ -687,6 +731,23 @@ class _ShoppinglistState extends State<Shoppinglist> {
         borderSide: BorderSide(color: headerGreen, width: 1.5),
       ),
     );
+
+    // Helper to update expiration date based on category and item name
+    void _updateExpirationDateFromCategory({bool forceUpdate = false}) {
+      if ((expirationDateCtrl.text.isEmpty || forceUpdate) && selectedCategory != null) {
+        final DateTime manufacturedDate = DateTime.now(); // Assume manufactured date is now for shopping list
+        final DateTime? calculatedExpDate = _getExpirationDateForCategory(
+          selectedCategory!,
+          nameTextController.text,
+          manufacturedDate,
+        );
+
+        if (calculatedExpDate != null) {
+          _selectedExpDate = calculatedExpDate;
+          expirationDateCtrl.text = DateFormat('MMMM d, yyyy').format(_selectedExpDate!);
+        }
+      }
+    }
 
     await showDialog(
       context: context,
@@ -730,13 +791,76 @@ class _ShoppinglistState extends State<Shoppinglist> {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        TextFormField(
-                          controller: nameCtrl,
-                          decoration: deco(),
-                          validator: (v) => (v == null || v.trim().isEmpty)
-                              ? 'Please enter a product name'
-                              : null,
-                          textInputAction: TextInputAction.next,
+                        RawAutocomplete<Product>(
+                          textEditingController: nameTextController,
+                          focusNode: nameFocusNode,
+                          optionsBuilder: (TextEditingValue textEditingValue) {
+                            if (textEditingValue.text.isEmpty) {
+                              return const Iterable<Product>.empty();
+                            }
+                            return firestoreService.searchProducts(textEditingValue.text).first; // Limit 5 is in FirestoreService
+                          },
+                          onSelected: (Product selection) {
+                            setLocal(() {
+                              nameTextController.text = selection.productName;
+                              if (selection.category != null && _categories.contains(selection.category)) {
+                                selectedCategory = selection.category;
+                              } else {
+                                selectedCategory = _suggestCategoryFromName(selection.productName);
+                              }
+                              unitPriceCtrl.text = selection.price?.toStringAsFixed(2) ?? '0.00';
+                              sizeCtrl.text = selection.netWeight ?? '';
+                              _updateExpirationDateFromCategory(forceUpdate: true);
+                            });
+                          },
+                          fieldViewBuilder: (context, fieldTextEditingController, fieldFocusNode, onFieldSubmitted) {
+                            return TextFormField(
+                              controller: fieldTextEditingController,
+                              focusNode: fieldFocusNode,
+                              decoration: deco(),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Please enter a product name'
+                                  : null,
+                              textInputAction: TextInputAction.next,
+                              onChanged: (value) {
+                                setLocal(() {
+                                  // Trigger category suggestion and expiration date update on name change
+                                  selectedCategory = _suggestCategoryFromName(value);
+                                  _updateExpirationDateFromCategory();
+                                });
+                              },
+                            );
+                          },
+                          optionsViewBuilder: (context, onSelected, options) {
+                            return Align(
+                              alignment: Alignment.topLeft,
+                              child: Material(
+                                elevation: 4.0, color: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: BorderSide(color: Colors.black.withAlpha((255 * 0.15).round()))),
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(maxHeight: 250),
+                                  child: ListView.builder(
+                                    padding: const EdgeInsets.all(4.0), shrinkWrap: true,
+                                    itemCount: options.length,
+                                    itemBuilder: (BuildContext context, int index) {
+                                      final Product option = options.elementAt(index);
+                                      return InkWell(
+                                        onTap: () => onSelected(option),
+                                        child: ListTile(
+                                          title: Text(option.productName, style: const TextStyle(color: Colors.black87)),
+                                          subtitle: option.brand != null && option.brand!.isNotEmpty
+                                              ? Text(option.brand!, style: TextStyle(color: Colors.grey.shade600))
+                                              : null,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                         const SizedBox(height: 12),
                         Text(
@@ -776,21 +900,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
                             }
                             return null;
                           },
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Nutrition (optional)',
-                          style: TextStyle(
-                            color: headerGreen,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: nutritionCtrl,
-                          decoration: deco(),
                           textInputAction: TextInputAction.next,
                         ),
                         const SizedBox(height: 12),
@@ -841,7 +950,10 @@ class _ShoppinglistState extends State<Shoppinglist> {
                               )
                               .toList(),
                           onChanged: (v) =>
-                              setLocal(() => selectedCategory = v),
+                              setLocal(() {
+                                selectedCategory = v;
+                                _updateExpirationDateFromCategory(); // Update expiration date on category change
+                              }),
                           validator: (v) => (v == null || v.isEmpty)
                               ? 'Please select a category'
                               : null,
@@ -876,6 +988,50 @@ class _ShoppinglistState extends State<Shoppinglist> {
                             height: 44,
                             padding: EdgeInsets.symmetric(horizontal: 12),
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Expiration Date',
+                          style: TextStyle(
+                            color: headerGreen,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: expirationDateCtrl,
+                          decoration: deco().copyWith(
+                            suffixIcon: IconButton(
+                              icon: Icon(Icons.calendar_today, color: headerGreen),
+                              onPressed: () async {
+                                final pickedDate = await showDatePicker(
+                                  context: context,
+                                  initialDate: _selectedExpDate ?? DateTime.now(),
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime(2100),
+                                  builder: (context, child) => Theme(
+                                    data: Theme.of(context).copyWith(
+                                      colorScheme: ColorScheme.light(primary: headerGreen, onPrimary: Colors.white),
+                                      textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: headerGreen)),
+                                    ),
+                                    child: child!,
+                                  ),
+                                );
+                                if (pickedDate != null) {
+                                  setLocal(() {
+                                    _selectedExpDate = pickedDate;
+                                    expirationDateCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                          readOnly: true,
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Please enter an expiration date'
+                              : null,
+                          textInputAction: TextInputAction.next,
                         ),
                         const SizedBox(height: 12),
                         Text(
@@ -920,7 +1076,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                 // Check for duplicate item before adding
                                 final existingItemIndex = currentItems.indexWhere(
                                   (item) =>
-                                      item.name.toLowerCase() == nameCtrl.text.trim().toLowerCase() &&
+                                      item.name.toLowerCase() == nameTextController.text.trim().toLowerCase() &&
                                       (item.netWeight?.toLowerCase() ?? '') == (sizeCtrl.text.trim().toLowerCase()),
                                 );
 
@@ -945,12 +1101,12 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                   // No duplicate, add new item
                                   final newItem = ShoppingListItemModel(
                                     id: widget.isGuest ? _uuid.v4() : null, // Generate ID for guest items
-                                    name: nameCtrl.text.trim(),
+                                    name: nameTextController.text.trim(),
                                     netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
                                     category: selectedCategory!,
                                     unitPrice: double.parse(unitPriceCtrl.text.trim()),
                                     quantity: itemQuantity,
-                                    nutrition: nutritionCtrl.text.trim().isEmpty ? null : nutritionCtrl.text.trim(),
+                                    expirationDate: _selectedExpDate, // Use the selected/generated expiration date
                                   );
 
                                   if (activeList != null) {
@@ -1036,8 +1192,10 @@ class _ShoppinglistState extends State<Shoppinglist> {
     final sizeCtrl = TextEditingController(text: item.netWeight ?? '');
     final unitPriceCtrl = TextEditingController(text: item.unitPrice.toStringAsFixed(2)); // Add controller for unit price
     final nutritionCtrl = TextEditingController(text: item.nutrition ?? '');
+    final expirationDateCtrl = TextEditingController(text: item.expirationDate != null ? DateFormat('MMMM d, yyyy').format(item.expirationDate!) : '');
     String? selectedCategory = item.category;
     int itemQuantity = item.quantity; // Initialize quantity with existing item's quantity
+    DateTime? _selectedExpDate = item.expirationDate; // To store the actual expiration date
 
     InputDecoration deco() => InputDecoration(
       filled: true,
@@ -1115,7 +1273,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Price (P)',
+                          'Price (₱)',
                           style: TextStyle(
                             color: headerGreen,
                             fontWeight: FontWeight.w800,
@@ -1150,21 +1308,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
                         const SizedBox(height: 6),
                         TextFormField(
                           controller: sizeCtrl,
-                          decoration: deco(),
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Nutrition (optional)',
-                          style: TextStyle(
-                            color: headerGreen,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: nutritionCtrl,
                           decoration: deco(),
                           textInputAction: TextInputAction.next,
                         ),
@@ -1254,6 +1397,50 @@ class _ShoppinglistState extends State<Shoppinglist> {
                         ),
                         const SizedBox(height: 12),
                         Text(
+                          'Expiration Date',
+                          style: TextStyle(
+                            color: headerGreen,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: expirationDateCtrl,
+                          decoration: deco().copyWith(
+                            suffixIcon: IconButton(
+                              icon: Icon(Icons.calendar_today, color: headerGreen),
+                              onPressed: () async {
+                                final pickedDate = await showDatePicker(
+                                  context: context,
+                                  initialDate: _selectedExpDate ?? DateTime.now(),
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime(2100),
+                                  builder: (context, child) => Theme(
+                                    data: Theme.of(context).copyWith(
+                                      colorScheme: ColorScheme.light(primary: headerGreen, onPrimary: Colors.white),
+                                      textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: headerGreen)),
+                                    ),
+                                    child: child!,
+                                  ),
+                                );
+                                if (pickedDate != null) {
+                                  setLocal(() {
+                                    _selectedExpDate = pickedDate;
+                                    expirationDateCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                          readOnly: true,
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Please enter an expiration date'
+                              : null,
+                          textInputAction: TextInputAction.next,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
                           'Quantity',
                           style: TextStyle(
                             color: headerGreen,
@@ -1295,7 +1482,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                   category: selectedCategory!,
                                   unitPrice: double.parse(unitPriceCtrl.text.trim()), // Update unit price
                                   quantity: itemQuantity, // Update quantity
-                                  nutrition: nutritionCtrl.text.trim().isEmpty ? null : nutritionCtrl.text.trim(),
+                                  expirationDate: _selectedExpDate, // Update expiration date
                                   isPurchased: item.isPurchased, // Preserve existing state
                                   isBookmarked: item.isBookmarked, // Preserve existing state
                                 );
@@ -1415,13 +1602,11 @@ class _ShoppinglistState extends State<Shoppinglist> {
         name: suggestion.name.trim(),
         netWeight: suggestion.sizeText?.trim().isEmpty == true ? null : suggestion.sizeText?.trim(),
         category: suggestion.category,
-        unitPrice: 0.0, // Suggestions don't have unit price initially
+        unitPrice: suggestion.unitPrice, // Use unit price from suggestion
         quantity: 1, // Add 1 item from suggestion
         nutrition: suggestion.nutrition?.trim().isEmpty == true ? null : suggestion.nutrition?.trim(),
-        // Add other relevant fields from suggestion if available and needed
-        // For example, if suggestions had a default price or product ID:
-        // productId: suggestion.productId,
-        // unitPrice: suggestion.defaultPrice ?? 0.0,
+        originalPantryItemId: suggestion.originalPantryItemId, // Pass original pantry item ID
+        expirationDate: suggestion.expirationDate, // Pass expiration date
       );
 
       if (widget.isGuest) {
@@ -1437,14 +1622,28 @@ class _ShoppinglistState extends State<Shoppinglist> {
     }
 
     // After adding, update the suggestion status so it's removed from the list
-    if (!widget.isGuest) {
+    if (!widget.isGuest && suggestion.originalPantryItemId != null) {
+      debugPrint('DEBUG: _addItemFromSuggestion - originalPantryItemId: ${suggestion.originalPantryItemId}');
+      debugPrint('DEBUG: _addItemFromSuggestion - Current householdId: $_householdId');
+
       try {
-        await _firestoreService.db.collection('pantryItems').doc(suggestion.id).update({
+        // Fetch the pantry item to check its householdId
+        final pantryItemDoc = await _firestoreService.db.collection('pantryItems').doc(suggestion.originalPantryItemId).get();
+        if (pantryItemDoc.exists) {
+          final pantryItemData = pantryItemDoc.data();
+          final pantryItemHouseholdId = pantryItemData?['householdId'];
+          debugPrint('DEBUG: _addItemFromSuggestion - Pantry item householdId: $pantryItemHouseholdId');
+        } else {
+          debugPrint('DEBUG: _addItemFromSuggestion - Pantry item with ID ${suggestion.originalPantryItemId} does not exist.');
+        }
+
+        await _firestoreService.db.collection('pantryItems').doc(suggestion.originalPantryItemId).update({
           'suggestionStatus': 'Added to List',
         });
+        debugPrint('DEBUG: Successfully updated suggestion status for pantry item ${suggestion.originalPantryItemId}.');
       } catch (e) {
         // Handle potential errors, e.g., permission denied
-        debugPrint("Error updating suggestion status: $e");
+        debugPrint("Error updating suggestion status for pantry item ${suggestion.originalPantryItemId}: $e");
       }
     }
     // No explicit refresh needed, StreamBuilder will handle it
@@ -1846,6 +2045,8 @@ class _Suggestion {
   final String category;
   final String? nutrition;
   final double unitPrice; // Add unitPrice to _Suggestion model
+  final String? originalPantryItemId; // New: To link back to the original pantry item
+  final DateTime? expirationDate; // New: Expiration date for the item
 
   _Suggestion({
     required this.id,
@@ -1855,6 +2056,8 @@ class _Suggestion {
     this.sizeText,
     this.nutrition,
     this.unitPrice = 0.0, // Default to 0.0 if not provided
+    this.originalPantryItemId,
+    this.expirationDate,
   });
 }
 
@@ -1934,7 +2137,18 @@ class _SuggestionCard extends StatelessWidget {
                         height: 1.1,
                       ),
                     ),
-                    // Removed Nutri-score display as per user request
+                    if (suggestion.nutrition != null && suggestion.nutrition!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Nutrition Score: ${suggestion.nutrition!}',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.grey.shade600,
+                          fontStyle: FontStyle.italic,
+                          height: 1.1,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -2063,7 +2277,7 @@ class _ShoppingRow extends StatelessWidget {
               if (item.nutrition != null && item.nutrition!.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(
-                  'Nutrition: ${item.nutrition!}',
+                  'Nutrition Score: ${item.nutrition!}',
                   style: TextStyle(
                     fontSize: 12.5,
                     color: selected ? Colors.black45 : Colors.black54,

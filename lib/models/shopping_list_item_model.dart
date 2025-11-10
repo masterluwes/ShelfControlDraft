@@ -14,6 +14,8 @@ class ShoppingListItemModel {
   String? nutrition; // New: Optional nutrition information
   String? ecoscore; // New: Optional ecoscore information
   String? suggestionStatus; // New: To indicate suggestion source ('Low on stock', 'Out of stock')
+  String? originalPantryItemId; // New: To link back to the original pantry item for suggestions
+  DateTime? expirationDate; // New: Expiration date for the item
 
   ShoppingListItemModel({
     this.id,
@@ -29,6 +31,8 @@ class ShoppingListItemModel {
     this.nutrition,
     this.ecoscore,
     this.suggestionStatus,
+    this.originalPantryItemId,
+    this.expirationDate,
   });
 
   factory ShoppingListItemModel.fromFirestore(DocumentSnapshot doc) {
@@ -47,6 +51,8 @@ class ShoppingListItemModel {
       nutrition: data['nutrition'],
       ecoscore: data['ecoscore'],
       suggestionStatus: data['suggestionStatus'],
+      originalPantryItemId: data['originalPantryItemId'],
+      expirationDate: (data['expirationDate'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -65,6 +71,12 @@ class ShoppingListItemModel {
       nutrition: data['nutrition'],
       ecoscore: data['ecoscore'],
       suggestionStatus: data['suggestionStatus'],
+      originalPantryItemId: data['originalPantryItemId'],
+      expirationDate: (data['expirationDate'] is Timestamp)
+          ? (data['expirationDate'] as Timestamp).toDate()
+          : (data['expirationDate'] is String)
+              ? DateTime.tryParse(data['expirationDate'])
+              : null,
     );
   }
 
@@ -83,6 +95,8 @@ class ShoppingListItemModel {
       'nutrition': nutrition,
       'ecoscore': ecoscore,
       'suggestionStatus': suggestionStatus,
+      'originalPantryItemId': originalPantryItemId,
+      'expirationDate': expirationDate != null ? Timestamp.fromDate(expirationDate!) : null,
     };
   }
 
@@ -100,6 +114,8 @@ class ShoppingListItemModel {
     String? nutrition,
     String? ecoscore,
     String? suggestionStatus,
+    String? originalPantryItemId,
+    DateTime? expirationDate,
   }) {
     return ShoppingListItemModel(
       id: id ?? this.id,
@@ -115,6 +131,8 @@ class ShoppingListItemModel {
       nutrition: nutrition ?? this.nutrition,
       ecoscore: ecoscore ?? this.ecoscore,
       suggestionStatus: suggestionStatus ?? this.suggestionStatus,
+      originalPantryItemId: originalPantryItemId ?? this.originalPantryItemId,
+      expirationDate: expirationDate ?? this.expirationDate,
     );
   }
 }

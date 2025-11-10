@@ -762,21 +762,26 @@ class FirestoreService extends ChangeNotifier {
 
         if (status != null && !activeListItemNames.contains(item.name.toLowerCase())) {
           final scores = allScores[item.name];
-          double productPrice = 0.0;
-          if (item.barcode != null && item.barcode!.isNotEmpty) {
+          double productPrice = item.price ?? 0.0; // Prioritize price from pantry item
+          if (productPrice == 0.0 && item.barcode != null && item.barcode!.isNotEmpty) {
             productPrice = productPrices[item.barcode!] ?? 0.0;
+          }
+          if (productPrice == 0.0) { // If still no price, try by name
+            productPrice = productPrices[item.name] ?? 0.0;
           }
 
           suggestions.add(ShoppingListItemModel(
-            id: _uuid.v4(), // Assign unique ID
+            id: _uuid.v4(), // Assign unique ID for the shopping list item
+            originalPantryItemId: item.id, // Link to the original pantry item
             name: item.name,
             netWeight: item.netWeight,
             category: item.category,
-            unitPrice: productPrice, // Use fetched price
+            unitPrice: productPrice, // Use fetched or existing price
             quantity: 1,
             nutrition: scores?['nutriScore'],
             ecoscore: scores?['ecoscore'],
             suggestionStatus: status, // Set the status here
+            expirationDate: item.expirationDate, // Include expiration date
           ));
         }
       }
@@ -786,17 +791,21 @@ class FirestoreService extends ChangeNotifier {
         bool inPantry = pantryItems.any((pantryItem) => pantryItem.name == item.productName);
         if (!inPantry && !activeListItemNames.contains(item.productName.toLowerCase())) {
           final scores = allScores[item.productName];
-          double productPrice = productPrices[item.productName] ?? 0.0; // Try to get price by name
+          double productPrice = item.priceAtAction ?? 0.0; // Prioritize price from history item
+          if (productPrice == 0.0) { // If no price in history, try to get price by name
+            productPrice = productPrices[item.productName] ?? 0.0;
+          }
 
           suggestions.add(ShoppingListItemModel(
-            id: _uuid.v4(), // Assign unique ID
+            id: _uuid.v4(), // Assign unique ID for the shopping list item
             name: item.productName,
             category: item.category,
-            unitPrice: productPrice, // Use fetched price
+            unitPrice: productPrice, // Use fetched or existing price
             quantity: 1,
             nutrition: scores?['nutriScore'],
             ecoscore: scores?['ecoscore'],
             suggestionStatus: 'Out of stock', // History items are considered out of stock
+            // Expiration date is not available for history items unless explicitly stored
           ));
         }
       }

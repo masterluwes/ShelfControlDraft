@@ -36,8 +36,20 @@ interface Household {
     name: string;
 }
 
-// Helper function to add or update an in-app notification (temporarily commented out for push notification testing)
-/*
+interface NotificationSummary {
+    userId: string;
+    householdId: string;
+    items: {
+        itemId: string;
+        productName: string;
+        daysUntilExpiry: number;
+        type: "expired" | "at_risk";
+        status: "pending_action" | "sent";
+        createdAt: admin.firestore.Timestamp;
+    }[];
+}
+
+// Helper function to add or update an in-app notification
 async function addAppNotificationToFirestore(
     userId: string,
     householdId: string,
@@ -87,7 +99,6 @@ async function addAppNotificationToFirestore(
         console.error(`Failed to add/update in-app notification for user ${userId}:`, error);
     }
 }
-*/
 
 // Extracted logic for the daily pantry check
 async function runPantryCheckLogic(targetUserId?: string) {
@@ -151,20 +162,42 @@ async function runPantryCheckLogic(targetUserId?: string) {
                 }
 
                 if (shouldCreatePrompt) {
-                    const promptId = `${userId}_${item.id}`;
-                    const promptRef = db.collection("notificationPrompts").doc(promptId);
+                    const summaryDocId = `${userId}_${householdId}`;
+                    const summaryRef = db.collection("notificationSummaries").doc(summaryDocId);
 
-                    await promptRef.set({
-                        userId: userId,
-                        householdId: householdId,
+                    const existingSummary = (await summaryRef.get()).data() as NotificationSummary | undefined;
+
+                    const newItem = {
                         itemId: item.id,
                         productName: item.name,
                         daysUntilExpiry: daysUntilExpiry,
-                        type: promptType,
-                        status: "pending_action",
+                        type: promptType as "expired" | "at_risk",
+                        status: "pending_action" as "pending_action" | "sent",
                         createdAt: now,
+                    };
+
+                    const updatedItems = existingSummary?.items ? [...existingSummary.items] : [];
+
+                    // Check if an item with the same itemId already exists in the summary
+                    const existingItemIndex = updatedItems.findIndex(
+                        (summaryItem) => summaryItem.itemId === newItem.itemId,
+                    );
+
+                    if (existingItemIndex > -1) {
+                        // Update existing item, ensuring status is pending_action if it's still relevant
+                        updatedItems[existingItemIndex] = { ...newItem, status: "pending_action" }; // Explicitly set to pending_action
+                        console.log(`Updated item ${item.name} in notification summary for user ${userId}, household ${householdId}`);
+                    } else {
+                        // Add new item
+                        updatedItems.push(newItem);
+                        console.log(`Added item ${item.name} to notification summary for user ${userId}, household ${householdId}`);
+                    }
+
+                    await summaryRef.set({
+                        userId: userId,
+                        householdId: householdId,
+                        items: updatedItems,
                     });
-                    console.log(`Created prompt for user ${userId}, item ${item.name} in household ${householdId}`);
                 }
             }
         }
@@ -175,136 +208,119 @@ async function runPantryCheckLogic(targetUserId?: string) {
 // Extracted logic for processing and sending notifications
 async function processAndSendNotifications(targetUserId?: string) {
     console.log(`Executing notification sending logic for user: ${targetUserId || "all users"}`);
-    let promptsQuery = db.collection("notificationPrompts").where("status", "==", "pending_action");
+    let summariesQuery: admin.firestore.Query<NotificationSummary> = db.collection("notificationSummaries") as admin.firestore.CollectionReference<NotificationSummary>;
 
     if (targetUserId) {
-        promptsQuery = promptsQuery.where("userId", "==", targetUserId);
+        summariesQuery = summariesQuery.where("userId", "==", targetUserId) as admin.firestore.Query<NotificationSummary>;
     }
 
-    const promptsSnapshot = await promptsQuery.get();
+    const summariesSnapshot = await summariesQuery.get();
 
-    if (promptsSnapshot.empty) {
-        console.log("No pending prompts to send.");
+    if (summariesSnapshot.empty) {
+        console.log("No pending notification summaries to send.");
         return;
     }
 
-    // Group prompts by userId and householdId
-    const userHouseholdPrompts: { [userId: string]: { [householdId: string]: PantryItem[] } } = {};
+    for (const summaryDoc of summariesSnapshot.docs) {
+        const summary = summaryDoc.data();
+        const userId = summary.userId;
+        const householdId = summary.householdId;
 
-    for (const promptDoc of promptsSnapshot.docs) {
-        const prompt = promptDoc.data();
-        const userId = prompt.userId;
-        const householdId = prompt.householdId;
-        const productName = prompt.productName;
-        const daysUntilExpiry = prompt.daysUntilExpiry;
-        const type = prompt.type;
+        const pendingItems = summary.items.filter(item => item.status === "pending_action");
 
-        if (!userHouseholdPrompts[userId]) {
-            userHouseholdPrompts[userId] = {};
+        if (pendingItems.length === 0) {
+            console.log(`No pending items in summary for user ${userId} in household ${householdId}. Skipping.`);
+            continue;
         }
-        if (!userHouseholdPrompts[userId][householdId]) {
-            userHouseholdPrompts[userId][householdId] = [];
-        }
-        userHouseholdPrompts[userId][householdId].push({
-            id: prompt.itemId,
-            name: productName,
-            expirationDate: prompt.expirationDate,
-            householdId: householdId,
-            type: type,
-            daysUntilExpiry: daysUntilExpiry,
-        } as PantryItem);
-    }
 
-    for (const userId in userHouseholdPrompts) {
         const userProfileDoc = await db.collection("users").doc(userId).get();
         const userProfile = userProfileDoc.data() as UserProfile | undefined;
 
         if (!userProfile?.fcmToken) {
-            console.log(`User ${userId} has no FCM token. Skipping.`);
+            console.log(`User ${userId} has no FCM token. Skipping notification for household ${householdId}.`);
             continue;
         }
 
-        for (const householdId in userHouseholdPrompts[userId]) {
-            const householdPrompts = userHouseholdPrompts[userId][householdId];
-            const householdDoc = await db.collection("households").doc(householdId).get();
-            const household = householdDoc.data() as Household | undefined;
-            const householdName = household?.name || "Your Pantry";
+        const householdDoc = await db.collection("households").doc(householdId).get();
+        const household = householdDoc.data() as Household | undefined;
+        const householdName = household?.name || "Your Pantry";
 
-            const expiredItems: string[] = [];
-            const atRiskItems: string[] = [];
+        const expiredItems: string[] = [];
+        const atRiskItems: string[] = [];
 
-            for (const item of householdPrompts) {
-                if (item.type === "expired") {
-                    expiredItems.push(item.name);
-                } else if (item.type === "at_risk") {
-                    const daysText = item.daysUntilExpiry === 1 ? "1 day" : `${item.daysUntilExpiry} days`;
-                    atRiskItems.push(`${item.name} (${daysText} left)`);
-                }
+        for (const item of pendingItems) {
+            if (item.type === "expired") {
+                expiredItems.push(item.productName);
+            } else if (item.type === "at_risk") {
+                const daysText = item.daysUntilExpiry === 1 ? "1 day" : `${item.daysUntilExpiry} days`;
+                atRiskItems.push(`${item.productName} (${daysText} left)`);
             }
+        }
 
-            let notificationBody = "";
-            if (expiredItems.length > 0) {
-                notificationBody += `${expiredItems.length} item(s) expired: ${expiredItems.join(", ")}. `;
-            }
-            if (atRiskItems.length > 0) {
-                notificationBody += `${atRiskItems.length} item(s) at risk: ${atRiskItems.join(", ")}.`;
-            }
+        let notificationBody = "";
+        if (expiredItems.length > 0) {
+            notificationBody += `Expired ${expiredItems.length} items: ${expiredItems.join(", ")}. `;
+        }
+        if (atRiskItems.length > 0) {
+            notificationBody += `At risk ${atRiskItems.length} items: ${atRiskItems.join(", ")}.`;
+        }
 
-            if (notificationBody === "") {
-                console.log(`No relevant items for notification for user ${userId} in household ${householdId}. Skipping.`);
-                continue;
-            }
+        if (notificationBody === "") {
+            console.log(`No relevant items for notification for user ${userId} in household ${householdId}. Skipping.`);
+            continue;
+        }
 
-            const message: admin.messaging.Message = {
-                token: userProfile.fcmToken,
+        const message: admin.messaging.Message = {
+            token: userProfile.fcmToken,
+            notification: {
+                title: `[${householdName}] Pantry Alert!`,
+                body: notificationBody.trim(),
+            },
+            data: {
+                householdId: householdId,
+                action: "view_pantry_alerts",
+            },
+            android: {
                 notification: {
-                    title: `[${householdName}] Pantry Alert!`,
-                    body: notificationBody.trim(),
+                    clickAction: "FLUTTER_NOTIFICATION_CLICK",
                 },
-                data: {
-                    householdId: householdId,
-                    action: "view_pantry_alerts",
-                },
-                android: {
-                    notification: {
-                        clickAction: "FLUTTER_NOTIFICATION_CLICK",
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        category: "PANTRY_ALERT_CATEGORY",
                     },
                 },
-                apns: {
-                    payload: {
-                        aps: {
-                            category: "PANTRY_ALERT_CATEGORY",
-                        },
-                    },
-                },
-            };
+            },
+        };
 
-            try {
-                await messaging.send(message);
-                console.log(`Sent summary notification to user ${userId} for household ${householdId}`);
-                // In-app notification creation is temporarily disabled for testing push notifications only
-                // await addAppNotificationToFirestore(
-                //     userId,
-                //     householdId,
-                //     `[${householdName}] Pantry Alert!`, // Use a concise, consistent title
-                //     notificationBody.trim(), // The body contains the full details
-                //     "pantry_summary",
-                //     message.data,
-                // );
+        try {
+            await messaging.send(message);
+            console.log(`Sent summary notification to user ${userId} for household ${householdId}`);
 
-                // Mark all prompts for this user and household as sent
-                const batch = db.batch();
-                for (const promptDoc of promptsSnapshot.docs) {
-                    const prompt = promptDoc.data();
-                    if (prompt.userId === userId && prompt.householdId === householdId && prompt.status === "pending_action") {
-                        batch.update(promptDoc.ref, { status: "sent" });
-                    }
-                }
-                await batch.commit();
-            } catch (error) {
-                console.error(`Failed to send summary notification to user ${userId} for household ${householdId}:`, error);
-                // Optional: Handle token cleanup if it's invalid
-            }
+            // Re-enable in-app notification creation
+            await addAppNotificationToFirestore(
+                userId,
+                householdId,
+                `[${householdName}] Pantry Alert!`, // Use a concise, consistent title
+                notificationBody.trim(), // The body contains the full details
+                "pantry_summary",
+                message.data,
+            );
+
+            // Update the status of sent items in the summary document
+            const updatedItems = summary.items.map(item =>
+                pendingItems.some(pending => pending.itemId === item.itemId)
+                    ? { ...item, status: "sent" }
+                    : item
+            );
+
+            await summaryDoc.ref.update({ items: updatedItems });
+            console.log(`Updated notification summary for user ${userId}, household ${householdId}`);
+
+        } catch (error) {
+            console.error(`Failed to send summary notification to user ${userId} for household ${householdId}:`, error);
+            // Optional: Handle token cleanup if it's invalid
         }
     }
 }
@@ -321,26 +337,46 @@ export const onPantryItemDelete = onDocumentDeleted("pantryItems/{itemId}", asyn
     const deletedItem = { id: deletedSnapshot.id, ...deletedSnapshot.data() } as PantryItem;
     console.log(`Pantry item deleted: ${deletedItem.name} (${deletedItem.id})`);
 
-    // Find and delete all prompts associated with this item across all users
-    const promptsToDeleteSnapshot = await db.collection("notificationPrompts")
-        .where("itemId", "==", deletedItem.id)
-        .get();
+    // Find all notification summaries and iterate to find the item
+    const allSummariesSnapshot = await db.collection("notificationSummaries").get();
 
-    if (promptsToDeleteSnapshot.empty) {
-        console.log(`No notification prompts found for deleted item ${deletedItem.name}.`);
+    if (allSummariesSnapshot.empty) {
+        console.log(`No notification summaries found. Skipping cleanup for deleted item ${deletedItem.name}.`);
         return;
     }
 
     const batch = db.batch();
-    promptsToDeleteSnapshot.docs.forEach(doc => {
-        batch.delete(doc.ref);
-    });
+    let updatesCount = 0;
 
-    try {
-        await batch.commit();
-        console.log(`Deleted ${promptsToDeleteSnapshot.docs.length} notification prompts for item ${deletedItem.name}.`);
-    } catch (error) {
-        console.error(`Failed to delete prompts for item ${deletedItem.name}:`, error);
+    for (const doc of allSummariesSnapshot.docs) {
+        const summary = doc.data() as NotificationSummary;
+        const initialItemCount = summary.items.length;
+        const updatedItems = summary.items.filter(item => item.itemId !== deletedItem.id);
+
+        if (updatedItems.length < initialItemCount) {
+            // Only update if the item was actually removed
+            if (updatedItems.length === 0) {
+                // If no items left, delete the summary document
+                batch.delete(doc.ref);
+                console.log(`Deleted empty notification summary for user ${summary.userId}, household ${summary.householdId}`);
+            } else {
+                // Otherwise, update the items array
+                batch.update(doc.ref, { items: updatedItems });
+                console.log(`Removed item ${deletedItem.name} from notification summary for user ${summary.userId}, household ${summary.householdId}`);
+            }
+            updatesCount++;
+        }
+    }
+
+    if (updatesCount > 0) {
+        try {
+            await batch.commit();
+            console.log(`Cleaned up notification summaries for deleted item ${deletedItem.name}. Total summaries updated/deleted: ${updatesCount}.`);
+        } catch (error) {
+            console.error(`Failed to clean up summaries for item ${deletedItem.name}:`, error);
+        }
+    } else {
+        console.log(`No notification summaries needed cleanup for deleted item ${deletedItem.name}.`);
     }
 });
 
@@ -392,19 +428,25 @@ export const testDailyPantryCheck = onRequest(async (req, res) => {
     }
 });
 
-// 3. sendInactivityReminder Cloud Function
-// Runs weekly (e.g., every Sunday at 10:00 AM) to remind inactive users.
-export const sendInactivityReminder = onSchedule({
-    schedule: "every sunday 10:00",
-    timeZone: "Asia/Manila",
-}, async () => { // Removed unused context parameter
-    console.log("Executing sendInactivityReminder trigger");
+// Extracted logic for sending inactivity reminders
+async function runInactivityReminderLogic(targetUserId?: string) {
+    console.log(`Executing inactivity reminder logic for user: ${targetUserId || "all users"}`);
     const now = admin.firestore.Timestamp.now();
     const sevenDaysAgo = new admin.firestore.Timestamp(now.seconds - (7 * 24 * 60 * 60), now.nanoseconds);
 
-    const usersSnapshot = await db.collection("users")
-        .where("lastActivity", "<", sevenDaysAgo)
-        .get();
+    let usersQuery: admin.firestore.Query = db.collection("users");
+    if (targetUserId) {
+        usersQuery = usersQuery.where(admin.firestore.FieldPath.documentId(), "==", targetUserId);
+    } else {
+        usersQuery = usersQuery.where("lastActivity", "<", sevenDaysAgo);
+    }
+
+    const usersSnapshot = await usersQuery.get();
+
+    if (usersSnapshot.empty) {
+        console.log("No users found for inactivity reminder.");
+        return;
+    }
 
     for (const userDoc of usersSnapshot.docs) {
         const userId = userDoc.id;
@@ -458,6 +500,29 @@ export const sendInactivityReminder = onSchedule({
         }
     }
     console.log("Inactivity reminder check finished.");
+}
+
+// 3. sendInactivityReminder Cloud Function
+// Runs weekly (e.g., every Sunday at 10:00 AM) to remind inactive users.
+export const sendInactivityReminder = onSchedule({
+    schedule: "every sunday 10:00",
+    timeZone: "Asia/Manila",
+}, async () => {
+    console.log("Executing sendInactivityReminder trigger");
+    await runInactivityReminderLogic();
+});
+
+// Temporary HTTP-triggered function for testing inactivity reminders
+export const testSendInactivityReminder = onRequest(async (req, res) => {
+    const targetUserId = req.query.userId as string | undefined;
+    console.log(`Executing testSendInactivityReminder via HTTP request for user: ${targetUserId || "all users"}`);
+    try {
+        await runInactivityReminderLogic(targetUserId);
+        res.status(200).send(`Test inactivity reminders sent successfully for user: ${targetUserId || "all users"}!`);
+    } catch (error) {
+        console.error("Error in testSendInactivityReminder:", error);
+        res.status(500).send(`Error sending test inactivity reminders: ${error}`);
+    }
 });
 
 // Find recipes by ingredients (pantry → candidates)
