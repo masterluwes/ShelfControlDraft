@@ -7,6 +7,29 @@ import 'package:shelf_control/services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 
+// --- Category normalization helpers ---
+String _norm(String? s) => (s ?? '').trim().toLowerCase();
+
+String _alias(String? s) {
+  final x = _norm(s);
+  if (x.isEmpty) return 'uncategorized';
+
+  // unify your common variants here
+  if (x == 'beverage' || x == 'beverages' || x == 'drinks') return 'beverages';
+  if (x == 'canned' || x == 'canned goods' || x == 'canned-goods')
+    return 'canned goods';
+  if (x == 'dairy' || x == 'milk' || x == 'milk/dairy') return 'dairy';
+  if (x == 'dry' || x == 'dry goods') return 'dry goods';
+  if (x == 'snack' || x == 'snacks') return 'snacks';
+  if (x == 'condiment' || x == 'condiments') return 'condiments';
+  if (x == 'produce' || x == 'fruits' || x == 'vegetables') return 'produce';
+  if (x == 'others' || x == 'other') return 'others';
+  if (x == 'uncategorized' || x == 'unclassified') return 'uncategorized';
+
+  // default: return normalized string
+  return x;
+}
+
 // --- NEW DATA MODEL ---
 // A placeholder class to represent a full pantry item's data.
 class PantryItem {
@@ -948,7 +971,6 @@ class _TipsPageState extends State<TipsPage> {
     }
   }
 
-
   final List<Map<String, dynamic>> categories = [
     {'name': 'General', 'icon': Icons.lightbulb},
     {'name': 'Beverages', 'icon': Icons.local_cafe},
@@ -1116,7 +1138,8 @@ class _TipsPageState extends State<TipsPage> {
                 style: const TextStyle(color: Colors.red)),
           );
         }
-        if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting ||
+            !snapshot.hasData) {
           return const SizedBox(
             height: 80,
             child: Center(child: CircularProgressIndicator()),
@@ -1129,25 +1152,29 @@ class _TipsPageState extends State<TipsPage> {
         final parsedPantryItems = pantryItemModels.map((pantryItemModel) {
           final daysUntil = pantryItemModel.expirationDate == null
               ? 0
-              : pantryItemModel.expirationDate!.difference(DateTime.now()).inDays;
+              : pantryItemModel.expirationDate!
+                  .difference(DateTime.now())
+                  .inDays;
 
           return PantryItem(
             name: pantryItemModel.name,
             category: pantryItemModel.category ?? 'Uncategorized',
             quantity: pantryItemModel.qty.toDouble(),
             price: pantryItemModel.price?.toDouble() ?? 0.0,
-            netWeight: double.tryParse(pantryItemModel.netWeight ?? '0.0') ?? 0.0,
+            netWeight:
+                double.tryParse(pantryItemModel.netWeight ?? '0.0') ?? 0.0,
             weightUnit: pantryItemModel.quantityUnit ?? 'pcs',
             daysUntilExpiration: daysUntil,
           );
         }).toList();
 
-        // Filter by the selected chip using the normalized category
+        // Filter by the selected chip using normalized/aliased category names
         final byChip = parsedPantryItems
-            .where((p) => p.category == selectedCategory)
+            .where((p) => _alias(p.category) == _alias(selectedCategory))
             .toList();
-        final listToShow =
-            byChip.isEmpty && parsedPantryItems.isNotEmpty ? parsedPantryItems : byChip;
+
+// IMPORTANT: no fallback to "all items" here
+        final listToShow = byChip;
 
         if (listToShow.isEmpty) return _buildEmptyState();
 
