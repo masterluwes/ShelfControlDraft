@@ -24,6 +24,9 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
 
+  bool _isMultiSelecting = false;
+  final Set<String> _selectedListIds = {};
+
   static const List<IconData> _iconChoices = <IconData>[
     Icons.list_alt_outlined,
     Icons.shopping_cart_outlined,
@@ -111,6 +114,54 @@ class _ViewAllListsPageState extends State<Viewalllist> {
   void _handleListPageResult(dynamic result) {
     // No longer needed with StreamBuilder, but kept for compatibility
     // if other pages rely on it.
+  }
+
+  void _toggleMultiSelecting() {
+    setState(() {
+      _isMultiSelecting = !_isMultiSelecting;
+      if (!_isMultiSelecting) {
+        _selectedListIds.clear();
+      }
+    });
+  }
+
+  Future<void> _confirmDeleteSelectedLists() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _DeleteConfirmDialog(
+        headerGreen: headerGreen,
+        title: 'Delete selected lists',
+        message: 'Are you sure you want to delete ${_selectedListIds.length} selected shopping list(s)?',
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      if (_householdId != null) {
+        for (final listId in _selectedListIds) {
+          await _shoppingListService.deleteShoppingList(listId);
+          // If this was the active list, clear shared store safely
+          final store = MainShoppingListStore.instance;
+          if (store.currentListTitle == listId) { // Assuming currentListTitle stores the ID
+            store.clearMain();
+          }
+        }
+        setState(() {
+          _selectedListIds.clear();
+          _isMultiSelecting = false;
+        });
+      }
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _SuccessDialog(
+          headerGreen: headerGreen,
+          title: 'Success!',
+          message: '${_selectedListIds.length} shopping list(s) deleted.',
+        ),
+      );
+    }
   }
 
   // ===== Icon picker =====
@@ -626,7 +677,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                                 generatedItems = await _shoppingListService.generateHealthyOptionList(
                                   _householdId!,
                                   numberOfItems: numberOfItems,
-                                  categories: ['Bakery', 'Dairy'],
+                                  categories: ['Dairy', 'Bakery'], // Reverted to specific healthy categories
                                   useHistory: hasHistory,
                                   userPrefs: userPrefs,
                                 );
@@ -635,9 +686,9 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                           }
 
                           if (!mounted) {
-                            if (mounted) setLocal(() => _isLoading = false); // Stop loading if widget is unmounted
                             return;
                           }
+                          setLocal(() => _isLoading = false); // Stop loading if
 
                           ShoppingListModel? newList;
                           if (_householdId != null) {
@@ -747,6 +798,12 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
+                if (_isMultiSelecting)
+                  IconButton(
+                    tooltip: 'Delete selected lists',
+                    icon: const Icon(Icons.delete_outline, color: Colors.white),
+                    onPressed: _selectedListIds.isEmpty ? null : _confirmDeleteSelectedLists,
+                  ),
               ],
             ),
           ),
@@ -791,6 +848,37 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                         createdText: 'Created ${_formatCreated(list.createdAt)}',
                         sep: sep,
                         headerGreen: headerGreen, // Pass headerGreen
+                        isMultiSelecting: _isMultiSelecting,
+                        isSelected: _selectedListIds.contains(list.id),
+                        onToggleMultiSelect: () {
+                          setState(() {
+                            _isMultiSelecting = true;
+                            if (list.id != null) {
+                              if (_selectedListIds.contains(list.id)) {
+                                _selectedListIds.remove(list.id);
+                              } else {
+                                _selectedListIds.add(list.id!);
+                              }
+                            }
+                            if (_selectedListIds.isEmpty) {
+                              _isMultiSelecting = false;
+                            }
+                          });
+                        },
+                        onToggleSelect: () {
+                          setState(() {
+                            if (list.id != null) {
+                              if (_selectedListIds.contains(list.id)) {
+                                _selectedListIds.remove(list.id);
+                              } else {
+                                _selectedListIds.add(list.id!);
+                              }
+                            }
+                            if (_selectedListIds.isEmpty) {
+                              _isMultiSelecting = false;
+                            }
+                          });
+                        },
                         onTap: () {
                           _openEditListDialog(list);
                         },
@@ -1009,6 +1097,10 @@ class _ListCard extends StatelessWidget {
     required this.onChevronTap,
     required this.onActivate,
     required this.headerGreen,
+    required this.isMultiSelecting,
+    required this.isSelected,
+    required this.onToggleMultiSelect,
+    required this.onToggleSelect,
   });
 
   final ShoppingListModel list;
@@ -1018,90 +1110,106 @@ class _ListCard extends StatelessWidget {
   final VoidCallback onChevronTap;
   final VoidCallback onActivate;
   final Color headerGreen;
+  final bool isMultiSelecting;
+  final bool isSelected;
+  final VoidCallback onToggleMultiSelect;
+  final VoidCallback onToggleSelect;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: sep),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
-          BoxShadow(
-            color: Color.fromARGB(10, 0, 0, 0),
-            blurRadius: 4,
-            offset: Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
+    return GestureDetector(
+      onLongPress: onToggleMultiSelect,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: sep),
           borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEEEEEE),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    _ViewAllListsPageState._getIconFromCodePoint(list.iconCodePoint),
-                    size: 26,
-                    color: Colors.grey.shade800,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        list.name,
-                        style: const TextStyle(
-                          fontSize: 16.5,
-                          fontWeight: FontWeight.w800,
-                        ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromARGB(10, 0, 0, 0),
+              blurRadius: 4,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: isMultiSelecting ? onToggleSelect : onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+              child: Row(
+                children: [
+                  if (isMultiSelecting)
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: (_) => onToggleSelect(),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    )
+                  else
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEEEEEE),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        createdText,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: Colors.grey.shade700,
-                          height: 1.1,
-                        ),
+                      child: Icon(
+                        _ViewAllListsPageState._getIconFromCodePoint(list.iconCodePoint),
+                        size: 26,
+                        color: Colors.grey.shade800,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${list.items.length} Items',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: Colors.grey.shade700,
+                    ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          list.name,
+                          style: const TextStyle(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
+                        const SizedBox(height: 2),
+                        Text(
+                          createdText,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Colors.grey.shade700,
+                            height: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${list.items.length} Items',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!isMultiSelecting)
+                    IconButton(
+                      icon: Icon(
+                        list.isActive ? Icons.shopping_cart : Icons.shopping_cart_checkout,
+                        color: list.isActive ? headerGreen : Colors.grey,
                       ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(
-                    list.isActive ? Icons.shopping_cart : Icons.shopping_cart_checkout,
-                    color: list.isActive ? headerGreen : Colors.grey,
-                  ),
-                  onPressed: onActivate,
-                  tooltip: 'Set as Active List',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: onChevronTap,
-                ),
-              ],
+                      onPressed: onActivate,
+                      tooltip: 'Set as Active List',
+                    ),
+                  if (!isMultiSelecting)
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: onChevronTap,
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1226,6 +1334,161 @@ class _RadioTile<T> extends StatelessWidget {
               onChanged: onChanged,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ====== Dialogs styled like your mockups ======
+class _DeleteConfirmDialog extends StatelessWidget {
+  const _DeleteConfirmDialog({
+    required this.headerGreen,
+    required this.title,
+    required this.message,
+  });
+
+  final Color headerGreen;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFEDEDED),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: headerGreen, width: 6),
+        ),
+        padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: headerGreen,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14.5, color: Colors.black87),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _PillButton(
+                  label: 'Yes',
+                  color: headerGreen,
+                  textColor: Colors.white,
+                  onTap: () => Navigator.of(context).pop(true),
+                ),
+                const SizedBox(width: 12),
+                _PillButton(
+                  label: 'No',
+                  color: const Color(0xFF9E9E9E),
+                  textColor: Colors.white,
+                  onTap: () => Navigator.of(context).pop(false),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SuccessDialog extends StatelessWidget {
+  const _SuccessDialog({
+    required this.headerGreen,
+    required this.title,
+    required this.message,
+  });
+
+  final Color headerGreen;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    // Auto-close after a short delay
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (!context.mounted) return;
+      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+    });
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFEDEDED),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: headerGreen, width: 6),
+        ),
+        padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: headerGreen,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14.5, color: Colors.black87),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PillButton extends StatelessWidget {
+  const _PillButton({
+    required this.label,
+    required this.color,
+    required this.textColor,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final Color textColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Text(
+            label,
+            style: TextStyle(color: textColor, fontWeight: FontWeight.w700),
+          ),
         ),
       ),
     );

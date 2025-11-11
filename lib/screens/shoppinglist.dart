@@ -378,24 +378,106 @@ class _ShoppinglistState extends State<Shoppinglist> {
     // Confirm with the user before clearing
     final bool? confirmClear = await showDialog<bool>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Clear Purchased Items?'),
-          content: Text('Are you sure you want to clear ${purchasedItems.length} purchased item(s) from this list and move them to history?'),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () {
-                Navigator.of(context).pop(false);
-              },
+      barrierDismissible: false,
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Container(
+            decoration: BoxDecoration(
+              color: softCream,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: headerGreen.withAlpha((255 * 0.75).round()),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: headerGreen.withAlpha((255 * 0.30).round()),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            ElevatedButton(
-              child: const Text('Clear'),
-              onPressed: () {
-                Navigator.of(context).pop(true);
-              },
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Clear Purchased Items?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: headerGreen,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Are you sure you want to clear ${purchasedItems.length} purchased item(s) from this list?',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    InkWell(
+                      onTap: () => Navigator.of(ctx).pop(true),
+                      borderRadius: BorderRadius.circular(24),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 28,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: headerGreen,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: const Text(
+                          'Clear',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => Navigator.of(ctx).pop(false),
+                      borderRadius: BorderRadius.circular(24),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 22,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: headerGreen,
+                            width: 2,
+                          ),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: TextStyle(
+                            color: headerGreen,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -864,7 +946,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Size / Weight (e.g., 150g, 1L) – optional',
+                          'Size / Weight (e.g., 150g, 1L)',
                           style: TextStyle(
                             color: headerGreen,
                             fontWeight: FontWeight.w800,
@@ -1298,7 +1380,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Size / Weight (optional)',
+                          'Size / Weight (e.g., 150g, 1L)',
                           style: TextStyle(
                             color: headerGreen,
                             fontWeight: FontWeight.w800,
@@ -1776,7 +1858,17 @@ class _ShoppinglistState extends State<Shoppinglist> {
                   return Center(child: Text('Error: ${suggestionsSnapshot.error}'));
                 }
 
-                final List<_Suggestion> suggestions = suggestionsSnapshot.data ?? [];
+                final List<_Suggestion> suggestions = (suggestionsSnapshot.data ?? [])
+                    ..sort((a, b) {
+                      // "Out of stock" should come before "Low stock"
+                      if (a.note == 'Out of stock' && b.note != 'Out of stock') {
+                        return -1;
+                      } else if (a.note != 'Out of stock' && b.note == 'Out of stock') {
+                        return 1;
+                      }
+                      // For other cases or if both are "Out of stock" or "Low stock", maintain original order
+                      return 0;
+                    });
 
                 return Container(
                   color: Colors.white,

@@ -7,6 +7,9 @@ import 'package:shelf_control/models/shopping_list_model.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:shelf_control/services/shopping_list_service.dart';
 import 'package:shelf_control/services/open_food_facts_service.dart'; // Import OpenFoodFactsService
+import 'package:shelf_control/models/product_model.dart'; // Import Product model
+import 'package:intl/intl.dart'; // Import for DateFormat
+import 'package:uuid/uuid.dart'; // Import Uuid for generating unique IDs
 
 /// ===== Shared store to broadcast the currently selected shopping list =====
 /// (shoppinglist.dart listens to this and refreshes automatically)
@@ -48,6 +51,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFFFBE6);
   final Color sep = const Color.fromARGB(255, 230, 230, 230);
+  final Uuid _uuid = const Uuid(); // Instantiate Uuid for generating unique IDs
 
   late final ShoppingListService _shoppingListService;
   final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService(); // Initialize OpenFoodFactsService
@@ -65,6 +69,76 @@ class _ListItemsPageState extends State<ListItemsPage> {
     'Snacks',
     'Other',
   ];
+
+  // Define default shelf lives for categories in days based on research
+  final Map<String, int> _categoryShelfLives = {
+    'Bakery': 7, // 1 week
+    'Beverages': 270, // 9 months (general, UHT milk/juice longer, fresh juice shorter)
+    'Canned Goods': 730, // 2 years
+    'Condiments': 365, // 12 months (unopened)
+    'Dairy': 14, // 2 weeks (for refrigerated items like milk, yogurt)
+    'Dry Goods': 547, // 18 months (rice, pasta, flour)
+    'Snacks': 180, // 6 months
+    'Other': 180, // 6 months
+  };
+
+  // More granular shelf lives for specific subcategories/keywords
+  final Map<String, Map<String, int>> _subcategoryShelfLives = {
+    'Bakery': {
+      'bread': 7,
+      'cake': 7,
+      'pastries': 7,
+      'buns': 7,
+      'muffin': 7,
+      'donut': 3,
+      'pandesal': 7,
+      'ensaymada': 7,
+      'mamon': 7,
+    },
+    'Dairy': {
+      'fresh milk': 7,
+      'powdered milk': 270, // 9 months
+      'cheese': 60, // 2 months (hard cheese, softer cheese shorter)
+      'yogurt': 21, // 3 weeks
+      'butter': 90, // 3 months
+      'eggs': 30, // 1 month
+    },
+    'Beverages': {
+      'fresh juice': 7,
+      'uht milk': 270, // 9 months
+      'coffee': 365, // 12 months (unopened)
+      'tea': 730, // 2 years
+      'soda': 180, // 6 months
+      'water': 730, // 2 years
+    },
+    'Condiments': {
+      'vinegar': 730, // 2 years
+      'soy sauce': 365, // 1 year
+      'ketchup': 365, // 1 year
+      'mustard': 365, // 1 year
+      'dressing': 180, // 6 months
+      'spices': 730, // 2 years
+      'powder': 730, // 2 years
+      'salt': 1825, // 5 years
+    },
+    'Dry Goods': {
+      'rice': 730, // 2 years
+      'pasta': 730, // 2 years
+      'flour': 180, // 6 months
+      'cereal': 180, // 6 months
+      'oil': 365, // 1 year
+      'beans': 730, // 2 years (dried)
+      'sugar': 1825, // 5 years
+    },
+    'Snacks': {
+      'chips': 90, // 3 months
+      'crackers': 180, // 6 months
+      'cookies': 180, // 6 months
+      'chocolates': 270, // 9 months
+      'biscuits': 180, // 6 months
+      'packed fudge bars': 180, // 6 months
+    }
+  };
 
   @override
   void initState() {
@@ -88,6 +162,57 @@ class _ListItemsPageState extends State<ListItemsPage> {
         ..addAll(bookmarked)
         ..addAll(others);
     });
+  }
+
+  String? _suggestCategoryFromName(String itemName) {
+    itemName = itemName.toLowerCase();
+
+    final Map<String, List<String>> categoryKeywords = {
+      'Bakery': ['bread', 'cake', 'pastries', 'baking needs', 'buns', 'muffin', 'donut', 'pandesal', 'ensaymada', 'mamon'],
+      'Dairy': ['milk', 'yogurt', 'cheese', 'butter', 'margarine', 'spread', 'cream', 'eggs', 'evaporada', 'condensada'],
+      'Beverages': ['coffee', 'tea', 'juice', 'soda', 'water', 'chocolate drink', 'malt', 'drink', 'softdrink', 'powdered drink'],
+      'Canned Goods': ['canned', 'beans', 'soup', 'tuna', 'sardines', 'corned beef', 'meat loaf', 'luncheon meat', 'fruit cocktail'],
+      'Dry Goods': ['rice', 'pasta', 'flour', 'cereal', 'grains', 'seeds', 'oil', 'legumes', 'beans', 'soup mix', 'broth', 'noodles', 'sago', 'oats', 'oatmeal', 'sugar'],
+      'Snacks': [
+        'chips', 'crackers', 'cookies', 'nuts', 'candies', 'chocolates', 'biscuits', 'dips', 'wafer', 'bar', 'pastillas', 'polvoron',
+        'packed fudge bars'
+      ],
+      'Condiments': ['vinegar', 'soy sauce', 'ketchup', 'mustard', 'dressing', 'sauce', 'spices', 'powder', 'salt', 'bbq', 'seasoning', 'garlic bits', 'bagoong', 'chili', 'patis', 'fish sauce'],
+      'Other': [],
+    };
+
+    for (final categoryEntry in categoryKeywords.entries) {
+      final category = categoryEntry.key;
+      final keywords = categoryEntry.value;
+      for (final keyword in keywords) {
+        if (itemName.contains(keyword)) {
+          return category;
+        }
+      }
+    }
+    return 'Other';
+  }
+
+  DateTime? _getExpirationDateForCategory(String category, String itemName, DateTime manufacturedDate) {
+    int? shelfLife = _categoryShelfLives[category];
+    itemName = itemName.toLowerCase();
+
+    if (_subcategoryShelfLives.containsKey(category)) {
+      final subcategoryMap = _subcategoryShelfLives[category]!;
+      for (final subcategoryEntry in subcategoryMap.entries) {
+        final subcategoryKeyword = subcategoryEntry.key;
+        final subcategorySpecificShelfLife = subcategoryEntry.value;
+        if (itemName.contains(subcategoryKeyword)) {
+          shelfLife = subcategorySpecificShelfLife;
+          break;
+        }
+      }
+    }
+
+    if (shelfLife != null) {
+      return manufacturedDate.add(Duration(days: shelfLife));
+    }
+    return null;
   }
 
   Future<void> _pulseButton(ShoppingListItemModel item, {required bool isInc}) async {
@@ -142,14 +267,18 @@ class _ListItemsPageState extends State<ListItemsPage> {
 
   // ---------- Add Item Dialog (same form/feel as Shoppinglist) ----------
   Future<void> _showAddItemDialog() async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+
     final formKey = GlobalKey<FormState>();
+    final nameFocusNode = FocusNode();
     final nameCtrl = TextEditingController();
     final brandCtrl = TextEditingController();
     final sizeCtrl = TextEditingController();
-    final unitPriceCtrl = TextEditingController(text: '0.00'); // Controller for unit price
-    final nutritionCtrl = TextEditingController(); // New controller for nutrition
+    final unitPriceCtrl = TextEditingController(text: '0.00');
+    final expirationDateCtrl = TextEditingController();
     String? selectedCategory;
-    double unitPrice = 0.0; // New field for unit price
+    int itemQuantity = 1; // Initialize quantity to 1
+    DateTime? _selectedExpDate; // To store the actual expiration date
 
     InputDecoration deco() => InputDecoration(
       filled: true,
@@ -165,6 +294,23 @@ class _ListItemsPageState extends State<ListItemsPage> {
       ),
     );
 
+    // Helper to update expiration date based on category and item name
+    void _updateExpirationDateFromCategory({bool forceUpdate = false}) {
+      if ((expirationDateCtrl.text.isEmpty || forceUpdate) && selectedCategory != null) {
+        final DateTime manufacturedDate = DateTime.now(); // Assume manufactured date is now for shopping list
+        final DateTime? calculatedExpDate = _getExpirationDateForCategory(
+          selectedCategory!,
+          nameCtrl.text,
+          manufacturedDate,
+        );
+
+        if (calculatedExpDate != null) {
+          _selectedExpDate = calculatedExpDate;
+          expirationDateCtrl.text = DateFormat('MMMM d, yyyy').format(_selectedExpDate!);
+        }
+      }
+    }
+
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -172,8 +318,8 @@ class _ListItemsPageState extends State<ListItemsPage> {
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.symmetric(horizontal: 40),
-          child: ConstrainedBox( // Wrap with ConstrainedBox to limit dialog size
-            constraints: const BoxConstraints(maxWidth: 400), // Set a max width
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
             child: Container(
               decoration: BoxDecoration(
                 color: softCream,
@@ -209,32 +355,80 @@ class _ListItemsPageState extends State<ListItemsPage> {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          TextFormField(
-                            controller: nameCtrl,
-                            decoration: deco(),
-                            validator: (v) => (v == null || v.trim().isEmpty)
-                                ? 'Please enter a product name'
-                                : null,
-                            textInputAction: TextInputAction.next,
+                          RawAutocomplete<Product>(
+                            textEditingController: nameCtrl,
+                            focusNode: nameFocusNode,
+                            optionsBuilder: (TextEditingValue textEditingValue) {
+                              if (textEditingValue.text.isEmpty) {
+                                return const Iterable<Product>.empty();
+                              }
+                              return firestoreService.searchProducts(textEditingValue.text).first; // Limit 5 is in FirestoreService
+                            },
+                            onSelected: (Product selection) {
+                              setLocal(() {
+                                nameCtrl.text = selection.productName;
+                                if (selection.category != null && _categories.contains(selection.category)) {
+                                  selectedCategory = selection.category;
+                                } else {
+                                  selectedCategory = _suggestCategoryFromName(selection.productName);
+                                }
+                                unitPriceCtrl.text = selection.price?.toStringAsFixed(2) ?? '0.00';
+                                sizeCtrl.text = selection.netWeight ?? '';
+                                _updateExpirationDateFromCategory(forceUpdate: true);
+                              });
+                            },
+                            fieldViewBuilder: (context, fieldTextEditingController, fieldFocusNode, onFieldSubmitted) {
+                              return TextFormField(
+                                controller: fieldTextEditingController,
+                                focusNode: fieldFocusNode,
+                                decoration: deco(),
+                                validator: (v) => (v == null || v.trim().isEmpty)
+                                    ? 'Please enter a product name'
+                                    : null,
+                                textInputAction: TextInputAction.next,
+                                onChanged: (value) {
+                                  setLocal(() {
+                                    // Trigger category suggestion and expiration date update on name change
+                                    selectedCategory = _suggestCategoryFromName(value);
+                                    _updateExpirationDateFromCategory();
+                                  });
+                                },
+                              );
+                            },
+                            optionsViewBuilder: (context, onSelected, options) {
+                              return Align(
+                                alignment: Alignment.topLeft,
+                                child: Material(
+                                  elevation: 4.0, color: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      side: BorderSide(color: Colors.black.withAlpha((255 * 0.15).round()))),
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(maxHeight: 250),
+                                    child: ListView.builder(
+                                      padding: const EdgeInsets.all(4.0), shrinkWrap: true,
+                                      itemCount: options.length,
+                                      itemBuilder: (BuildContext context, int index) {
+                                        final Product option = options.elementAt(index);
+                                        return InkWell(
+                                          onTap: () => onSelected(option),
+                                          child: ListTile(
+                                            title: Text(option.productName, style: const TextStyle(color: Colors.black87)),
+                                            subtitle: option.brand != null && option.brand!.isNotEmpty
+                                                ? Text(option.brand!, style: TextStyle(color: Colors.grey.shade600))
+                                                : null,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            'Brand (optional)',
-                            style: TextStyle(
-                              color: headerGreen,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          TextFormField(
-                            controller: brandCtrl,
-                            decoration: deco(),
-                            textInputAction: TextInputAction.next,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Size / Weight (e.g., 150g, 1L) – optional',
+                            'Size / Weight (e.g., 150g, 1L)',
                             style: TextStyle(
                               color: headerGreen,
                               fontWeight: FontWeight.w800,
@@ -270,22 +464,6 @@ class _ListItemsPageState extends State<ListItemsPage> {
                               }
                               return null;
                             },
-                            onChanged: (v) => unitPrice = double.tryParse(v) ?? 0.0,
-                            textInputAction: TextInputAction.next,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Nutrition (optional)',
-                            style: TextStyle(
-                              color: headerGreen,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          TextFormField(
-                            controller: nutritionCtrl,
-                            decoration: deco(),
                             textInputAction: TextInputAction.next,
                           ),
                           const SizedBox(height: 12),
@@ -336,7 +514,10 @@ class _ListItemsPageState extends State<ListItemsPage> {
                                 )
                                 .toList(),
                             onChanged: (v) =>
-                                setLocal(() => selectedCategory = v),
+                                setLocal(() {
+                                  selectedCategory = v;
+                                  _updateExpirationDateFromCategory(); // Update expiration date on category change
+                                }),
                             validator: (v) => (v == null || v.isEmpty)
                                 ? 'Please select a category'
                                 : null,
@@ -372,6 +553,79 @@ class _ListItemsPageState extends State<ListItemsPage> {
                               padding: EdgeInsets.symmetric(horizontal: 12),
                             ),
                           ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Expiration Date',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: expirationDateCtrl,
+                            decoration: deco().copyWith(
+                              suffixIcon: IconButton(
+                                icon: Icon(Icons.calendar_today, color: headerGreen),
+                                onPressed: () async {
+                                  final pickedDate = await showDatePicker(
+                                    context: context,
+                                    initialDate: _selectedExpDate ?? DateTime.now(),
+                                    firstDate: DateTime(2000),
+                                    lastDate: DateTime(2100),
+                                    builder: (context, child) => Theme(
+                                      data: Theme.of(context).copyWith(
+                                        colorScheme: ColorScheme.light(primary: headerGreen, onPrimary: Colors.white),
+                                        textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: headerGreen)),
+                                      ),
+                                      child: child!,
+                                    ),
+                                  );
+                                  if (pickedDate != null) {
+                                    setLocal(() {
+                                      _selectedExpDate = pickedDate;
+                                      expirationDateCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                            readOnly: true,
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Please enter an expiration date'
+                                : null,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Quantity',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline_rounded),
+                                onPressed: () {
+                                  if (itemQuantity > 1) {
+                                    setLocal(() => itemQuantity--);
+                                  }
+                                },
+                              ),
+                              Text('$itemQuantity'),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle_outline_rounded),
+                                onPressed: () {
+                                  setLocal(() => itemQuantity++);
+                                },
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 16),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -379,34 +633,47 @@ class _ListItemsPageState extends State<ListItemsPage> {
                               InkWell(
                                 onTap: () async {
                                   if (!formKey.currentState!.validate()) return;
-                                  final newItem = ShoppingListItemModel(
-                                    name: nameCtrl.text.trim(),
-                                    brand: brandCtrl.text.trim().isEmpty
-                                        ? null
-                                        : brandCtrl.text.trim(),
-                                    netWeight: sizeCtrl.text.trim().isEmpty
-                                        ? null
-                                        : sizeCtrl.text.trim(),
-                                    category: selectedCategory!,
-                                    unitPrice: double.parse(unitPriceCtrl.text.trim()), // Ensure unitPrice is parsed from controller
-                                    quantity: 1,
-                                    nutrition: nutritionCtrl.text.trim().isEmpty ? null : nutritionCtrl.text.trim(),
+
+                                  // Check for duplicate item before adding
+                                  final existingItemIndex = _items.indexWhere(
+                                    (item) =>
+                                        item.name.toLowerCase() == nameCtrl.text.trim().toLowerCase() &&
+                                        (item.netWeight?.toLowerCase() ?? '') == (sizeCtrl.text.trim().toLowerCase()),
                                   );
 
-                                  if (_currentShoppingList.id != null) {
-                                    await _shoppingListService.addShoppingListItem(
-                                      _currentShoppingList.id!,
-                                      newItem,
-                                    );
-                                    // Refresh the local list from Firestore to get the item with its ID
-                                    final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
-                                    if (updatedList != null) {
-                                      setState(() {
-                                        _currentShoppingList = updatedList;
-                                        _items = _currentShoppingList.items.map((e) => e.copyWith()).toList(); // Deep copy items
-                                        _resort();
-                                      });
+                                  if (existingItemIndex != -1) {
+                                    // Duplicate found, increment quantity
+                                    final existingItem = _items[existingItemIndex];
+                                    final updatedItem = existingItem.copyWith(quantity: existingItem.quantity + itemQuantity);
+                                    if (_currentShoppingList.id != null) {
+                                      await _shoppingListService.updateShoppingListItem(_currentShoppingList.id!, updatedItem);
                                     }
+                                  } else {
+                                    // No duplicate, add new item
+                                    final newItem = ShoppingListItemModel(
+                                      id: _uuid.v4(), // Generate ID for new items
+                                      name: nameCtrl.text.trim(),
+                                      brand: brandCtrl.text.trim().isEmpty ? null : brandCtrl.text.trim(),
+                                      netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
+                                      category: selectedCategory!,
+                                      unitPrice: double.parse(unitPriceCtrl.text.trim()),
+                                      quantity: itemQuantity,
+                                      expirationDate: _selectedExpDate, // Use the selected/generated expiration date
+                                    );
+
+                                    if (_currentShoppingList.id != null) {
+                                      await _shoppingListService.addShoppingListItem(_currentShoppingList.id!, newItem);
+                                    }
+                                  }
+
+                                  // Refresh the local list from Firestore to get the item with its ID
+                                  final updatedList = await _shoppingListService.getShoppingListById(_currentShoppingList.id!);
+                                  if (updatedList != null) {
+                                    setState(() {
+                                      _currentShoppingList = updatedList;
+                                      _items = _currentShoppingList.items.map((e) => e.copyWith()).toList(); // Deep copy items
+                                      _resort();
+                                    });
                                   }
 
                                   if (!mounted) return;
@@ -477,11 +744,12 @@ class _ListItemsPageState extends State<ListItemsPage> {
     final nameCtrl = TextEditingController(text: it.name);
     final brandCtrl = TextEditingController(text: it.brand ?? '');
     final sizeCtrl = TextEditingController(text: it.netWeight ?? '');
-    final nutritionCtrl = TextEditingController(text: it.nutrition ?? ''); // Add nutrition controller
+    final expirationDateCtrl = TextEditingController(text: it.expirationDate != null ? DateFormat('MMMM d, yyyy').format(it.expirationDate!) : '');
     String category = it.category ?? _categories.first; // Ensure category is not null
     int qty = it.quantity;
     double unitPrice = it.unitPrice;
     final unitPriceCtrl = TextEditingController(text: it.unitPrice.toStringAsFixed(2));
+    DateTime? _selectedExpDate = it.expirationDate; // To store the actual expiration date
 
     InputDecoration deco() => InputDecoration(
       filled: true,
@@ -560,22 +828,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            'Brand (optional)',
-                            style: TextStyle(
-                              color: headerGreen,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          TextFormField(
-                            controller: brandCtrl,
-                            decoration: deco(),
-                            textInputAction: TextInputAction.next,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Size / Weight (optional)',
+                            'Size / Weight (e.g., 150g, 1L)',
                             style: TextStyle(
                               color: headerGreen,
                               fontWeight: FontWeight.w800,
@@ -612,21 +865,6 @@ class _ListItemsPageState extends State<ListItemsPage> {
                               return null;
                             },
                             onChanged: (v) => unitPrice = double.tryParse(v) ?? 0.0,
-                            textInputAction: TextInputAction.next,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Nutrition (optional)',
-                            style: TextStyle(
-                              color: headerGreen,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          TextFormField(
-                            controller: nutritionCtrl,
-                            decoration: deco(),
                             textInputAction: TextInputAction.next,
                           ),
                           const SizedBox(height: 12),
@@ -713,6 +951,79 @@ class _ListItemsPageState extends State<ListItemsPage> {
                               padding: EdgeInsets.symmetric(horizontal: 12),
                             ),
                           ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Expiration Date',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: expirationDateCtrl,
+                            decoration: deco().copyWith(
+                              suffixIcon: IconButton(
+                                icon: Icon(Icons.calendar_today, color: headerGreen),
+                                onPressed: () async {
+                                  final pickedDate = await showDatePicker(
+                                    context: context,
+                                    initialDate: _selectedExpDate ?? DateTime.now(),
+                                    firstDate: DateTime(2000),
+                                    lastDate: DateTime(2100),
+                                    builder: (context, child) => Theme(
+                                      data: Theme.of(context).copyWith(
+                                        colorScheme: ColorScheme.light(primary: headerGreen, onPrimary: Colors.white),
+                                        textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: headerGreen)),
+                                      ),
+                                      child: child!,
+                                    ),
+                                  );
+                                  if (pickedDate != null) {
+                                    setLocal(() {
+                                      _selectedExpDate = pickedDate;
+                                      expirationDateCtrl.text = DateFormat('MMMM d, yyyy').format(pickedDate);
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                            readOnly: true,
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Please enter an expiration date'
+                                : null,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Quantity',
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline_rounded),
+                                onPressed: () {
+                                  if (qty > 1) {
+                                    setLocal(() => qty--);
+                                  }
+                                },
+                              ),
+                              Text('$qty'),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle_outline_rounded),
+                                onPressed: () {
+                                  setLocal(() => qty++);
+                                },
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 16),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -733,7 +1044,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
                                     category: category,
                                     quantity: qty,
                                     unitPrice: unitPrice,
-                                    nutrition: nutritionCtrl.text.trim().isEmpty ? null : nutritionCtrl.text.trim(),
+                                    expirationDate: _selectedExpDate, // Update expiration date
                                     isPurchased: it.isPurchased, // Preserve existing state
                                     isBookmarked: it.isBookmarked, // Preserve existing state
                                   );
@@ -942,14 +1253,6 @@ class _ListItemsPageState extends State<ListItemsPage> {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Use as current shopping list',
-                  icon: const Icon(
-                    Icons.shopping_cart_outlined,
-                    color: Colors.white,
-                  ),
-                  onPressed: _useAsCurrent,
                 ),
                 IconButton(
                   tooltip: 'Delete list',
@@ -1253,15 +1556,6 @@ class _ShoppingRowSL extends StatelessWidget {
                   color: selected ? Colors.black45 : Colors.black54,
                 ),
               ),
-              if (item.nutrition != null && item.nutrition!.isNotEmpty)
-                Text(
-                  'Nutri-score: ${item.nutrition!.toUpperCase()}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: selected ? Colors.grey.shade500 : Colors.grey.shade600,
-                  ),
-                ),
             ],
           ),
         ),

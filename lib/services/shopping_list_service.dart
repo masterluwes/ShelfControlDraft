@@ -247,6 +247,41 @@ class ShoppingListService {
             .toList());
   }
 
+  // Helper method to get waste ratios for products based on shopping history
+  Future<Map<String, double>> _getWasteRatios(String householdId, {int historyDays = 90}) async {
+    final DateTime historyCutoff = DateTime.now().subtract(Duration(days: historyDays));
+
+    QuerySnapshot historySnapshot = await _shoppingHistory
+        .where('householdId', isEqualTo: householdId)
+        .where('timestamp', isGreaterThanOrEqualTo: historyCutoff)
+        .get();
+
+    Map<String, int> productPurchaseCounts = {};
+    Map<String, int> productWasteCounts = {};
+
+    for (var doc in historySnapshot.docs) {
+      final item = ShoppingHistoryItemModel.fromFirestore(doc);
+      final productName = item.productName;
+
+      if (item.actionType == 'Consumed' || item.actionType == 'Purchased') {
+        productPurchaseCounts[productName] = (productPurchaseCounts[productName] ?? 0) + item.quantity;
+      } else if (item.actionType == 'Wasted' || item.actionType == 'Expired Waste') {
+        productWasteCounts[productName] = (productWasteCounts[productName] ?? 0) + item.quantity;
+      }
+    }
+
+    Map<String, double> wasteRatios = {};
+    productPurchaseCounts.forEach((productName, purchaseCount) {
+      final wasteCount = productWasteCounts[productName] ?? 0;
+      if (purchaseCount > 0) {
+        wasteRatios[productName] = wasteCount / purchaseCount;
+      } else {
+        wasteRatios[productName] = 0.0; // No purchases, so no waste ratio
+      }
+    });
+    return wasteRatios;
+  }
+
   // Helper method to get history-based product pool
   Future<List<ShoppingListItemModel>> _getHistoryBasedProductPool(
       String householdId, {
@@ -286,21 +321,37 @@ class ShoppingListService {
       // Store price, category, netWeight, nutriScore, ecoscore
       if (item.priceAtAction != null && item.priceAtAction! > 0) {
         productPrices[productName] = item.priceAtAction!;
-      } else if ((productPrices[productName] == null || productPrices[productName] == 0.0)) {
-        // Fallback to fetching from local_products_ph if priceAtAction is 0 or null
-        final productDetails = await _firestoreService.getProductDetailsByName(productName);
-        if (productDetails != null && productDetails.price != null && productDetails.price! > 0) {
-          productPrices[productName] = productDetails.price!;
-          debugPrint('[_getHistoryBasedProductPool] Fetched price for $productName from local_products_ph: ${productDetails.price}');
-        } else {
-          productPrices[productName] = 0.0; // Default to 0 if no price found
-          debugPrint('[_getHistoryBasedProductPool] No price found for $productName');
-        }
+      } else {
+        // Mark for later batch fetching if price is not available from history
+        productPrices[productName] = 0.0; // Initialize to 0.0
       }
       productCategories[productName] = item.category;
       productNetWeights[productName] = item.netWeight;
       productNutriScores[productName] = item.nutrition;
       productEcoscores[productName] = item.ecoscore;
+    }
+
+    // Collect product names that still need price lookup from local_products_ph
+    final List<String> productNamesWithoutPrice = productPrices.entries
+        .where((entry) => entry.value == 0.0)
+        .map((entry) => entry.key)
+        .toList();
+
+    if (productNamesWithoutPrice.isNotEmpty) {
+      // Fetch prices in a single batch query
+      final QuerySnapshot productsSnapshot = await _localProducts
+          .where('productName', whereIn: productNamesWithoutPrice)
+          .get();
+
+      for (var doc in productsSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final productName = data['productName'] as String;
+        final price = (data['price'] as num?)?.toDouble() ?? 0.0;
+        if (price > 0) {
+          productPrices[productName] = price;
+          debugPrint('[_getHistoryBasedProductPool] Batched fetched price for $productName from local_products_ph: $price');
+        }
+      }
     }
 
     List<ShoppingListItemModel> historyBasedPool = [];
@@ -314,17 +365,17 @@ class ShoppingListService {
             ShoppingListItemModel(
               id: _uuid.v4(),
               name: productName,
-              quantity: effectiveQuantity,
+              quantity: 1, // Fixed quantity to 1 as per user request
               unitPrice: price,
-              category: productCategories[productName],
+              category: productCategories[productName] ?? 'Other', // Default to 'Other' if null
               netWeight: productNetWeights[productName],
               nutrition: productNutriScores[productName],
               ecoscore: productEcoscores[productName],
             ),
           );
-          debugPrint('[_getHistoryBasedProductPool] Added $productName to pool (Effective Qty: $effectiveQuantity, Price: $price)');
+          debugPrint('[_getHistoryBasedProductPool] Added $productName to pool (Fixed Qty: 1, Price: $price)');
         } else {
-          debugPrint('[_getHistoryBasedProductPool] Skipped $productName due to zero or null price.');
+          debugPrint('[_getHistoryBasedProductPool] Skipped $productName due to zero or null price after all lookups.');
         }
       } else {
         debugPrint('[_getHistoryBasedProductPool] Skipped $productName due to waste count being greater than or equal to purchase count.');
@@ -343,6 +394,8 @@ class ShoppingListService {
         DocumentSnapshot? lastPantryDocument, // For pagination of pantry items
         DocumentSnapshot? lastHistoryDocument, // For pagination of shopping history
         int limit = 50, // Default limit for pagination
+        int maxSuggestions = 15, // New parameter to limit total suggestions
+        double wasteThreshold = 0.5, // New parameter for waste ratio threshold
       }) async {
     List<ShoppingListItemModel> suggestions = [];
 
@@ -354,19 +407,14 @@ class ShoppingListService {
     var pantrySnapshot = await pantryQuery.limit(limit).get();
     List<PantryItemModel> pantryItems = pantrySnapshot.docs.map((doc) => PantryItemModel.fromFirestore(doc)).toList();
 
-    // Get shopping history
-    Query historyQuery = _shoppingHistory.where('householdId', isEqualTo: householdId);
-    if (lastHistoryDocument != null) {
-      historyQuery = historyQuery.startAfterDocument(lastHistoryDocument);
-    }
-    var historySnapshot = await historyQuery.limit(limit).get();
-    List<ShoppingHistoryItemModel> historyItems = historySnapshot.docs.map((doc) => ShoppingHistoryItemModel.fromFirestore(doc)).toList();
+    // Get waste ratios for filtering history-based suggestions
+    final Map<String, double> wasteRatios = await _getWasteRatios(householdId);
 
     // Logic for suggestions
     // 1. Out of Stock, Expired, Low Stock from pantry
     for (var item in pantryItems) {
       String? status;
-      if (item.qty > 0 && item.qty <= 2) { // Example threshold for "low stock"
+      if (item.qty == 1) { // Refined threshold for "low stock"
         status = 'Low on stock';
       } else if (item.qty <= 0 || item.status == 'Consumed' || (item.expirationDate != null && item.expirationDate!.isBefore(DateTime.now()))) {
         status = 'Out of stock';
@@ -388,10 +436,19 @@ class ShoppingListService {
       }
     }
 
-    // 2. History-Based
+    // 2. History-Based (filtered by waste ratio)
+    Query historyQuery = _shoppingHistory.where('householdId', isEqualTo: householdId);
+    if (lastHistoryDocument != null) {
+      historyQuery = historyQuery.startAfterDocument(lastHistoryDocument);
+    }
+    var historySnapshot = await historyQuery.limit(limit).get();
+    List<ShoppingHistoryItemModel> historyItems = historySnapshot.docs.map((doc) => ShoppingHistoryItemModel.fromFirestore(doc)).toList();
+
     for (var item in historyItems) {
       bool inPantry = pantryItems.any((pantryItem) => pantryItem.name == item.productName);
-      if (!inPantry) {
+      final double productWasteRatio = wasteRatios[item.productName] ?? 0.0;
+
+      if (!inPantry && productWasteRatio < wasteThreshold) { // Filter out frequently wasted items
         final scores = await _openFoodFactsService.getNutriAndEcoScore(item.productName);
         suggestions.add(ShoppingListItemModel(
           id: _firestore.collection('temp').doc().id,
@@ -401,7 +458,7 @@ class ShoppingListService {
           quantity: 1,
           nutrition: scores?['nutriScore'],
           ecoscore: scores?['ecoscore'],
-          suggestionStatus: 'Out of stock', // History items are considered out of stock
+          suggestionStatus: 'History-based', // Differentiate history items
         ));
       }
     }
@@ -411,8 +468,34 @@ class ShoppingListService {
     for (var item in suggestions) {
       uniqueSuggestions[item.name] = item;
     }
+    List<ShoppingListItemModel> finalSuggestions = uniqueSuggestions.values.toList();
 
-    return uniqueSuggestions.values.toList();
+    // Prioritize and Sort Suggestions
+    finalSuggestions.sort((a, b) {
+      // Out of stock comes first
+      if (a.suggestionStatus == 'Out of stock' && b.suggestionStatus != 'Out of stock') {
+        return -1;
+      }
+      if (a.suggestionStatus != 'Out of stock' && b.suggestionStatus == 'Out of stock') {
+        return 1;
+      }
+      // Low on stock comes second
+      if (a.suggestionStatus == 'Low on stock' && b.suggestionStatus != 'Low on stock') {
+        return -1;
+      }
+      if (a.suggestionStatus != 'Low on stock' && b.suggestionStatus == 'Low on stock') {
+        return 1;
+      }
+      // For items with the same status or other statuses, sort alphabetically
+      return a.name.compareTo(b.name);
+    });
+
+    // Limit the total number of suggestions
+    if (finalSuggestions.length > maxSuggestions) {
+      finalSuggestions = finalSuggestions.sublist(0, maxSuggestions);
+    }
+
+    return finalSuggestions;
   }
 
   // Generate Budget Friendly List with Randomization and Category Balancing
@@ -429,6 +512,10 @@ class ShoppingListService {
     int itemsAdded = 0;
 
     List<ShoppingListItemModel> productPool;
+    final List<PantryItemModel> pantryItems = await _firestoreService.getPantryForHousehold(householdId);
+    final Map<String, int> pantryStock = {
+      for (var item in pantryItems) item.name.toLowerCase(): item.qty
+    };
 
     if (useHistory) {
       productPool = await _getHistoryBasedProductPool(householdId);
@@ -447,7 +534,7 @@ class ShoppingListService {
             netWeight: data['netWeight'],
             category: data['category'],
             unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
-            quantity: 1,
+            quantity: 1, // Fixed quantity to 1 as per user request
             nutrition: data['nutriScore'],
           );
         }).where((item) => item.unitPrice > 0).toList();
@@ -465,11 +552,22 @@ class ShoppingListService {
           netWeight: data['netWeight'],
           category: data['category'],
           unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
-          quantity: 1,
+          quantity: 1, // Fixed quantity to 1 as per user request
           nutrition: data['nutriScore'],
         );
       }).where((item) => item.unitPrice > 0).toList();
     }
+
+    // Filter out items already in pantry
+    productPool = productPool.where((item) {
+      final inPantryQty = pantryStock[item.name.toLowerCase()] ?? 0;
+      if (inPantryQty > 0) {
+        debugPrint('[generateBudgetFriendlyList] Skipping ${item.name} as it is already in pantry (Qty: $inPantryQty).');
+        return false;
+      }
+      return true;
+    }).toList();
+    debugPrint('[generateBudgetFriendlyList] Product pool after pantry filtering: ${productPool.length}');
 
     // Group products by category
     Map<String, List<ShoppingListItemModel>> productsByCategory = {};
@@ -498,12 +596,15 @@ class ShoppingListService {
 
         if (categoryProducts.isNotEmpty) {
           ShoppingListItemModel item = categoryProducts.removeAt(0);
+          // Quantity is now fixed to 1
+          final int itemQuantity = 1;
+          final double itemTotalPrice = item.unitPrice * itemQuantity;
 
-          if (item.unitPrice <= maxItemPrice && (currentCost + item.unitPrice) <= budgetAmount) {
-            budgetList.add(item);
-            currentCost += item.unitPrice;
+          if (item.unitPrice <= maxItemPrice && (currentCost + itemTotalPrice) <= budgetAmount) {
+            budgetList.add(item.copyWith(quantity: itemQuantity)); // Ensure quantity is 1
+            currentCost += itemTotalPrice;
             itemsAdded++;
-            debugPrint('[generateBudgetFriendlyList] Added ${item.name}. Current cost: $currentCost, Items added: $itemsAdded');
+            debugPrint('[generateBudgetFriendlyList] Added ${item.name} (Fixed Qty: $itemQuantity). Current cost: $currentCost, Items added: $itemsAdded');
             if (numberOfItems != null && itemsAdded >= numberOfItems) {
               break;
             }
@@ -540,41 +641,34 @@ class ShoppingListService {
     // Use provided categories or default ones
     final List<String> categoriesToUse = categories ?? defaultHealthyCategories;
 
-    List<ShoppingListItemModel> productPool;
+    List<ShoppingListItemModel> productPool = [];
+    final List<PantryItemModel> pantryItems = await _firestoreService.getPantryForHousehold(householdId);
+    final Map<String, int> pantryStock = {
+      for (var item in pantryItems) item.name.toLowerCase(): item.qty
+    };
 
     if (useHistory) {
-      productPool = await _getHistoryBasedProductPool(householdId);
-      debugPrint('[generateHealthyOptionList] Using history-based pool. Size: ${productPool.length}');
-      if (productPool.isEmpty) {
-        debugPrint('[generateHealthyOptionList] History-based pool is empty, falling back to local products.');
-        // Fallback to local products if history pool is empty
-        QuerySnapshot productsSnapshot = await _localProducts
-            .where('category', whereIn: categoriesToUse)
-            .limit(fetchLimit)
-            .get();
-        productPool = productsSnapshot.docs.map((doc) {
-          var data = doc.data() as Map<String, dynamic>;
-          return ShoppingListItemModel(
-            id: _uuid.v4(), // Assign unique ID
-            productId: doc.id,
-            name: data['productName'],
-            brand: data['brand'],
-            netWeight: data['netWeight'],
-            category: data['category'],
-            unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
-            quantity: 1,
-            nutrition: data['nutriScore'],
-            ecoscore: data['ecoscore'],
-          );
-        }).where((item) => item.unitPrice > 0 && !(item.name.toLowerCase().contains('cup noodles'))).toList();
-      }
-    } else {
-      debugPrint('[generateHealthyOptionList] Not using history, fetching from local products.');
+      List<ShoppingListItemModel> historyProducts = await _getHistoryBasedProductPool(householdId);
+      historyProducts = historyProducts.where((item) {
+        final inPantryQty = pantryStock[item.name.toLowerCase()] ?? 0;
+        bool isHealthyCategory = categoriesToUse.contains(item.category);
+        return inPantryQty == 0 && isHealthyCategory;
+      }).toList();
+      productPool.addAll(historyProducts);
+      debugPrint('[generateHealthyOptionList] Using history-based pool (filtered). Size: ${productPool.length}');
+    }
+
+    // If not enough items from history, or not using history, fill up from local products
+    if (productPool.length < numberOfItems || !useHistory) {
+      debugPrint('[generateHealthyOptionList] Attempting to fill up from local products to reach $numberOfItems items.');
+      
+      // Fetch local products that match the healthy categories and are not in pantry
       QuerySnapshot productsSnapshot = await _localProducts
           .where('category', whereIn: categoriesToUse)
           .limit(fetchLimit)
           .get();
-      productPool = productsSnapshot.docs.map((doc) {
+      
+      List<ShoppingListItemModel> potentialLocalProducts = productsSnapshot.docs.map((doc) {
         var data = doc.data() as Map<String, dynamic>;
         return ShoppingListItemModel(
           id: _uuid.v4(), // Assign unique ID
@@ -584,39 +678,33 @@ class ShoppingListService {
           netWeight: data['netWeight'],
           category: data['category'],
           unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
-          quantity: 1,
+          quantity: 1, // Fixed quantity to 1 as per user request
           nutrition: data['nutriScore'],
           ecoscore: data['ecoscore'],
         );
       }).where((item) => item.unitPrice > 0 && !(item.name.toLowerCase().contains('cup noodles'))).toList();
-    }
 
-    // Apply healthy filters (nutriScore, categories) and UserPrefs filters (diets, allergens, dislikes)
-    productPool = productPool.where((item) {
-      final nutriScore = item.nutrition?.toLowerCase();
-      bool isHealthyNutriScore = (nutriScore == 'a' || nutriScore == 'b' || nutriScore == 'c');
-      bool isHealthyCategory = categoriesToUse.contains(item.category);
+      // Shuffle potential local products to enhance randomization
+      potentialLocalProducts.shuffle();
+      debugPrint('[generateHealthyOptionList] Shuffled potential local products. Count: ${potentialLocalProducts.length}');
 
-      // Apply dietary filters
-      if (userPrefs != null && userPrefs.diets.isNotEmpty) {
-        bool meetsDietaryNeeds = userPrefs.diets.every((diet) {
-          // Simplified check: assuming product name or category might contain diet-related keywords
-          final itemNameLower = item.name.toLowerCase();
-          final itemCategoryLower = item.category?.toLowerCase() ?? '';
-          final dietLower = diet.toLowerCase();
-
-          // Example: If diet is "vegetarian", check if product is not meat-related
-          if (dietLower == 'vegetarian' && (itemNameLower.contains('chicken') || itemNameLower.contains('beef') || itemNameLower.contains('pork') || itemCategoryLower.contains('meat'))) {
-            return false;
+      // Filter potential local products against pantry and existing pool
+      for (var item in potentialLocalProducts) {
+        final inPantryQty = pantryStock[item.name.toLowerCase()] ?? 0;
+        if (inPantryQty == 0 && !productPool.any((poolItem) => poolItem.name == item.name)) {
+          productPool.add(item);
+          if (productPool.length >= numberOfItems) {
+            break; // Stop adding if we have enough items
           }
-          // Add more specific dietary checks as needed based on product data
-          return true;
-        });
-        if (!meetsDietaryNeeds) {
-          debugPrint('[generateHealthyOptionList] Filtered out ${item.name} due to dietary preference: ${userPrefs.diets}');
-          return false;
         }
       }
+      debugPrint('[generateHealthyOptionList] Product pool after local product fill-up: ${productPool.length}');
+    }
+
+    // Apply UserPrefs filters (diets, allergens, dislikes)
+    debugPrint('[generateHealthyOptionList] Product pool before userPrefs filtering: ${productPool.length}');
+    productPool = productPool.where((item) {
+
 
       // Apply allergen filters
       if (userPrefs != null && userPrefs.allergens.isNotEmpty) {
@@ -625,7 +713,6 @@ class ShoppingListService {
           final itemCategoryLower = item.category?.toLowerCase() ?? '';
           final allergenLower = allergen.toLowerCase();
 
-          // More comprehensive basic checks for common allergens
           if (allergenLower == 'dairy' && (itemNameLower.contains('milk') || itemNameLower.contains('cheese') || itemNameLower.contains('yogurt') || itemCategoryLower.contains('dairy'))) return false;
           if (allergenLower == 'egg' && (itemNameLower.contains('egg') || itemCategoryLower.contains('bakery') || itemCategoryLower.contains('pasta'))) return false;
           if (allergenLower == 'fish' && (itemNameLower.contains('fish') || itemCategoryLower.contains('seafood'))) return false;
@@ -643,6 +730,8 @@ class ShoppingListService {
           return false;
         }
       }
+      debugPrint('[generateHealthyOptionList] Product pool after allergen filtering: ${productPool.length}');
+
 
       // Apply dislikes filters
       if (userPrefs != null && userPrefs.dislikes.isNotEmpty) {
@@ -654,10 +743,12 @@ class ShoppingListService {
           return false;
         }
       }
+      debugPrint('[generateHealthyOptionList] Product pool after dislike filtering: ${productPool.length}');
 
-      return (isHealthyNutriScore || isHealthyCategory);
+
+      return true; // Item passed all filters
     }).toList();
-    debugPrint('[generateHealthyOptionList] Product pool after filtering: ${productPool.length}');
+    debugPrint('[generateHealthyOptionList] Product pool after ALL filtering: ${productPool.length}');
 
     // Group products by category
     Map<String, List<ShoppingListItemModel>> productsByCategory = {};
@@ -675,6 +766,9 @@ class ShoppingListService {
     List<String> shuffledCategories = productsByCategory.keys.toList()..shuffle(); // Renamed local variable
 
     int itemsAdded = 0;
+    Set<String> addedItemNames = {}; // To track items already added
+
+    // Existing category-balanced loop
     while (itemsAdded < numberOfItems && shuffledCategories.isNotEmpty) {
       for (int i = 0; i < shuffledCategories.length; i++) {
         String category = shuffledCategories[i];
@@ -682,17 +776,36 @@ class ShoppingListService {
 
         if (categoryProducts.isNotEmpty) {
           ShoppingListItemModel item = categoryProducts.removeAt(0);
-          healthyList.add(item);
-          itemsAdded++;
-          if (itemsAdded >= numberOfItems) {
-            break;
+          if (!addedItemNames.contains(item.name)) { // Check for duplicates
+            healthyList.add(item.copyWith(quantity: 1));
+            addedItemNames.add(item.name);
+            itemsAdded++;
+            debugPrint('[generateHealthyOptionList] Added ${item.name} (Fixed Qty: 1) from category-balanced. Items added: $itemsAdded');
+            if (itemsAdded >= numberOfItems) {
+              break;
+            }
           }
         }
 
-        // If a category is exhausted, remove it
         if (categoryProducts.isEmpty) {
           shuffledCategories.removeAt(i);
-          i--; // Adjust index after removal
+          i--;
+        }
+      }
+    }
+
+    // If still not enough items, fill from the remaining productPool
+    if (itemsAdded < numberOfItems) {
+      debugPrint('[generateHealthyOptionList] Category-balanced fill-up did not reach $numberOfItems. Attempting to fill from remaining productPool.');
+      for (var item in productPool) {
+        if (itemsAdded >= numberOfItems) {
+          break;
+        }
+        if (!addedItemNames.contains(item.name)) {
+          healthyList.add(item.copyWith(quantity: 1));
+          addedItemNames.add(item.name);
+          itemsAdded++;
+          debugPrint('[generateHealthyOptionList] Added ${item.name} (Fixed Qty: 1) from remaining productPool. Items added: $itemsAdded');
         }
       }
     }
