@@ -30,7 +30,8 @@ service cloud.firestore {
                       request.resource.data.members.hasAll([request.auth.uid]) &&
                       request.resource.data.name is string &&
                       request.resource.data.name.size() > 0; // Allow authenticated user to create a household with a name and themselves as a member
-      allow update: if request.auth.uid != null; // TEMPORARY: For debugging permission denied
+      allow update: if request.auth.uid != null && isHouseholdMember(householdId) &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeShoppingListId']);
       allow delete: if request.auth.uid == resource.data.ownerId; // Only owner can delete
     }
 

@@ -12,6 +12,7 @@ class PantryItemModel {
   String? quantityUnit; // e.g., "1L", "397g"
   Map<String, dynamic>? nutritionFacts; // New field for nutrition information
   String? nutrition; // New field for nutrition string
+  String? ecoscore; // New field for ecoscore
   int? shelfLifeDays;
   int? shelfLifeWeeks;
   int? shelfLifeMonths;
@@ -40,6 +41,7 @@ class PantryItemModel {
     this.quantityUnit,
     this.nutritionFacts,
     this.nutrition, // Add nutrition to constructor
+    this.ecoscore, // Add ecoscore to constructor
     this.shelfLifeDays,
     this.shelfLifeWeeks,
     this.shelfLifeMonths,
@@ -71,6 +73,7 @@ class PantryItemModel {
       quantityUnit: data['quantityUnit'],
       nutritionFacts: data['nutritionFacts'] != null ? Map<String, dynamic>.from(data['nutritionFacts']) : null,
       nutrition: data['nutrition'],
+      ecoscore: data['ecoscore'],
       shelfLifeDays: data['shelfLifeDays'],
       shelfLifeWeeks: data['shelfLifeWeeks'],
       shelfLifeMonths: data['shelfLifeMonths'],
@@ -102,6 +105,7 @@ class PantryItemModel {
       quantityUnit: data['quantityUnit'],
       nutritionFacts: data['nutritionFacts'] != null ? Map<String, dynamic>.from(data['nutritionFacts']) : null,
       nutrition: data['nutrition'],
+      ecoscore: data['ecoscore'],
       shelfLifeDays: data['shelfLifeDays'],
       shelfLifeWeeks: data['shelfLifeWeeks'],
       shelfLifeMonths: data['shelfLifeMonths'],
@@ -132,6 +136,7 @@ class PantryItemModel {
       'quantityUnit': quantityUnit,
       'nutritionFacts': nutritionFacts,
       'nutrition': nutrition,
+      'ecoscore': ecoscore,
       'shelfLifeDays': shelfLifeDays,
       'shelfLifeWeeks': shelfLifeWeeks,
       'shelfLifeMonths': shelfLifeMonths,
@@ -163,6 +168,7 @@ class PantryItemModel {
       'quantityUnit': quantityUnit,
       'nutritionFacts': nutritionFacts,
       'nutrition': nutrition,
+      'ecoscore': ecoscore,
       'shelfLifeDays': shelfLifeDays,
       'shelfLifeWeeks': shelfLifeWeeks,
       'shelfLifeMonths': shelfLifeMonths,
@@ -194,6 +200,7 @@ class PantryItemModel {
       quantityUnit: json['quantityUnit'],
       nutritionFacts: json['nutritionFacts'] != null ? Map<String, dynamic>.from(json['nutritionFacts']) : null,
       nutrition: json['nutrition'],
+      ecoscore: json['ecoscore'],
       shelfLifeDays: json['shelfLifeDays'],
       shelfLifeWeeks: json['shelfLifeWeeks'],
       shelfLifeMonths: json['shelfLifeMonths'],
@@ -224,6 +231,7 @@ class PantryItemModel {
     String? quantityUnit,
     Map<String, dynamic>? nutritionFacts,
     String? nutrition,
+    String? ecoscore,
     int? shelfLifeDays,
     int? shelfLifeWeeks,
     int? shelfLifeMonths,
@@ -252,6 +260,7 @@ class PantryItemModel {
       quantityUnit: quantityUnit ?? this.quantityUnit,
       nutritionFacts: nutritionFacts ?? this.nutritionFacts,
       nutrition: nutrition ?? this.nutrition,
+      ecoscore: ecoscore ?? this.ecoscore,
       shelfLifeDays: shelfLifeDays ?? this.shelfLifeDays,
       shelfLifeWeeks: shelfLifeWeeks ?? this.shelfLifeWeeks,
       shelfLifeMonths: shelfLifeMonths ?? this.shelfLifeMonths,

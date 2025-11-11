@@ -984,6 +984,9 @@ class FirestoreService extends ChangeNotifier {
       productId: productId,
       productName: item.name,
       category: item.category,
+      netWeight: item.netWeight,
+      nutrition: item.nutrition,
+      ecoscore: item.ecoscore, // Assuming PantryItemModel will have ecoscore in the future or it's derived elsewhere
       quantity: consumedQty,
       purchaseDate: DateTime.now(),
       actionType: 'Consumed',
@@ -1084,6 +1087,9 @@ class FirestoreService extends ChangeNotifier {
         productId: productId, // Use the fetched productId
         productName: item.name,
         category: item.category,
+        netWeight: item.netWeight,
+        nutrition: item.nutrition,
+        ecoscore: item.ecoscore,
         quantity: wastedQty,
         purchaseDate: DateTime.now(), // Represents wastage date
         actionType: actionType, // Set action type to 'Wasted' or 'Expired Waste'
@@ -1589,9 +1595,13 @@ class FirestoreService extends ChangeNotifier {
           productId: productId,
           productName: item.name,
           category: item.category,
+          netWeight: item.netWeight, // Add netWeight
+          nutrition: item.nutrition, // Add nutrition
+          ecoscore: item.ecoscore,
           quantity: consumedQty,
           purchaseDate: DateTime.now(),
           actionType: 'Consumed',
+          priceAtAction: item.price, // Add priceAtAction
         );
         batch.set(
             _db.collection('shoppingHistory').doc(), historyItem.toFirestore());

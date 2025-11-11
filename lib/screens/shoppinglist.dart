@@ -67,76 +67,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
     'Other',
   ];
 
-  // Define default shelf lives for categories in days based on research
-  final Map<String, int> _categoryShelfLives = {
-    'Bakery': 7, // 1 week
-    'Beverages': 270, // 9 months (general, UHT milk/juice longer, fresh juice shorter)
-    'Canned Goods': 730, // 2 years
-    'Condiments': 365, // 12 months (unopened)
-    'Dairy': 14, // 2 weeks (for refrigerated items like milk, yogurt)
-    'Dry Goods': 547, // 18 months (rice, pasta, flour)
-    'Snacks': 180, // 6 months
-    'Other': 180, // 6 months
-  };
-
-  // More granular shelf lives for specific subcategories/keywords
-  final Map<String, Map<String, int>> _subcategoryShelfLives = {
-    'Bakery': {
-      'bread': 7,
-      'cake': 7,
-      'pastries': 7,
-      'buns': 7,
-      'muffin': 7,
-      'donut': 3,
-      'pandesal': 7,
-      'ensaymada': 7,
-      'mamon': 7,
-    },
-    'Dairy': {
-      'fresh milk': 7,
-      'powdered milk': 270, // 9 months
-      'cheese': 60, // 2 months (hard cheese, softer cheese shorter)
-      'yogurt': 21, // 3 weeks
-      'butter': 90, // 3 months
-      'eggs': 30, // 1 month
-    },
-    'Beverages': {
-      'fresh juice': 7,
-      'uht milk': 270, // 9 months
-      'coffee': 365, // 12 months (unopened)
-      'tea': 730, // 2 years
-      'soda': 180, // 6 months
-      'water': 730, // 2 years
-    },
-    'Condiments': {
-      'vinegar': 730, // 2 years
-      'soy sauce': 365, // 1 year
-      'ketchup': 365, // 1 year
-      'mustard': 365, // 1 year
-      'dressing': 180, // 6 months
-      'spices': 730, // 2 years
-      'powder': 730, // 2 years
-      'salt': 1825, // 5 years
-    },
-    'Dry Goods': {
-      'rice': 730, // 2 years
-      'pasta': 730, // 2 years
-      'flour': 180, // 6 months
-      'cereal': 180, // 6 months
-      'oil': 365, // 1 year
-      'beans': 730, // 2 years (dried)
-      'sugar': 1825, // 5 years
-    },
-    'Snacks': {
-      'chips': 90, // 3 months
-      'crackers': 180, // 6 months
-      'cookies': 180, // 6 months
-      'chocolates': 270, // 9 months
-      'biscuits': 180, // 6 months
-      'packed fudge bars': 180, // 6 months
-    }
-  };
-
   @override
   void initState() {
     super.initState();
@@ -174,28 +104,6 @@ class _ShoppinglistState extends State<Shoppinglist> {
       }
     }
     return 'Other';
-  }
-
-  DateTime? _getExpirationDateForCategory(String category, String itemName, DateTime manufacturedDate) {
-    int? shelfLife = _categoryShelfLives[category];
-    itemName = itemName.toLowerCase();
-
-    if (_subcategoryShelfLives.containsKey(category)) {
-      final subcategoryMap = _subcategoryShelfLives[category]!;
-      for (final subcategoryEntry in subcategoryMap.entries) {
-        final subcategoryKeyword = subcategoryEntry.key;
-        final subcategorySpecificShelfLife = subcategoryEntry.value;
-        if (itemName.contains(subcategoryKeyword)) {
-          shelfLife = subcategorySpecificShelfLife;
-          break;
-        }
-      }
-    }
-
-    if (shelfLife != null) {
-      return manufacturedDate.add(Duration(days: shelfLife));
-    }
-    return null;
   }
 
   @override
@@ -290,7 +198,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
         .get();
 
     final DateTime manufacturedDate = DateTime.now();
-    final DateTime? expirationDate = _getExpirationDateForCategory(
+    final DateTime? expirationDate = _shoppingListService.getExpirationDateForCategory(
       item.category ?? 'Other',
       item.name,
       manufacturedDate,
@@ -355,9 +263,13 @@ class _ShoppinglistState extends State<Shoppinglist> {
       productId: item.productId,
       productName: item.name,
       category: item.category,
+      netWeight: item.netWeight, // Add netWeight
+      nutrition: item.nutrition, // Add nutrition
+      ecoscore: item.ecoscore, // Add ecoscore
       quantity: item.quantity,
       purchaseDate: DateTime.now(),
       actionType: 'Purchased',
+      priceAtAction: item.unitPrice, // Add priceAtAction
     ).toFirestore());
   }
 
@@ -818,7 +730,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
     void _updateExpirationDateFromCategory({bool forceUpdate = false}) {
       if ((expirationDateCtrl.text.isEmpty || forceUpdate) && selectedCategory != null) {
         final DateTime manufacturedDate = DateTime.now(); // Assume manufactured date is now for shopping list
-        final DateTime? calculatedExpDate = _getExpirationDateForCategory(
+        final DateTime? calculatedExpDate = _shoppingListService.getExpirationDateForCategory(
           selectedCategory!,
           nameTextController.text,
           manufacturedDate,
@@ -2136,6 +2048,7 @@ class _Suggestion {
   final String note;
   final String category;
   final String? nutrition;
+  final String? ecoscore; // New: Add ecoscore to _Suggestion model
   final double unitPrice; // Add unitPrice to _Suggestion model
   final String? originalPantryItemId; // New: To link back to the original pantry item
   final DateTime? expirationDate; // New: Expiration date for the item
@@ -2147,6 +2060,7 @@ class _Suggestion {
     required this.category,
     this.sizeText,
     this.nutrition,
+    this.ecoscore, // Initialize ecoscore
     this.unitPrice = 0.0, // Default to 0.0 if not provided
     this.originalPantryItemId,
     this.expirationDate,

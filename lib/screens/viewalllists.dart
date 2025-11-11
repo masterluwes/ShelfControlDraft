@@ -685,10 +685,8 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                             }
                           }
 
-                          if (!mounted) {
-                            return;
-                          }
-                          setLocal(() => _isLoading = false); // Stop loading if
+                          if (!ctx.mounted) return;
+                          setLocal(() => _isLoading = false); // Stop loading
 
                           ShoppingListModel? newList;
                           if (_householdId != null) {
@@ -712,43 +710,52 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                               await _shoppingListService.addShoppingListItem(newList.id!, item);
                             }
                           } else {
-                            _logger.e('Household ID is null, cannot generate list.');
+                            _logger.e('Household ID is null, cannot generate manual list.');
                           }
 
                           if (newList != null && newList.id != null) {
                             // Set this new list as the active shopping list for the household
                             await _shoppingListService.setActiveShoppingList(_householdId!, newList.id!);
 
-                          if (!mounted) {
-                            if (mounted) setLocal(() => _isLoading = false); // Stop loading if widget is unmounted
-                            return;
-                          }
-                          Navigator.of(dialogCtx, rootNavigator: true).pop();
-                          
-                          // Navigate to the new list's detail page
-                          if (newList != null) { // Ensure newList is not null before navigating
-                            final result = await Navigator.of(parentContext).push(
-                              MaterialPageRoute(
-                                builder: (_) => ListItemsPage(shoppingList: newList!),
-                                settings: RouteSettings(
-                                  arguments: {
-                                    'seedItems': generatedItems,
-                                    'isGeneratedTemp': true,
-                                    'genMode': mode.name,
-                                    'budget': budgetSliderValue,
-                                  },
-                                ),
+                            if (!dialogCtx.mounted) return;
+                            Navigator.of(dialogCtx, rootNavigator: true).pop();
+                            
+                            // Show success dialog briefly
+                            await showDialog<void>(
+                              context: parentContext,
+                              barrierDismissible: false,
+                              builder: (_) => _SuccessDialog(
+                                headerGreen: headerGreen,
+                                title: 'List Generated!',
+                                message: 'Your new shopping list has been created.',
                               ),
                             );
-                            if (mounted) _handleListPageResult(result);
+
+                            // Navigate to the new list's detail page
+                            if (newList != null) { // Ensure newList is not null before navigating
+                              await Navigator.of(parentContext).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ListItemsPage(shoppingList: newList!),
+                                  settings: RouteSettings(
+                                    arguments: {
+                                      'seedItems': generatedItems,
+                                      'isGeneratedTemp': true,
+                                      'genMode': mode.name,
+                                      'budget': budgetSliderValue,
+                                    },
+                                  ),
+                                ),
+                              );
+                            } else {
+                              _logger.e('Generated list is null, cannot navigate.');
+                            }
                           } else {
-                            _logger.e('Generated list is null, cannot navigate.');
+                            _logger.e('Generated list is null or has no ID, cannot set as active or navigate.');
+                            if (!dialogCtx.mounted) return;
+                            Navigator.of(dialogCtx, rootNavigator: true).pop(); // Dismiss dialog even if list creation failed
                           }
-                        } else {
-                          _logger.e('Generated list is null or has no ID, cannot set as active or navigate.');
-                          Navigator.of(dialogCtx, rootNavigator: true).pop(); // Dismiss dialog even if list creation failed
-                        }
-                        if (mounted) setLocal(() => _isLoading = false); // Stop loading
+                          if (!ctx.mounted) return;
+                          setLocal(() => _isLoading = false); // Stop loading
                         },
                   child: _isLoading
                       ? const SizedBox(

@@ -14,6 +14,7 @@ import 'package:shelf_control/models/pantry_item_model.dart';
 import 'package:shelf_control/models/product_model.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:shelf_control/screens/dashboard_page.dart'; // For navigation back to dashboard
+import 'package:shelf_control/services/shopping_list_service.dart'; // Import ShoppingListService
 
 class AddPantryItem extends StatefulWidget {
   final Function(PantryItemModel) onAddItem;
@@ -34,6 +35,8 @@ class AddPantryItem extends StatefulWidget {
 }
 
 class _AddPantryItemState extends State<AddPantryItem> {
+  late final ShoppingListService _shoppingListService; // Add this line
+
   // --- UI Colors from Design ---
   final Color headerGreen = const Color(0xFF2E7D32);
   final Color softCream = const Color(0xFFFAF8ED);
@@ -76,7 +79,6 @@ class _AddPantryItemState extends State<AddPantryItem> {
   bool _isPriceInvalid = false;
   String? _netWeightErrorText;
 
-  // For optional shelf life calculator
   DateTime? _selectedExpDate; // To store the actual expiration date
   DateTime? _selectedDopDate; // To store the actual date of production
   bool _showShelfLifeCalculator = false;
@@ -85,75 +87,6 @@ class _AddPantryItemState extends State<AddPantryItem> {
   final List<String> _shelfLifeUnits = ['Days', 'Weeks', 'Months', 'Years'];
   Timer? _debounce; // For autocomplete debouncing
 
-  // Define default shelf lives for categories in days based on research
-  final Map<String, int> _categoryShelfLives = {
-    'Bakery': 7, // 1 week
-    'Beverages': 270, // 9 months (general, UHT milk/juice longer, fresh juice shorter)
-    'Canned Goods': 730, // 2 years
-    'Condiments': 365, // 12 months (unopened)
-    'Dairy': 14, // 2 weeks (for refrigerated items like milk, yogurt)
-    'Dry Goods': 547, // 18 months (rice, pasta, flour)
-    'Snacks': 180, // 6 months
-    'Other': 180, // 6 months
-  };
-
-  // More granular shelf lives for specific subcategories/keywords
-  final Map<String, Map<String, int>> _subcategoryShelfLives = {
-    'Bakery': {
-      'bread': 7,
-      'cake': 7,
-      'pastries': 7,
-      'buns': 7,
-      'muffin': 7,
-      'donut': 3,
-      'pandesal': 7,
-      'ensaymada': 7,
-      'mamon': 7,
-    },
-    'Dairy': {
-      'fresh milk': 7,
-      'powdered milk': 270, // 9 months
-      'cheese': 60, // 2 months (hard cheese, softer cheese shorter)
-      'yogurt': 21, // 3 weeks
-      'butter': 90, // 3 months
-      'eggs': 30, // 1 month
-    },
-    'Beverages': {
-      'fresh juice': 7,
-      'uht milk': 270, // 9 months
-      'coffee': 365, // 12 months (unopened)
-      'tea': 730, // 2 years
-      'soda': 180, // 6 months
-      'water': 730, // 2 years
-    },
-    'Condiments': {
-      'vinegar': 730, // 2 years
-      'soy sauce': 365, // 1 year
-      'ketchup': 365, // 1 year
-      'mustard': 365, // 1 year
-      'dressing': 180, // 6 months
-      'spices': 730, // 2 years
-      'powder': 730, // 2 years
-      'salt': 1825, // 5 years
-    },
-    'Dry Goods': {
-      'rice': 730, // 2 years
-      'pasta': 730, // 2 years
-      'flour': 180, // 6 months
-      'cereal': 180, // 6 months
-      'oil': 365, // 1 year
-      'beans': 730, // 2 years (dried)
-      'sugar': 1825, // 5 years
-    },
-    'Snacks': {
-      'chips': 90, // 3 months
-      'crackers': 180, // 6 months
-      'cookies': 180, // 6 months
-      'chocolates': 270, // 9 months
-      'biscuits': 180, // 6 months
-      'packed fudge bars': 180, // 6 months
-    }
-  };
 
   @override
   void initState() {
@@ -168,6 +101,8 @@ class _AddPantryItemState extends State<AddPantryItem> {
     _shelfLifeValueCtrl = TextEditingController();
     _selectedShelfLifeUnit = 'Days';
     _selectedDopDate = DateTime.now();
+
+    _shoppingListService = Provider.of<ShoppingListService>(context, listen: false); // Initialize service
 
     _nameCtrl.addListener(() {
       if (_isNameInvalid && _nameCtrl.text.isNotEmpty) {
@@ -288,25 +223,15 @@ class _AddPantryItemState extends State<AddPantryItem> {
 
   void _updateExpirationDateFromCategory({bool forceUpdate = false}) {
     if ((_expCtrl.text.isEmpty || forceUpdate) && _selectedCategory != null && _selectedDopDate != null) {
-      int? shelfLife = _categoryShelfLives[_selectedCategory];
-      String itemName = _nameCtrl.text.toLowerCase();
+      final DateTime? calculatedExpDate = _shoppingListService.getExpirationDateForCategory(
+        _selectedCategory!,
+        _nameCtrl.text,
+        _selectedDopDate!,
+      );
 
-      if (_subcategoryShelfLives.containsKey(_selectedCategory)) {
-        final subcategoryMap = _subcategoryShelfLives[_selectedCategory]!;
-        for (final subcategoryEntry in subcategoryMap.entries) {
-          final subcategoryKeyword = subcategoryEntry.key;
-          final subcategorySpecificShelfLife = subcategoryEntry.value;
-          if (itemName.contains(subcategoryKeyword)) {
-            shelfLife = subcategorySpecificShelfLife;
-            break;
-          }
-        }
-      }
-
-      if (shelfLife != null) {
-        final int actualShelfLife = shelfLife;
+      if (calculatedExpDate != null) {
         setState(() {
-          _selectedExpDate = _selectedDopDate!.add(Duration(days: actualShelfLife));
+          _selectedExpDate = calculatedExpDate;
           _expCtrl.text = DateFormat('MMMM d, yyyy').format(_selectedExpDate!);
         });
       }

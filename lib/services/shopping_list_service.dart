@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:shelf_control/models/user_prefs_model.dart'; // Import UserPrefsModel
 import 'package:flutter/foundation.dart'; // Import for debugPrint
+import 'package:intl/intl.dart'; // Import for DateFormat
 
 class ShoppingListService {
   final FirebaseFirestore _firestore;
@@ -25,6 +26,129 @@ class ShoppingListService {
         _openFoodFactsService = OpenFoodFactsService(),
         _uuid = const Uuid(),
         _firestoreService = firestoreService; // Initialize _firestoreService in constructor
+
+  // Define default shelf lives for categories in days based on research
+  final Map<String, int> _categoryShelfLives = {
+    'Bakery': 7, // 1 week
+    'Beverages': 270, // 9 months (general, UHT milk/juice longer, fresh juice shorter)
+    'Canned Goods': 730, // 2 years
+    'Condiments': 365, // 12 months (unopened)
+    'Dairy': 14, // 2 weeks (for refrigerated items like milk, yogurt)
+    'Dry Goods': 547, // 18 months (rice, pasta, flour)
+    'Snacks': 180, // 6 months
+    'Other': 180, // 6 months
+  };
+
+  // More granular shelf lives for specific subcategories/keywords
+  final Map<String, Map<String, int>> _subcategoryShelfLives = {
+    'Bakery': {
+      'bread': 7,
+      'cake': 7,
+      'pastries': 7,
+      'buns': 7,
+      'muffin': 7,
+      'donut': 3,
+      'pandesal': 7,
+      'ensaymada': 7,
+      'mamon': 7,
+    },
+    'Dairy': {
+      'fresh milk': 7,
+      'powdered milk': 270, // 9 months
+      'cheese': 60, // 2 months (hard cheese, softer cheese shorter)
+      'yogurt': 21, // 3 weeks
+      'butter': 90, // 3 months
+      'eggs': 30, // 1 month
+    },
+    'Beverages': {
+      'fresh juice': 7,
+      'uht milk': 270, // 9 months
+      'coffee': 365, // 12 months (unopened)
+      'tea': 730, // 2 years
+      'soda': 180, // 6 months
+      'water': 730, // 2 years
+    },
+    'Condiments': {
+      'vinegar': 730, // 2 years
+      'soy sauce': 365, // 1 year
+      'ketchup': 365, // 1 year
+      'mustard': 365, // 1 year
+      'dressing': 180, // 6 months
+      'spices': 730, // 2 years
+      'powder': 730, // 2 years
+      'salt': 1825, // 5 years
+    },
+    'Dry Goods': {
+      'rice': 730, // 2 years
+      'pasta': 730, // 2 years
+      'flour': 180, // 6 months
+      'cereal': 180, // 6 months
+      'oil': 365, // 1 year
+      'beans': 730, // 2 years (dried)
+      'sugar': 1825, // 5 years
+    },
+    'Snacks': {
+      'chips': 90, // 3 months
+      'crackers': 180, // 6 months
+      'cookies': 180, // 6 months
+      'chocolates': 270, // 9 months
+      'biscuits': 180, // 6 months
+      'packed fudge bars': 180, // 6 months
+    }
+  };
+
+  // Helper to suggest category from item name
+  String? _suggestCategoryFromName(String itemName) {
+    itemName = itemName.toLowerCase();
+
+    final Map<String, List<String>> categoryKeywords = {
+      'Bakery': ['bread', 'cake', 'pastries', 'baking needs', 'buns', 'muffin', 'donut', 'pandesal', 'ensaymada', 'mamon'],
+      'Dairy': ['milk', 'yogurt', 'cheese', 'butter', 'margarine', 'spread', 'cream', 'eggs', 'evaporada', 'condensada'],
+      'Beverages': ['coffee', 'tea', 'juice', 'soda', 'water', 'chocolate drink', 'malt', 'drink', 'softdrink', 'powdered drink'],
+      'Canned Goods': ['canned', 'beans', 'soup', 'tuna', 'sardines', 'corned beef', 'meat loaf', 'luncheon meat', 'fruit cocktail'],
+      'Dry Goods': ['rice', 'pasta', 'flour', 'cereal', 'grains', 'seeds', 'oil', 'legumes', 'beans', 'soup mix', 'broth', 'noodles', 'sago', 'oats', 'oatmeal', 'sugar'],
+      'Snacks': [
+        'chips', 'crackers', 'cookies', 'nuts', 'candies', 'chocolates', 'biscuits', 'dips', 'wafer', 'bar', 'pastillas', 'polvoron',
+        'packed fudge bars'
+      ],
+      'Condiments': ['vinegar', 'soy sauce', 'ketchup', 'mustard', 'dressing', 'sauce', 'spices', 'powder', 'salt', 'bbq', 'seasoning', 'garlic bits', 'bagoong', 'chili', 'patis', 'fish sauce'],
+      'Other': [],
+    };
+
+    for (final categoryEntry in categoryKeywords.entries) {
+      final category = categoryEntry.key;
+      final keywords = categoryEntry.value;
+      for (final keyword in keywords) {
+        if (itemName.contains(keyword)) {
+          return category;
+        }
+      }
+    }
+    return 'Other';
+  }
+
+  // Helper to get expiration date based on category and item name
+  DateTime? getExpirationDateForCategory(String category, String itemName, DateTime manufacturedDate) {
+    int? shelfLife = _categoryShelfLives[category];
+    itemName = itemName.toLowerCase();
+
+    if (_subcategoryShelfLives.containsKey(category)) {
+      final subcategoryMap = _subcategoryShelfLives[category]!;
+      for (final subcategoryEntry in subcategoryMap.entries) {
+        final subcategoryKeyword = subcategoryEntry.key;
+        final subcategorySpecificShelfLife = subcategoryEntry.value;
+        if (itemName.contains(subcategoryKeyword)) {
+          shelfLife = subcategorySpecificShelfLife;
+          break;
+        }
+      }
+    }
+
+    if (shelfLife != null) {
+      return manufacturedDate.add(Duration(days: shelfLife));
+    }
+    return null;
+  }
 
   // Setter for FirestoreService is no longer needed as it's injected via constructor
   // void setFirestoreService(FirestoreService service) {
@@ -213,27 +337,38 @@ class ShoppingListService {
 
   // Activate a shopping list (optimized using Household's activeShoppingListId)
   Future<void> setActiveShoppingList(String householdId, String listId) async {
+    debugPrint('DEBUG: ShoppingListService.setActiveShoppingList called for householdId: $householdId, listId: $listId');
     WriteBatch batch = _firestore.batch();
     DocumentReference householdRef = _firestore.collection('households').doc(householdId);
 
     // Get the current household document to find the previously active list
     DocumentSnapshot householdDoc = await householdRef.get();
     String? previouslyActiveListId = (householdDoc.data() as Map<String, dynamic>?)?['activeShoppingListId'];
+    debugPrint('DEBUG: Previously active list ID for household $householdId: $previouslyActiveListId');
 
     // If there was a previously active list, set it to inactive
     if (previouslyActiveListId != null && previouslyActiveListId.isNotEmpty && previouslyActiveListId != listId) {
       DocumentReference prevListRef = _shoppingLists.doc(previouslyActiveListId);
       batch.update(prevListRef, {'isActive': false});
+      debugPrint('DEBUG: Added batch update to deactivate previous list: $previouslyActiveListId');
     }
 
     // Set the new list to active
     DocumentReference newListRef = _shoppingLists.doc(listId);
     batch.update(newListRef, {'isActive': true});
+    debugPrint('DEBUG: Added batch update to activate new list: $listId');
 
     // Update the household's activeShoppingListId
     batch.update(householdRef, {'activeShoppingListId': listId});
+    debugPrint('DEBUG: Added batch update to set household $householdId activeShoppingListId to: $listId');
 
-    await batch.commit();
+    try {
+      await batch.commit();
+      debugPrint('DEBUG: Batch commit for setActiveShoppingList successful.');
+    } catch (e) {
+      debugPrint('ERROR: Batch commit for setActiveShoppingList failed: $e');
+      rethrow; // Re-throw to propagate the error
+    }
   }
 
   // Stream all shopping lists for a given household
@@ -338,18 +473,27 @@ class ShoppingListService {
         .toList();
 
     if (productNamesWithoutPrice.isNotEmpty) {
-      // Fetch prices in a single batch query
-      final QuerySnapshot productsSnapshot = await _localProducts
-          .where('productName', whereIn: productNamesWithoutPrice)
-          .get();
+      // Split productNamesWithoutPrice into chunks of 30 or fewer for whereIn queries
+      const int chunkSize = 30;
+      for (int i = 0; i < productNamesWithoutPrice.length; i += chunkSize) {
+        final List<String> chunk = productNamesWithoutPrice.sublist(
+          i,
+          (i + chunkSize > productNamesWithoutPrice.length)
+              ? productNamesWithoutPrice.length
+              : i + chunkSize,
+        );
+        final QuerySnapshot productsSnapshot = await _localProducts
+            .where('productName', whereIn: chunk)
+            .get();
 
-      for (var doc in productsSnapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-        final productName = data['productName'] as String;
-        final price = (data['price'] as num?)?.toDouble() ?? 0.0;
-        if (price > 0) {
-          productPrices[productName] = price;
-          debugPrint('[_getHistoryBasedProductPool] Batched fetched price for $productName from local_products_ph: $price');
+        for (var doc in productsSnapshot.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final productName = data['productName'] as String;
+          final price = (data['price'] as num?)?.toDouble() ?? 0.0;
+          if (price > 0) {
+            productPrices[productName] = price;
+            debugPrint('[_getHistoryBasedProductPool] Batched fetched price for $productName from local_products_ph: $price');
+          }
         }
       }
     }
@@ -371,6 +515,11 @@ class ShoppingListService {
               netWeight: productNetWeights[productName],
               nutrition: productNutriScores[productName],
               ecoscore: productEcoscores[productName],
+              expirationDate: getExpirationDateForCategory(
+                productCategories[productName] ?? 'Other',
+                productName,
+                DateTime.now(), // Assume manufactured date is now for generated items
+              ),
             ),
           );
           debugPrint('[_getHistoryBasedProductPool] Added $productName to pool (Fixed Qty: 1, Price: $price)');
@@ -431,6 +580,11 @@ class ShoppingListService {
           quantity: 1,
           nutrition: scores?['nutriScore'],
           ecoscore: scores?['ecoscore'],
+          expirationDate: getExpirationDateForCategory(
+            item.category ?? 'Other',
+            item.name,
+            DateTime.now(), // Assume manufactured date is now for generated items
+          ),
           suggestionStatus: status, // Set the status here
         ));
       }
@@ -458,6 +612,11 @@ class ShoppingListService {
           quantity: 1,
           nutrition: scores?['nutriScore'],
           ecoscore: scores?['ecoscore'],
+          expirationDate: getExpirationDateForCategory(
+            item.category ?? 'Other',
+            item.productName,
+            DateTime.now(), // Assume manufactured date is now for generated items
+          ),
           suggestionStatus: 'History-based', // Differentiate history items
         ));
       }
@@ -511,67 +670,69 @@ class ShoppingListService {
     double currentCost = 0;
     int itemsAdded = 0;
 
-    List<ShoppingListItemModel> productPool;
+    List<ShoppingListItemModel> historyProductPool = [];
+    List<ShoppingListItemModel> localProductPool = [];
     final List<PantryItemModel> pantryItems = await _firestoreService.getPantryForHousehold(householdId);
     final Map<String, int> pantryStock = {
       for (var item in pantryItems) item.name.toLowerCase(): item.qty
     };
 
+    // 1. Get history-based products if useHistory is true
     if (useHistory) {
-      productPool = await _getHistoryBasedProductPool(householdId);
-      debugPrint('[generateBudgetFriendlyList] Using history-based pool. Size: ${productPool.length}');
-      if (productPool.isEmpty) {
-        debugPrint('[generateBudgetFriendlyList] History-based pool is empty, falling back to local products.');
-        // Fallback to local products if history pool is empty
-        QuerySnapshot productsSnapshot = await _localProducts.limit(fetchLimit).get();
-        productPool = productsSnapshot.docs.map((doc) {
-          var data = doc.data() as Map<String, dynamic>;
-          return ShoppingListItemModel(
-            id: _uuid.v4(), // Assign unique ID
-            productId: doc.id,
-            name: data['productName'],
-            brand: data['brand'],
-            netWeight: data['netWeight'],
-            category: data['category'],
-            unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
-            quantity: 1, // Fixed quantity to 1 as per user request
-            nutrition: data['nutriScore'],
-          );
-        }).where((item) => item.unitPrice > 0).toList();
-      }
-    } else {
-      debugPrint('[generateBudgetFriendlyList] Not using history, fetching from local products.');
-      QuerySnapshot productsSnapshot = await _localProducts.limit(fetchLimit).get();
-      productPool = productsSnapshot.docs.map((doc) {
-        var data = doc.data() as Map<String, dynamic>;
-        return ShoppingListItemModel(
-          id: _uuid.v4(), // Assign unique ID
-          productId: doc.id,
-          name: data['productName'],
-          brand: data['brand'],
-          netWeight: data['netWeight'],
-          category: data['category'],
-          unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
-          quantity: 1, // Fixed quantity to 1 as per user request
-          nutrition: data['nutriScore'],
-        );
-      }).where((item) => item.unitPrice > 0).toList();
+      historyProductPool = await _getHistoryBasedProductPool(householdId);
+      debugPrint('[generateBudgetFriendlyList] Using history-based pool. Size: ${historyProductPool.length}');
     }
 
-    // Filter out items already in pantry
-    productPool = productPool.where((item) {
+    // 2. Get local products
+    QuerySnapshot productsSnapshot = await _localProducts.limit(fetchLimit).get();
+    localProductPool = productsSnapshot.docs.map((doc) {
+      var data = doc.data() as Map<String, dynamic>;
+      return ShoppingListItemModel(
+        id: _uuid.v4(), // Assign unique ID
+        productId: doc.id,
+        name: data['productName'],
+        brand: data['brand'],
+        netWeight: data['netWeight'],
+        category: data['category'],
+        unitPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
+        quantity: 1, // Fixed quantity to 1 as per user request
+        nutrition: data['nutriScore'],
+        expirationDate: getExpirationDateForCategory(
+          data['category'] ?? 'Other',
+          data['productName'],
+          DateTime.now(), // Assume manufactured date is now for generated items
+        ),
+      );
+    }).where((item) => item.unitPrice > 0).toList();
+    debugPrint('[generateBudgetFriendlyList] Local product pool size: ${localProductPool.length}');
+
+    // Combine and filter product pools
+    List<ShoppingListItemModel> combinedProductPool = [];
+    Set<String> addedProductNames = {}; // To prevent duplicates
+
+    // Add history products first
+    for (var item in historyProductPool) {
       final inPantryQty = pantryStock[item.name.toLowerCase()] ?? 0;
-      if (inPantryQty > 0) {
-        debugPrint('[generateBudgetFriendlyList] Skipping ${item.name} as it is already in pantry (Qty: $inPantryQty).');
-        return false;
+      if (inPantryQty == 0 && !addedProductNames.contains(item.name)) {
+        combinedProductPool.add(item);
+        addedProductNames.add(item.name);
       }
-      return true;
-    }).toList();
-    debugPrint('[generateBudgetFriendlyList] Product pool after pantry filtering: ${productPool.length}');
+    }
+    debugPrint('[generateBudgetFriendlyList] Combined pool after history: ${combinedProductPool.length}');
+
+    // Add local products, avoiding duplicates and pantry items
+    for (var item in localProductPool) {
+      final inPantryQty = pantryStock[item.name.toLowerCase()] ?? 0;
+      if (inPantryQty == 0 && !addedProductNames.contains(item.name)) {
+        combinedProductPool.add(item);
+        addedProductNames.add(item.name);
+      }
+    }
+    debugPrint('[generateBudgetFriendlyList] Combined pool after local products: ${combinedProductPool.length}');
 
     // Group products by category
     Map<String, List<ShoppingListItemModel>> productsByCategory = {};
-    for (var product in productPool) {
+    for (var product in combinedProductPool) {
       if (product.category != null) {
         if (!productsByCategory.containsKey(product.category)) {
           productsByCategory[product.category!] = [];
@@ -584,11 +745,7 @@ class ShoppingListService {
     productsByCategory.values.forEach((list) => list.shuffle());
     List<String> categories = productsByCategory.keys.toList()..shuffle();
 
-    // Define a dynamic max price for a single item based on the budget
-    final double maxItemPrice = (budgetAmount * 0.3).clamp(0, 500);
-    debugPrint('[generateBudgetFriendlyList] Max item price: $maxItemPrice');
-
-    // Iterate through categories to ensure diversity
+    // Iterate through categories to ensure diversity and fill up to numberOfItems
     while ((numberOfItems == null || itemsAdded < numberOfItems) && categories.isNotEmpty) {
       for (int i = 0; i < categories.length; i++) {
         String category = categories[i];
@@ -596,12 +753,11 @@ class ShoppingListService {
 
         if (categoryProducts.isNotEmpty) {
           ShoppingListItemModel item = categoryProducts.removeAt(0);
-          // Quantity is now fixed to 1
           final int itemQuantity = 1;
           final double itemTotalPrice = item.unitPrice * itemQuantity;
 
-          if (item.unitPrice <= maxItemPrice && (currentCost + itemTotalPrice) <= budgetAmount) {
-            budgetList.add(item.copyWith(quantity: itemQuantity)); // Ensure quantity is 1
+          if ((currentCost + itemTotalPrice) <= budgetAmount) {
+            budgetList.add(item.copyWith(quantity: itemQuantity));
             currentCost += itemTotalPrice;
             itemsAdded++;
             debugPrint('[generateBudgetFriendlyList] Added ${item.name} (Fixed Qty: $itemQuantity). Current cost: $currentCost, Items added: $itemsAdded');
@@ -618,6 +774,12 @@ class ShoppingListService {
           categories.removeAt(i);
           i--; // Adjust index after removal
         }
+      }
+      // If we've iterated through all categories and still need more items,
+      // but no more items can be added within budget, break the loop.
+      if (itemsAdded < (numberOfItems ?? 0) && categories.isEmpty) {
+        debugPrint('[generateBudgetFriendlyList] No more items can be added within budget or categories exhausted.');
+        break;
       }
     }
     debugPrint('[generateBudgetFriendlyList] Final budget list size: ${budgetList.length}, Total cost: $currentCost');
@@ -681,6 +843,11 @@ class ShoppingListService {
           quantity: 1, // Fixed quantity to 1 as per user request
           nutrition: data['nutriScore'],
           ecoscore: data['ecoscore'],
+          expirationDate: getExpirationDateForCategory(
+            data['category'] ?? 'Other',
+            data['productName'],
+            DateTime.now(), // Assume manufactured date is now for generated items
+          ),
         );
       }).where((item) => item.unitPrice > 0 && !(item.name.toLowerCase().contains('cup noodles'))).toList();
 
