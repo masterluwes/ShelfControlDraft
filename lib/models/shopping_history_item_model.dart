@@ -6,6 +6,9 @@ class ShoppingHistoryItemModel {
   String? productId; // Reference to a product in local_products_ph or a generic product ID
   String productName;
   String? category;
+  String? netWeight; // New field
+  String? nutrition; // New field
+  String? ecoscore; // New field
   int quantity;
   DateTime purchaseDate;
   String actionType; // New field: 'Consumed' or 'Deleted'
@@ -17,6 +20,9 @@ class ShoppingHistoryItemModel {
     this.productId,
     required this.productName,
     this.category,
+    this.netWeight, // Initialize new field
+    this.nutrition, // Initialize new field
+    this.ecoscore, // Initialize new field
     required this.quantity,
     required this.purchaseDate,
     this.actionType = 'Consumed', // Default to 'Consumed'
@@ -32,6 +38,9 @@ class ShoppingHistoryItemModel {
       productId: data['productId'],
       productName: data['productName'] ?? '',
       category: data['category'],
+      netWeight: data['netWeight'], // Add to fromFirestore
+      nutrition: data['nutrition'], // Add to fromFirestore
+      ecoscore: data['ecoscore'], // Add to fromFirestore
       quantity: data['quantity'] ?? 1,
       purchaseDate: (data['purchaseDate'] as Timestamp).toDate(),
       actionType: data['actionType'] ?? 'Consumed', // Add actionType to fromFirestore
@@ -47,6 +56,9 @@ class ShoppingHistoryItemModel {
       productId: json['productId'],
       productName: json['productName'] ?? '',
       category: json['category'],
+      netWeight: json['netWeight'], // Add to fromJson
+      nutrition: json['nutrition'], // Add to fromJson
+      ecoscore: json['ecoscore'], // Add to fromJson
       quantity: json['quantity'] ?? 1,
       purchaseDate: DateTime.parse(json['purchaseDate']),
       actionType: json['actionType'] ?? 'Consumed',
@@ -62,6 +74,9 @@ class ShoppingHistoryItemModel {
       'productId': productId,
       'productName': productName,
       'category': category,
+      'netWeight': netWeight, // Add to toJson
+      'nutrition': nutrition, // Add to toJson
+      'ecoscore': ecoscore, // Add to toJson
       'quantity': quantity,
       'purchaseDate': purchaseDate.toIso8601String(),
       'actionType': actionType,
@@ -76,6 +91,9 @@ class ShoppingHistoryItemModel {
       'productId': productId,
       'productName': productName,
       'category': category,
+      'netWeight': netWeight, // Add to toFirestore
+      'nutrition': nutrition, // Add to toFirestore
+      'ecoscore': ecoscore, // Add to toFirestore
       'quantity': quantity,
       'purchaseDate': Timestamp.fromDate(purchaseDate),
       'actionType': actionType, // Add actionType to toFirestore
@@ -91,6 +109,9 @@ class ShoppingHistoryItemModel {
     String? productId,
     String? productName,
     String? category,
+    String? netWeight, // Add to copyWith
+    String? nutrition, // Add to copyWith
+    String? ecoscore, // Add to copyWith
     int? quantity,
     DateTime? purchaseDate,
     String? actionType, // Add actionType to copyWith
@@ -102,6 +123,9 @@ class ShoppingHistoryItemModel {
       productId: productId ?? this.productId,
       productName: productName ?? this.productName,
       category: category ?? this.category,
+      netWeight: netWeight ?? this.netWeight, // Use provided netWeight or current netWeight
+      nutrition: nutrition ?? this.nutrition, // Use provided nutrition or current nutrition
+      ecoscore: ecoscore ?? this.ecoscore, // Use provided ecoscore or current ecoscore
       quantity: quantity ?? this.quantity,
       purchaseDate: purchaseDate ?? this.purchaseDate,
       actionType: actionType ?? this.actionType, // Use provided actionType or current actionType

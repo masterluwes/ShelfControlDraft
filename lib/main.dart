@@ -10,8 +10,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:provider/provider.dart';
 import 'package:shelf_control/services/notification_service.dart'; // Import the new service
-// Import HouseholdSetupPage
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shelf_control/services/shopping_list_service.dart'; // Import ShoppingListService
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import dotenv
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,8 +31,17 @@ void main() async {
   await notificationService.initialize();
 
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => FirestoreService(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => FirestoreService()),
+        // ShoppingListService depends on FirestoreService, so it should be created after it.
+        // We use ProxyProvider to access FirestoreService.
+        Provider<ShoppingListService>(
+          create: (context) => ShoppingListService(
+            firestoreService: Provider.of<FirestoreService>(context, listen: false),
+          ),
+        ),
+      ],
       child: const ShelfControlApp(),
     ),
   );

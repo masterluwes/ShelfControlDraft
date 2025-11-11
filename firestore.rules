@@ -32,10 +32,9 @@ service cloud.firestore {
                       request.resource.data.name.size() > 0; // Allow authenticated user to create a household with a name and themselves as a member
       allow update: if request.auth.uid != null && (
         // Condition 1: An existing member updates activeShoppingListId or name
-        (isHouseholdMember(householdId) && (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeShoppingListId']) ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
-        )) ||
+        (isHouseholdMember(householdId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeShoppingListId', 'name'])
+        ) ||
         // Condition 2: An existing member removes themselves from the members list
         (isHouseholdMember(householdId) &&
           resource.data.members.hasAll([request.auth.uid]) && // User was a member

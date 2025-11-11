@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart'; // Import provider
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:logger/logger.dart'; // Import the logger package
+import 'package:shelf_control/models/user_prefs_model.dart'; // Import UserPrefsModel
 
 // ===== Top-level enum =====
 enum GenMode { budget, healthy }
@@ -601,17 +602,34 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                           IconData icon = Icons.list_alt_outlined; // Default icon
                           List<ShoppingListItemModel> generatedItems = []; // Declare here
 
-                          if (_householdId != null) {
+                          if (_householdId != null && _firestoreService.userId != null) {
+                            final UserPrefs? userPrefs = await _firestoreService.getUserPrefs(
+                              userId: _firestoreService.userId!,
+                              householdId: _householdId!,
+                            );
+                            final bool hasHistory = await _firestoreService.hasShoppingHistory(_householdId!);
+
                             switch (mode) {
                               case GenMode.budget:
                                 title = 'Budget ${formatPhp(budgetSliderValue)}';
                                 icon = Icons.account_balance_wallet_outlined;
-                                generatedItems = await _shoppingListService.generateBudgetFriendlyList(_householdId!, budgetSliderValue, numberOfItems: numberOfItems);
+                                generatedItems = await _shoppingListService.generateBudgetFriendlyList(
+                                  _householdId!,
+                                  budgetSliderValue,
+                                  numberOfItems: numberOfItems,
+                                  useHistory: hasHistory,
+                                );
                                 break;
                               case GenMode.healthy:
                                 title = 'Healthy Option'; // Add title for healthy mode
                                 icon = Icons.eco_outlined; // Add icon for healthy mode
-                                generatedItems = await _shoppingListService.generateHealthyOptionList(_householdId!, numberOfItems: numberOfItems, categories: ['Bakery', 'Dairy']);
+                                generatedItems = await _shoppingListService.generateHealthyOptionList(
+                                  _householdId!,
+                                  numberOfItems: numberOfItems,
+                                  categories: ['Bakery', 'Dairy'],
+                                  useHistory: hasHistory,
+                                  userPrefs: userPrefs,
+                                );
                                 break;
                             }
                           }

@@ -1403,8 +1403,29 @@ class FirestoreService extends ChangeNotifier {
         .snapshots()
         .map((snapshot) {
           debugPrint('DEBUG: searchProducts stream update for query: $query, products: ${snapshot.docs.length}');
-          return snapshot.docs.map((doc) => Product.fromFirestore(doc)).toList();
+      return snapshot.docs.map((doc) => Product.fromFirestore(doc)).toList();
         });
+  }
+
+  // Get product details by name from local_products_ph collection
+  Future<Product?> getProductDetailsByName(String productName) async {
+    debugPrint('DEBUG: getProductDetailsByName called for productName: $productName');
+    try {
+      final querySnapshot = await _db
+          .collection('local_products_ph')
+          .where('productName', isEqualTo: productName)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        return Product.fromFirestore(querySnapshot.docs.first);
+      }
+      debugPrint('DEBUG: Product $productName not found in local_products_ph.');
+      return null;
+    } catch (e) {
+      debugPrint('Error getting product details for $productName: $e');
+      return null;
+    }
   }
 
   CollectionReference<Map<String, dynamic>> _pantryCol(String householdId) {
@@ -1891,5 +1912,16 @@ class FirestoreService extends ChangeNotifier {
 
     // Update the last check timestamp after generating a notification
     await prefs.setString(_lastPantrySummaryNotificationCheckKey + householdId, DateTime.now().toIso8601String());
+  }
+
+  // Add a method to check if a household has any shopping history
+  Future<bool> hasShoppingHistory(String householdId) async {
+    debugPrint('DEBUG: hasShoppingHistory called for householdId: $householdId');
+    final querySnapshot = await _db
+        .collection('shoppingHistory')
+        .where('householdId', isEqualTo: householdId)
+        .limit(1)
+        .get();
+    return querySnapshot.docs.isNotEmpty;
   }
 }
