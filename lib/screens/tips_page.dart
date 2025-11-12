@@ -7,6 +7,29 @@ import 'package:shelf_control/services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 
+// --- Category normalization helpers ---
+String _norm(String? s) => (s ?? '').trim().toLowerCase();
+
+String _alias(String? s) {
+  final x = _norm(s);
+  if (x.isEmpty) return 'uncategorized';
+
+  // unify your common variants here
+  if (x == 'beverage' || x == 'beverages' || x == 'drinks') return 'beverages';
+  if (x == 'canned' || x == 'canned goods' || x == 'canned-goods')
+    return 'canned goods';
+  if (x == 'dairy' || x == 'milk' || x == 'milk/dairy') return 'dairy';
+  if (x == 'dry' || x == 'dry goods') return 'dry goods';
+  if (x == 'snack' || x == 'snacks') return 'snacks';
+  if (x == 'condiment' || x == 'condiments') return 'condiments';
+  if (x == 'produce' || x == 'fruits' || x == 'vegetables') return 'produce';
+  if (x == 'others' || x == 'other') return 'others';
+  if (x == 'uncategorized' || x == 'unclassified') return 'uncategorized';
+
+  // default: return normalized string
+  return x;
+}
+
 // --- NEW DATA MODEL ---
 // A placeholder class to represent a full pantry item's data.
 class PantryItem {
@@ -822,7 +845,19 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
 // ------------------------------------
 
 class TipsPage extends StatefulWidget {
-  const TipsPage({super.key});
+  /// Optional: preselect a category (e.g., "Dairy") and open a specific item
+  /// directly into its tips detail. `focusSection` can be "storage" to
+  /// emphasize storage guidance, but it's optional.
+  final String? deepLinkCategory;
+  final String? deepLinkItemName;
+  final String? focusSection; // e.g., "storage"
+
+  const TipsPage({
+    super.key,
+    this.deepLinkCategory,
+    this.deepLinkItemName,
+    this.focusSection,
+  });
 
   @override
   State<TipsPage> createState() => _TipsPageState();
@@ -838,12 +873,25 @@ class _TipsPageState extends State<TipsPage> {
   bool _initializingHousehold = true;
   bool _bootstrapping = true;
   Stream<List<PantryItemModel>>? _pantryItemsStream; // Stream for pantry items
+  String? _currentHouseholdId;
+  VoidCallback? _hhListener;
+  Future<WeatherAlert?>? _weatherFuture;
+  bool _handledDeepLink = false;
 
   @override
   void initState() {
     super.initState();
     _bootstrap(); // resolve auth + household, then load weather
   }
+
+  int _computeDaysUntil(DateTime? dt) {
+  if (dt == null) return 9999;
+  final now = DateTime.now();
+  // compare against start of today to avoid off-by-hours
+  final today = DateTime(now.year, now.month, now.day);
+  return dt.difference(today).inDays;
+}
+
 
   Future<void> _bootstrap() async {
     // Ensure we are authenticated (anon is fine in dev)
@@ -853,7 +901,7 @@ class _TipsPageState extends State<TipsPage> {
     }
 
     // Try FirestoreService’s stored household first
-    final svc = FirestoreService();
+    final svc = Provider.of<FirestoreService>(context, listen: false);
     String? hhId = svc.selectedHouseholdId;
 
     // If none stored, pick the first household where this user is a member
@@ -948,7 +996,6 @@ class _TipsPageState extends State<TipsPage> {
     }
   }
 
-
   final List<Map<String, dynamic>> categories = [
     {'name': 'General', 'icon': Icons.lightbulb},
     {'name': 'Beverages', 'icon': Icons.local_cafe},
@@ -1021,12 +1068,12 @@ class _TipsPageState extends State<TipsPage> {
             },
           ),
         ),
+        // Rebuild this page when FirestoreService notifies (household switch)
         Expanded(
-          child: ValueListenableBuilder<String?>(
-            valueListenable: FirestoreService().householdIdNotifier,
-            builder: (context, hhId, _) {
-              return _buildBodyContent(
-                  hhId: hhId); // pass the current household id down
+          child: Builder(
+            builder: (context) {
+              final fs = context.watch<FirestoreService>();
+              return _buildBodyContent(hhId: fs.selectedHouseholdId);
             },
           ),
         ),
@@ -1090,8 +1137,8 @@ class _TipsPageState extends State<TipsPage> {
     }
 
     // NOTE: prioritize the hhId passed from the ValueListenableBuilder
-    final String? effectiveHhId =
-        hhId ?? _hhId ?? FirestoreService().selectedHouseholdId;
+    final fs = context.read<FirestoreService>();
+    final String? effectiveHhId = hhId ?? fs.selectedHouseholdId ?? _hhId;
 
     if (effectiveHhId == null || effectiveHhId.isEmpty) {
       return Center(
@@ -1107,7 +1154,9 @@ class _TipsPageState extends State<TipsPage> {
     }
 
     return StreamBuilder<List<PantryItemModel>>(
-      stream: _pantryItemsStream,
+      stream: context
+          .read<FirestoreService>()
+          .getPantryItemsForHousehold(effectiveHhId!),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Padding(
@@ -1116,7 +1165,8 @@ class _TipsPageState extends State<TipsPage> {
                 style: const TextStyle(color: Colors.red)),
           );
         }
-        if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting ||
+            !snapshot.hasData) {
           return const SizedBox(
             height: 80,
             child: Center(child: CircularProgressIndicator()),
@@ -1129,27 +1179,78 @@ class _TipsPageState extends State<TipsPage> {
         final parsedPantryItems = pantryItemModels.map((pantryItemModel) {
           final daysUntil = pantryItemModel.expirationDate == null
               ? 0
-              : pantryItemModel.expirationDate!.difference(DateTime.now()).inDays;
+              : pantryItemModel.expirationDate!
+                  .difference(DateTime.now())
+                  .inDays;
 
           return PantryItem(
             name: pantryItemModel.name,
             category: pantryItemModel.category ?? 'Uncategorized',
             quantity: pantryItemModel.qty.toDouble(),
             price: pantryItemModel.price?.toDouble() ?? 0.0,
-            netWeight: double.tryParse(pantryItemModel.netWeight ?? '0.0') ?? 0.0,
+            netWeight:
+                double.tryParse(pantryItemModel.netWeight ?? '0.0') ?? 0.0,
             weightUnit: pantryItemModel.quantityUnit ?? 'pcs',
             daysUntilExpiration: daysUntil,
           );
         }).toList();
 
-        // Filter by the selected chip using the normalized category
+        // Filter by the selected chip using normalized/aliased category names
         final byChip = parsedPantryItems
-            .where((p) => p.category == selectedCategory)
+            .where((p) => _alias(p.category) == _alias(selectedCategory))
             .toList();
-        final listToShow =
-            byChip.isEmpty && parsedPantryItems.isNotEmpty ? parsedPantryItems : byChip;
+
+// IMPORTANT: no fallback to "all items" here
+        final listToShow = byChip;
 
         if (listToShow.isEmpty) return _buildEmptyState();
+
+        // --- Deep link handling: open the item's tips detail once, if requested ---
+        if (!_handledDeepLink &&
+            (widget.deepLinkItemName != null &&
+                widget.deepLinkItemName!.trim().isNotEmpty)) {
+          // Normalize helper (reuse yours if already present)
+          String _norm(String? s) => (s ?? '').trim().toLowerCase();
+
+          // If a category was provided, preselect it so the item is visible in this tab
+          if (widget.deepLinkCategory != null &&
+              widget.deepLinkCategory!.isNotEmpty) {
+            setState(() {
+              selectedCategory = widget.deepLinkCategory!;
+            });
+          }
+
+          // Try to find the item (use the entire pantry set, not only listToShow,
+          // to be robust even if categories were just switched)
+          final allItems = snapshot.data ?? const <PantryItemModel>[];
+          final match = allItems.firstWhere(
+            (p) => _norm(p.name) == _norm(widget.deepLinkItemName),
+            orElse: () =>
+                allItems.isNotEmpty ? allItems.first : null as PantryItemModel,
+          );
+
+          if (match != null) {
+            _handledDeepLink = true; // prevent repeated pushes
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (ctx) => ItemTipsDetailPage(
+                    item: PantryItem(
+                      name: match.name,
+                      category: match.category ?? 'Uncategorized',
+                      quantity: (match.qty ?? 0).toDouble(),
+                      price: (match.price ?? 0).toDouble(),
+                      netWeight: double.tryParse(match.netWeight ?? '0') ?? 0,
+                      weightUnit: match.quantityUnit ?? 'pcs',
+                      daysUntilExpiration:
+                          _computeDaysUntil(match.expirationDate),
+                    ),
+                  ),
+                ),
+              );
+            });
+          }
+        }
 
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
