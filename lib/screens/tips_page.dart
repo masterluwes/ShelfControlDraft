@@ -845,7 +845,19 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
 // ------------------------------------
 
 class TipsPage extends StatefulWidget {
-  const TipsPage({super.key});
+  /// Optional: preselect a category (e.g., "Dairy") and open a specific item
+  /// directly into its tips detail. `focusSection` can be "storage" to
+  /// emphasize storage guidance, but it's optional.
+  final String? deepLinkCategory;
+  final String? deepLinkItemName;
+  final String? focusSection; // e.g., "storage"
+
+  const TipsPage({
+    super.key,
+    this.deepLinkCategory,
+    this.deepLinkItemName,
+    this.focusSection,
+  });
 
   @override
   State<TipsPage> createState() => _TipsPageState();
@@ -864,12 +876,22 @@ class _TipsPageState extends State<TipsPage> {
   String? _currentHouseholdId;
   VoidCallback? _hhListener;
   Future<WeatherAlert?>? _weatherFuture;
+  bool _handledDeepLink = false;
 
   @override
   void initState() {
     super.initState();
     _bootstrap(); // resolve auth + household, then load weather
   }
+
+  int _computeDaysUntil(DateTime? dt) {
+  if (dt == null) return 9999;
+  final now = DateTime.now();
+  // compare against start of today to avoid off-by-hours
+  final today = DateTime(now.year, now.month, now.day);
+  return dt.difference(today).inDays;
+}
+
 
   Future<void> _bootstrap() async {
     // Ensure we are authenticated (anon is fine in dev)
@@ -1182,6 +1204,53 @@ class _TipsPageState extends State<TipsPage> {
         final listToShow = byChip;
 
         if (listToShow.isEmpty) return _buildEmptyState();
+
+        // --- Deep link handling: open the item's tips detail once, if requested ---
+        if (!_handledDeepLink &&
+            (widget.deepLinkItemName != null &&
+                widget.deepLinkItemName!.trim().isNotEmpty)) {
+          // Normalize helper (reuse yours if already present)
+          String _norm(String? s) => (s ?? '').trim().toLowerCase();
+
+          // If a category was provided, preselect it so the item is visible in this tab
+          if (widget.deepLinkCategory != null &&
+              widget.deepLinkCategory!.isNotEmpty) {
+            setState(() {
+              selectedCategory = widget.deepLinkCategory!;
+            });
+          }
+
+          // Try to find the item (use the entire pantry set, not only listToShow,
+          // to be robust even if categories were just switched)
+          final allItems = snapshot.data ?? const <PantryItemModel>[];
+          final match = allItems.firstWhere(
+            (p) => _norm(p.name) == _norm(widget.deepLinkItemName),
+            orElse: () =>
+                allItems.isNotEmpty ? allItems.first : null as PantryItemModel,
+          );
+
+          if (match != null) {
+            _handledDeepLink = true; // prevent repeated pushes
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (ctx) => ItemTipsDetailPage(
+                    item: PantryItem(
+                      name: match.name,
+                      category: match.category ?? 'Uncategorized',
+                      quantity: (match.qty ?? 0).toDouble(),
+                      price: (match.price ?? 0).toDouble(),
+                      netWeight: double.tryParse(match.netWeight ?? '0') ?? 0,
+                      weightUnit: match.quantityUnit ?? 'pcs',
+                      daysUntilExpiration:
+                          _computeDaysUntil(match.expirationDate),
+                    ),
+                  ),
+                ),
+              );
+            });
+          }
+        }
 
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),

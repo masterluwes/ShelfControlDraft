@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shelf_control/models/pantry_item_model.dart';
 import 'package:intl/intl.dart';
 import 'package:shelf_control/screens/editpantryitem.dart';
+import 'package:shelf_control/screens/tips_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PantryItemDetails extends StatefulWidget {
   final PantryItemModel item;
@@ -14,6 +16,38 @@ class PantryItemDetails extends StatefulWidget {
 
 class _PantryItemDetailsState extends State<PantryItemDetails> {
   late PantryItemModel item;
+
+  int _computeDaysUntil(dynamic exp) {
+  if (exp == null) return 9999;
+
+  DateTime? d;
+  if (exp is DateTime) {
+    d = exp;
+  } else if (exp is Timestamp) {
+    d = exp.toDate(); // requires cloud_firestore import
+  } else if (exp is String) {
+    // try ISO first
+    d = DateTime.tryParse(exp);
+    if (d == null) {
+      // fallback: yyyy-MM-dd
+      final m = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(exp.trim());
+      if (m != null) {
+        final y = int.parse(m.group(1)!);
+        final mo = int.parse(m.group(2)!);
+        final dd = int.parse(m.group(3)!);
+        d = DateTime(y, mo, dd);
+      }
+    }
+  }
+
+  if (d == null) return 9999;
+
+  // strip times to avoid timezone/off-by-one issues
+  final today = DateUtils.dateOnly(DateTime.now());
+  final target = DateUtils.dateOnly(d);
+  return target.difference(today).inDays;
+}
+
 
   // --- COLORS (from design) ---
   final Color headerGreen = const Color(0xFF2E7D32);
@@ -47,7 +81,8 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
           IconButton(
             icon: const Icon(Icons.edit, color: Colors.white, size: 24),
             onPressed: () async {
-              final PantryItemModel? result = await Navigator.push<PantryItemModel>(
+              final PantryItemModel? result =
+                  await Navigator.push<PantryItemModel>(
                 context,
                 MaterialPageRoute(
                   builder: (context) => EditPantryItem(item: item),
@@ -96,17 +131,20 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: item.imageUrl != null && item.imageUrl!.isNotEmpty
-                            ? Image.network(
-                                item.imageUrl!,
-                                fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const Center(
-                                        child: Icon(Icons.image_not_supported, color: Colors.grey)),
-                              )
-                            : Center(
-                                child: Icon(Icons.camera_alt_outlined, color: Colors.grey.shade400, size: 40),
-                              ),
+                          child: item.imageUrl != null &&
+                                  item.imageUrl!.isNotEmpty
+                              ? Image.network(
+                                  item.imageUrl!,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const Center(
+                                          child: Icon(Icons.image_not_supported,
+                                              color: Colors.grey)),
+                                )
+                              : Center(
+                                  child: Icon(Icons.camera_alt_outlined,
+                                      color: Colors.grey.shade400, size: 40),
+                                ),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -137,11 +175,12 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
                       Expanded(
                         child: _buildLabeledDetailField(
                           label: 'Item Price',
-                          value: item.price?.toStringAsFixed(2) ?? 'Not specified',
+                          value:
+                              item.price?.toStringAsFixed(2) ?? 'Not specified',
                           prefixText: '₱ ',
                         ),
                       ),
-                  const SizedBox(width: 16),
+                      const SizedBox(width: 16),
                       Expanded(
                         child: _buildLabeledDetailField(
                           label: 'Net Weight',
@@ -164,13 +203,36 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
                       subtitle:
                           'This section provides meal ideas using ${item.name}.'),
                   _buildTipsTile(
-                      icon: Icons.inventory_2_outlined,
-                      title: 'Proper Storage',
-                      subtitle: 'Learn how to store ${item.name}.'),
+                    icon: Icons.inventory_2_outlined,
+                    title: 'Proper Storage',
+                    subtitle: 'Learn how to store ${item.name}.',
+                    onTap: () {
+                      final item = widget.item; // or whatever your variable is
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ItemTipsDetailPage(
+                            item: PantryItem(
+                              name: item.name,
+                              category: item.category ?? 'Uncategorized',
+                              quantity: (item.qty ?? 0).toDouble(),
+                              price: (item.price ?? 0).toDouble(),
+                              netWeight:
+                                  double.tryParse(item.netWeight ?? '0') ?? 0,
+                              weightUnit: item.quantityUnit ?? 'pcs',
+                              daysUntilExpiration: _computeDaysUntil(
+                                  item.expirationDate), // or inline logic
+                            ),
+                            // remove if your constructor has different params
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                   if (item.nutrition != null && item.nutrition!.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     _buildTipsTile(
-                      icon: Icons.food_bank_outlined, // Using a generic food icon as nutrition_outlined is not available
+                      icon: Icons
+                          .food_bank_outlined, // Using a generic food icon as nutrition_outlined is not available
                       title: 'Nutrition Information',
                       subtitle: item.nutrition!,
                     ),
@@ -224,9 +286,9 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
     IconData iconData = Icons.check_circle;
 
     if (daysUntilExpiry <= 0) {
-      cardColor = const Color(0xFFFFEBEE); 
-      borderColor = const Color(0xFFFF3030); 
-      textColor = const Color(0xFFD32F2F);   
+      cardColor = const Color(0xFFFFEBEE);
+      borderColor = const Color(0xFFFF3030);
+      textColor = const Color(0xFFD32F2F);
       iconData = Icons.error;
     } else if (daysUntilExpiry <= 7) {
       cardColor = Colors.orange.shade100;
@@ -261,7 +323,8 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.inventory_2_outlined, color: Colors.grey.shade700, size: 18),
+                Icon(Icons.inventory_2_outlined,
+                    color: Colors.grey.shade700, size: 18),
                 const SizedBox(width: 6),
                 Text(
                   'Qty: ${item.qty}',
@@ -335,34 +398,46 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
     );
   }
 
-  Widget _buildTipsTile(
-      {required IconData icon,
-      required String title,
-      required String subtitle}) {
+  Widget _buildTipsTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    VoidCallback? onTap, // new
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                spreadRadius: 1,
-                blurRadius: 5)
-          ]),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            spreadRadius: 1,
+            blurRadius: 5,
+          ),
+        ],
+      ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Icon(icon, color: headerGreen, size: 28),
-        title: Text(title,
-            style: TextStyle(
-                color: inputTextColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 16)),
-        subtitle: Text(subtitle,
-            style: TextStyle(color: labelTextColor, fontSize: 14)),
-        trailing: Icon(Icons.arrow_forward_ios_rounded,
-            color: Colors.grey.shade500, size: 18),
-        onTap: () {},
+        title: Text(
+          title,
+          style: TextStyle(
+            color: inputTextColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(color: labelTextColor, fontSize: 14),
+        ),
+        trailing: Icon(
+          Icons.arrow_forward_ios_rounded,
+          color: Colors.grey.shade500,
+          size: 18,
+        ),
+        onTap: onTap, // use the callback
       ),
     );
   }
