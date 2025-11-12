@@ -861,6 +861,9 @@ class _TipsPageState extends State<TipsPage> {
   bool _initializingHousehold = true;
   bool _bootstrapping = true;
   Stream<List<PantryItemModel>>? _pantryItemsStream; // Stream for pantry items
+  String? _currentHouseholdId;
+  VoidCallback? _hhListener;
+  Future<WeatherAlert?>? _weatherFuture;
 
   @override
   void initState() {
@@ -876,7 +879,7 @@ class _TipsPageState extends State<TipsPage> {
     }
 
     // Try FirestoreService’s stored household first
-    final svc = FirestoreService();
+    final svc = Provider.of<FirestoreService>(context, listen: false);
     String? hhId = svc.selectedHouseholdId;
 
     // If none stored, pick the first household where this user is a member
@@ -1043,12 +1046,12 @@ class _TipsPageState extends State<TipsPage> {
             },
           ),
         ),
+        // Rebuild this page when FirestoreService notifies (household switch)
         Expanded(
-          child: ValueListenableBuilder<String?>(
-            valueListenable: FirestoreService().householdIdNotifier,
-            builder: (context, hhId, _) {
-              return _buildBodyContent(
-                  hhId: hhId); // pass the current household id down
+          child: Builder(
+            builder: (context) {
+              final fs = context.watch<FirestoreService>();
+              return _buildBodyContent(hhId: fs.selectedHouseholdId);
             },
           ),
         ),
@@ -1112,8 +1115,8 @@ class _TipsPageState extends State<TipsPage> {
     }
 
     // NOTE: prioritize the hhId passed from the ValueListenableBuilder
-    final String? effectiveHhId =
-        hhId ?? _hhId ?? FirestoreService().selectedHouseholdId;
+    final fs = context.read<FirestoreService>();
+    final String? effectiveHhId = hhId ?? fs.selectedHouseholdId ?? _hhId;
 
     if (effectiveHhId == null || effectiveHhId.isEmpty) {
       return Center(
@@ -1129,7 +1132,9 @@ class _TipsPageState extends State<TipsPage> {
     }
 
     return StreamBuilder<List<PantryItemModel>>(
-      stream: _pantryItemsStream,
+      stream: context
+          .read<FirestoreService>()
+          .getPantryItemsForHousehold(effectiveHhId!),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Padding(
