@@ -18,6 +18,7 @@ class ScanItemScreen extends StatefulWidget {
 class _ScanItemScreenState extends State<ScanItemScreen> {
   bool _isLoading = false;
   bool _isProcessingBarcode = false; // New flag to prevent re-entry
+  bool _isSaving = false; // New flag to prevent multiple saves
   final OpenFoodFactsService _openFoodFactsService = OpenFoodFactsService();
   final Logger _logger = Logger(); // Initialize logger
   late MobileScannerController _scannerController; // Declare controller
@@ -33,7 +34,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
   final TextEditingController _productNameController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
   final TextEditingController _netWeightController = TextEditingController(); // New controller for net weight
-  String _selectedCategory = 'Uncategorized'; // Default category
+  String _selectedCategory = 'Uncategorized'; // Default category (user's assigned)
+  String? _apiDetectedCategory; // New field for API detected categories (joined string for display)
 
   // Define brand-to-category mapping for local products
   final Map<String, String> _brandCategoryMap = {
@@ -231,78 +233,120 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         _logger.d('Scanner reset due to missing household ID.');
         return;
       }
+
       // Extract product name for keyword-based category detection
       String productName = product['product_name'] ?? 'Unknown Product';
-      String detectedCategory = 'Other'; // Default to 'Other'
       String? productBrand = product['brands']?.toString().split(',').first.trim(); // Get the first brand
+      List<String> rawApiCategoriesList = []; // To store multiple raw categories from Open Food Facts for display
+      String detectedCategoryForShelfLife = 'Other'; // Default to 'Other' for shelf-life calculation
 
       // Helper function to check if a category is one of our known categories
       bool _isKnownCategory(String category) {
         return _categoryShelfLives.keys.contains(category);
       }
 
-      // 1. Prioritize Open Food Facts Main Category
+      // --- Logic for rawApiCategoriesList (for display only) ---
+      if (product['categories_tags'] != null && product['categories_tags'] is List && product['categories_tags'].isNotEmpty) {
+        List<String> tags = List<String>.from(product['categories_tags']);
+        for (int i = 0; i < tags.length && i < 3; i++) { // Get up to the first 3 categories
+          String apiCategory = tags[i].split(':').last.replaceAll('-', ' ').capitalize();
+          rawApiCategoriesList.add(apiCategory);
+        }
+        _logger.d('Raw API Categories from categories_tags (for display): $rawApiCategoriesList');
+      } else if (product['categories'] != null && product['categories'] is String && product['categories'].isNotEmpty) {
+        // Fallback to 'categories' field if 'categories_tags' is not available
+        String singleCategory = product['categories'].toString().capitalize();
+        rawApiCategoriesList.add(singleCategory);
+        _logger.d('Raw API Category from categories (for display): $rawApiCategoriesList');
+      }
+
+      // --- Logic for detectedCategoryForShelfLife (for internal shelf-life calculation) ---
+      // This logic remains focused on mapping to our internal categories.
       if (product['categories_tags'] != null && product['categories_tags'] is List && product['categories_tags'].isNotEmpty) {
         for (String rawTag in List<String>.from(product['categories_tags'])) {
           String apiCategory = rawTag.split(':').last.replaceAll('-', ' ').capitalize();
 
-          // Map common API categories to our existing broader categories
           final Map<String, String> apiCategoryMapping = {
-            'Instant Noodles': 'Dry Goods',
-            'Desserts': 'Snacks',
-            'Breakfast': 'Dry Goods', // e.g., cereals
-            'Frozen Foods': 'Other', // Can be refined further if a 'Frozen' category is added
-            'Spreads': 'Condiments',
-            'Sweet snacks': 'Snacks',
-            'Salty snacks': 'Snacks',
-            'Meals': 'Other', // Generic, keep as Other for now
-            'Groceries': 'Other', // Generic, keep as Other for now
-            'Dairies': 'Dairy',
-            'Milks': 'Dairy',
-            'Cheeses': 'Dairy',
-            'Yogurts': 'Dairy',
-            'Breads': 'Bakery',
-            'Pastries': 'Bakery',
-            'Biscuits and cakes': 'Snacks',
-            'Beverages': 'Beverages',
-            'Juices': 'Beverages',
-            'Coffees': 'Beverages',
-            'Teas': 'Beverages',
-            'Canned foods': 'Canned Goods',
-            'Condiments': 'Condiments',
-            'Sauces': 'Condiments',
-            'Spices': 'Condiments',
-            'Rice': 'Dry Goods',
-            'Pasta': 'Dry Goods',
-            'Flours': 'Dry Goods',
-            'Sugars': 'Dry Goods',
-            'Chips': 'Snacks',
-            'Cookies': 'Snacks',
-            'Crackers': 'Snacks',
-            'Chocolates': 'Snacks',
+            'Instant Noodles': 'Dry Goods', 'Desserts': 'Snacks', 'Breakfast': 'Dry Goods',
+            'Frozen Foods': 'Other', 'Spreads': 'Condiments', 'Sweet snacks': 'Snacks',
+            'Salty snacks': 'Snacks', 'Meals': 'Other', 'Groceries': 'Other',
+            'Dairies': 'Dairy', 'Milks': 'Dairy', 'Cheeses': 'Dairy', 'Yogurts': 'Dairy',
+            'Breads': 'Bakery', 'Pastries': 'Bakery', 'Biscuits and cakes': 'Snacks',
+            'Beverages': 'Beverages', 'Juices': 'Beverages', 'Coffees': 'Beverages',
+            'Teas': 'Beverages', 'Canned foods': 'Canned Goods', 'Condiments': 'Condiments',
+            'Sauces': 'Condiments', 'Spices': 'Condiments', 'Rice': 'Dry Goods',
+            'Pasta': 'Dry Goods', 'Flours': 'Dry Goods', 'Sugars': 'Dry Goods',
+            'Chips': 'Snacks', 'Cookies': 'Snacks', 'Crackers': 'Snacks',
+            'Chocolates': 'Snacks', 'Foods': 'Other', // Explicitly map "Foods" to "Other"
           };
 
           String mappedApiCategory = apiCategoryMapping[apiCategory] ?? apiCategory;
 
           if (_isKnownCategory(mappedApiCategory)) {
-            detectedCategory = mappedApiCategory;
-            _logger.d('Category detected from Open Food Facts: $detectedCategory (from tag: $rawTag)');
-            break; // Found a good category, stop searching
+            detectedCategoryForShelfLife = mappedApiCategory;
+            _logger.d('Category detected from Open Food Facts for shelf-life: $detectedCategoryForShelfLife (from tag: $rawTag)');
+            break;
+          }
+        }
+      } else if (product['categories'] != null && product['categories'] is String && product['categories'].isNotEmpty) {
+        String apiCategory = product['categories'].toString().capitalize();
+        final Map<String, String> apiCategoryMapping = {
+          'Foods': 'Other', // Explicitly map "Foods" to "Other"
+        };
+        String mappedCategory = apiCategoryMapping[apiCategory] ?? apiCategory;
+        if (_isKnownCategory(mappedCategory)) {
+          detectedCategoryForShelfLife = mappedCategory;
+          _logger.d('Category detected from Open Food Facts "categories" for shelf-life: $detectedCategoryForShelfLife (from: $apiCategory)');
+        }
+      }
+
+      // 3. Brand-Based Categorization for shelf-life (if not already detected)
+      if (detectedCategoryForShelfLife == 'Other' && productBrand != null) {
+        String? brandCategory = _brandCategoryMap[productBrand];
+        if (brandCategory != null && _isKnownCategory(brandCategory)) {
+          detectedCategoryForShelfLife = brandCategory;
+          _logger.d('Category detected from Brand Map for shelf-life: $detectedCategoryForShelfLife (brand: $productBrand)');
+        }
+      }
+
+      // 4. Enhanced Keyword-Based Product Name Detection for shelf-life (if not already detected)
+      if (detectedCategoryForShelfLife == 'Other') {
+        final Map<String, String> keywordCategoryMap = {
+          'bread': 'Bakery', 'pastries': 'Bakery', 'cake': 'Bakery', 'buns': 'Bakery', 'muffin': 'Bakery', 'donut': 'Bakery', 'pandesal': 'Bakery', 'ensaymada': 'Bakery', 'mamon': 'Bakery',
+          'milk': 'Dairy', 'yogurt': 'Dairy', 'cheese': 'Dairy', 'butter': 'Dairy', 'eggs': 'Dairy',
+          'juice': 'Beverages', 'soda': 'Beverages', 'coffee': 'Beverages', 'tea': 'Beverages', 'water': 'Beverages',
+          'cream of mushroom': 'Condiments',
+          'canned': 'Canned Goods', 'sardines': 'Canned Goods', 'tuna': 'Canned Goods',
+          'sauce': 'Condiments', 'ketchup': 'Condiments', 'mustard': 'Condiments', 'vinegar': 'Condiments', 'soy sauce': 'Condiments', 'dressing': 'Condiments', 'spices': 'Condiments', 'powder': 'Condiments', 'salt': 'Condiments',
+          'rice': 'Dry Goods', 'pasta': 'Dry Goods', 'flour': 'Dry Goods', 'cereal': 'Dry Goods', 'oil': 'Dry Goods', 'beans': 'Dry Goods', 'sugar': 'Dry Goods',
+          'chips': 'Snacks', 'cookies': 'Snacks', 'crackers': 'Crackers',
+          'chocolates': 'Snacks', 'biscuits': 'Snacks', 'fudge bars': 'Snacks',
+          'instant noodles': 'Dry Goods',
+          'broth': 'Condiments',
+        };
+
+        String lowerCaseProductName = productName.toLowerCase();
+        for (var entry in keywordCategoryMap.entries) {
+          if (lowerCaseProductName.contains(entry.key)) {
+            detectedCategoryForShelfLife = entry.value;
+            _logger.d('Category detected from Keyword Map for shelf-life: $detectedCategoryForShelfLife (keyword: ${entry.key})');
+            break;
           }
         }
       }
 
-      // 2. Brand-Based Categorization (if not already detected)
-      if (detectedCategory == 'Other' && productBrand != null) {
+
+      // 2. Brand-Based Categorization for shelf-life (if not already detected)
+      if (detectedCategoryForShelfLife == 'Other' && productBrand != null) {
         String? brandCategory = _brandCategoryMap[productBrand];
         if (brandCategory != null && _isKnownCategory(brandCategory)) {
-          detectedCategory = brandCategory;
-          _logger.d('Category detected from Brand Map: $detectedCategory (brand: $productBrand)');
+          detectedCategoryForShelfLife = brandCategory;
+          _logger.d('Category detected from Brand Map for shelf-life: $detectedCategoryForShelfLife (brand: $productBrand)');
         }
       }
 
-      // 3. Enhanced Keyword-Based Product Name Detection (if not already detected)
-      if (detectedCategory == 'Other') {
+      // 3. Enhanced Keyword-Based Product Name Detection for shelf-life (if not already detected)
+      if (detectedCategoryForShelfLife == 'Other') {
         final Map<String, String> keywordCategoryMap = {
           'bread': 'Bakery', 'pastries': 'Bakery', 'cake': 'Bakery', 'buns': 'Bakery', 'muffin': 'Bakery', 'donut': 'Bakery', 'pandesal': 'Bakery', 'ensaymada': 'Bakery', 'mamon': 'Bakery',
           'milk': 'Dairy', 'yogurt': 'Dairy', 'cheese': 'Dairy', 'butter': 'Dairy', 'eggs': 'Dairy',
@@ -319,8 +363,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
         String lowerCaseProductName = productName.toLowerCase();
         for (var entry in keywordCategoryMap.entries) {
           if (lowerCaseProductName.contains(entry.key)) {
-            detectedCategory = entry.value;
-            _logger.d('Category detected from Keyword Map: $detectedCategory (keyword: ${entry.key})');
+            detectedCategoryForShelfLife = entry.value;
+            _logger.d('Category detected from Keyword Map for shelf-life: $detectedCategoryForShelfLife (keyword: ${entry.key})');
             break;
           }
         }
@@ -329,18 +373,19 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       // Set manufactured date to now if not provided by API (OpenFoodFacts usually doesn't provide it)
       DateTime manufacturedDate = DateTime.now();
       // Calculate expiration date based on category shelf life
-      DateTime expirationDate = _getExpirationDateForCategory(detectedCategory, manufacturedDate);
+      DateTime expirationDate = _getExpirationDateForCategory(detectedCategoryForShelfLife, manufacturedDate);
 
       final newItem = PantryItemModel(
         householdId: widget.isGuest ? firestoreService.userId! : firestoreService.selectedHouseholdId!, // Use the actual anonymous user ID for guests
         name: product['product_name'] ?? 'Unknown Product',
-        category: detectedCategory, // Set the detected category
+        category: detectedCategoryForShelfLife, // User's assigned category (for shelf-life calculation)
+        apiCategories: rawApiCategoriesList.isNotEmpty ? rawApiCategoriesList : null, // Store the raw API detected categories for display
         imageUrl: product['image_front_url'],
         qty: 1,
         barcode: barcode,
         quantityUnit: product['quantity'],
         nutritionFacts: product['nutriments'] is Map ? Map<String, dynamic>.from(product['nutriments']) : null,
-        shelfLifeDays: _categoryShelfLives[detectedCategory], // Store default shelf life
+        shelfLifeDays: _categoryShelfLives[detectedCategoryForShelfLife], // Store default shelf life
         shelfLifeWeeks: null,
         shelfLifeMonths: null,
         manufacturedDate: manufacturedDate,
@@ -351,7 +396,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       setState(() {
         _scannedItems.add(newItem);
         _currentItemIndex = _scannedItems.length - 1;
-        _selectedCategory = detectedCategory; // Update _selectedCategory for the UI
+        _selectedCategory = detectedCategoryForShelfLife; // Update _selectedCategory for the UI
+        _apiDetectedCategory = rawApiCategoriesList.isNotEmpty ? rawApiCategoriesList.join(', ') : null; // Update _apiDetectedCategory for the UI
         _manufacturedDate = manufacturedDate; // Update manufacturedDate for UI
         _expirationDate = expirationDate; // Update expirationDate for UI
         _updateControllersForItem(_currentItemIndex);
@@ -404,7 +450,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
     _productNameController.text = item.name;
     _quantityController.text = item.qty.toString();
     _netWeightController.text = item.netWeight ?? ''; // Update net weight controller
-    _selectedCategory = item.category;
+    _selectedCategory = item.category; // User's assigned category
+    _apiDetectedCategory = item.apiCategories?.join(', '); // API detected categories (joined string for display)
 
     // Update shelf-life and date fields
     _useManufacturedAndShelfLife = item.manufacturedDate != null || item.expirationDate != null || item.shelfLifeDays != null || item.shelfLifeWeeks != null || item.shelfLifeMonths != null;
@@ -425,22 +472,37 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
   }
 
   Future<void> _saveAllItems(FirestoreService firestoreService) async {
-    if (_scannedItems.isEmpty) {
+    if (_scannedItems.isEmpty || _isSaving) { // Prevent saving if no items or already saving
       return;
     }
 
-    if (widget.isGuest) {
-      List<PantryItemModel> guestPantry = await firestoreService.loadGuestPantryItems();
-      guestPantry.addAll(_scannedItems);
-      await firestoreService.saveGuestPantryItems(guestPantry);
-    } else {
-      for (final item in _scannedItems) {
-        await firestoreService.addPantryItem(item);
-      }
-    }
+    setState(() {
+      _isSaving = true;
+    });
 
-    if (mounted) {
-      Navigator.pop(context); // Pop after saving all items
+    try {
+      if (widget.isGuest) {
+        List<PantryItemModel> guestPantry = await firestoreService.loadGuestPantryItems();
+        guestPantry.addAll(_scannedItems);
+        await firestoreService.saveGuestPantryItems(guestPantry);
+      } else {
+        for (final item in _scannedItems) {
+          await firestoreService.addPantryItem(item);
+        }
+      }
+
+      if (mounted) {
+        Navigator.pop(context); // Pop after saving all items
+      }
+    } catch (e) {
+      _logger.e('Error saving items: $e');
+      // Optionally show an error message to the user
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
   }
 
@@ -603,8 +665,8 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                             Row(
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.check, color: Colors.white),
-                                  onPressed: () => _saveAllItems(firestoreService),
+                                  icon: Icon(Icons.check, color: _isSaving ? Colors.grey : Colors.white), // Gray out if saving
+                                  onPressed: _isSaving ? null : () => _saveAllItems(firestoreService), // Disable if saving
                                 ),
                               ],
                             ),
@@ -674,20 +736,25 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(8),
                                           ),
+                                          fillColor: (item.barcode != null && item.barcode!.isNotEmpty) ? Colors.grey[200] : null,
+                                          filled: item.barcode != null && item.barcode!.isNotEmpty,
                                         ),
-                                        onChanged: (value) => _scannedItems[_currentItemIndex].name = value,
+                                        onChanged: (item.barcode != null && item.barcode!.isNotEmpty) ? null : (value) => _scannedItems[_currentItemIndex].name = value,
                                       ),
                                       const SizedBox(height: 10),
                                       TextFormField(
                                         controller: _quantityController,
                                         keyboardType: TextInputType.number,
+                                        readOnly: item.barcode != null && item.barcode!.isNotEmpty, // Make read-only if barcode exists
                                         decoration: InputDecoration(
                                           labelText: 'Quantity',
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(8),
                                           ),
+                                          fillColor: (item.barcode != null && item.barcode!.isNotEmpty) ? Colors.grey[200] : null,
+                                          filled: item.barcode != null && item.barcode!.isNotEmpty,
                                         ),
-                                        onChanged: (value) => _scannedItems[_currentItemIndex].qty = int.tryParse(value) ?? 1,
+                                        onChanged: (item.barcode != null && item.barcode!.isNotEmpty) ? null : (value) => _scannedItems[_currentItemIndex].qty = int.tryParse(value) ?? 1,
                                       ),
                                       const SizedBox(height: 10),
                                       TextFormField(
@@ -698,41 +765,60 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(8),
                                           ),
+                                          fillColor: (item.barcode != null && item.barcode!.isNotEmpty) ? Colors.grey[200] : null,
+                                          filled: item.barcode != null && item.barcode!.isNotEmpty,
                                         ),
-                                        onChanged: (value) => _scannedItems[_currentItemIndex].netWeight = value,
+                                        onChanged: (item.barcode != null && item.barcode!.isNotEmpty) ? null : (value) => _scannedItems[_currentItemIndex].netWeight = value,
                                       ),
                                       const SizedBox(height: 10),
-                                      DropdownButtonFormField<String>(
-                                        initialValue: _selectedCategory,
-                                        decoration: InputDecoration(
-                                          labelText: 'Category',
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8),
+                                      // Conditional display for Category fields
+                                      if (_apiDetectedCategory != null && _apiDetectedCategory!.isNotEmpty)
+                                        TextFormField(
+                                          readOnly: true,
+                                          initialValue: _apiDetectedCategory,
+                                          decoration: InputDecoration(
+                                            labelText: 'Category', // Unified label
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            fillColor: Colors.grey[200],
+                                            filled: true,
                                           ),
+                                        )
+                                      else
+                                        DropdownButtonFormField<String>(
+                                          initialValue: _selectedCategory,
+                                          decoration: InputDecoration(
+                                            labelText: 'Category', // Unified label
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            fillColor: (item.barcode != null && item.barcode!.isNotEmpty) ? Colors.grey[200] : null,
+                                            filled: item.barcode != null && item.barcode!.isNotEmpty,
+                                          ),
+                                          items: <String>['Bakery', 'Beverages', 'Canned Goods', 'Condiments', 'Dairy', 'Dry Goods', 'Snacks', 'Other']
+                                              .map<DropdownMenuItem<String>>((String value) {
+                                            return DropdownMenuItem<String>(
+                                              value: value,
+                                              child: Text(value),
+                                            );
+                                          }).toList(),
+                                          onChanged: (item.barcode != null && item.barcode!.isNotEmpty)
+                                              ? null // Disable if barcode exists
+                                              : (String? newValue) {
+                                                  setState(() {
+                                                    _selectedCategory = newValue!;
+                                                    _scannedItems[_currentItemIndex].category = newValue;
+                                                  });
+                                                },
                                         ),
-                                        items: <String>['Bakery', 'Beverages', 'Canned Goods', 'Condiments', 'Dairy', 'Dry Goods', 'Snacks', 'Other']
-                                            .map<DropdownMenuItem<String>>((String value) {
-                                          return DropdownMenuItem<String>(
-                                            value: value,
-                                            child: Text(value),
-                                          );
-                                        }).toList(),
-                                        onChanged: (item.barcode != null && item.barcode!.isNotEmpty)
-                                            ? null // Disable if barcode exists
-                                            : (String? newValue) {
-                                                setState(() {
-                                                  _selectedCategory = newValue!;
-                                                  _scannedItems[_currentItemIndex].category = newValue;
-                                                });
-                                              },
-                                      ),
                                       const SizedBox(height: 20),
                                       // Shelf-life and Dates
                                       Row(
                                         children: [
                                           Checkbox(
                                             value: _useManufacturedAndShelfLife,
-                                            onChanged: (bool? newValue) {
+                                            onChanged: (item.barcode != null && item.barcode!.isNotEmpty) ? null : (bool? newValue) { // Make read-only if barcode exists
                                               setState(() {
                                                 _useManufacturedAndShelfLife = newValue!;
                                               });
@@ -748,7 +834,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                             Radio<String>(
                                               value: 'days',
                                               groupValue: _selectedShelfLifeUnit,
-                                              onChanged: (String? value) {
+                                              onChanged: (item.barcode != null && item.barcode!.isNotEmpty) ? null : (String? value) { // Make read-only if barcode exists
                                                 setState(() {
                                                   _selectedShelfLifeUnit = value!;
                                                 });
@@ -759,7 +845,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                             Radio<String>(
                                               value: 'weeks',
                                               groupValue: _selectedShelfLifeUnit,
-                                              onChanged: (String? value) {
+                                              onChanged: (item.barcode != null && item.barcode!.isNotEmpty) ? null : (String? value) { // Make read-only if barcode exists
                                                 setState(() {
                                                   _selectedShelfLifeUnit = value!;
                                                 });
@@ -770,7 +856,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                             Radio<String>(
                                               value: 'months',
                                               groupValue: _selectedShelfLifeUnit,
-                                              onChanged: (String? value) {
+                                              onChanged: (item.barcode != null && item.barcode!.isNotEmpty) ? null : (String? value) { // Make read-only if barcode exists
                                                 setState(() {
                                                   _selectedShelfLifeUnit = value!;
                                                 });
@@ -785,7 +871,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                           children: [
                                             Expanded(
                                               child: InkWell(
-                                                onTap: () async {
+                                                onTap: (item.barcode != null && item.barcode!.isNotEmpty) ? null : () async { // Make read-only if barcode exists
                                                   DateTime? pickedDate = await showDatePicker(
                                                     context: context,
                                                     initialDate: _manufacturedDate ?? DateTime.now(),
@@ -827,11 +913,14 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                                       borderRadius: BorderRadius.circular(8),
                                                     ),
                                                     suffixIcon: const Icon(Icons.calendar_today),
+                                                    fillColor: (item.barcode != null && item.barcode!.isNotEmpty) ? Colors.grey[200] : null,
+                                                    filled: item.barcode != null && item.barcode!.isNotEmpty,
                                                   ),
                                                   child: Text(
                                                     _manufacturedDate == null
                                                         ? 'Select Date'
                                                         : '${_manufacturedDate!.toLocal()}'.split(' ')[0],
+                                                    style: (item.barcode != null && item.barcode!.isNotEmpty) ? const TextStyle(color: Colors.black) : null,
                                                   ),
                                                 ),
                                               ),
@@ -841,6 +930,7 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                               child: TextFormField(
                                                 controller: _shelfLifeController,
                                                 keyboardType: TextInputType.number,
+                                                readOnly: item.barcode != null && item.barcode!.isNotEmpty, // Make read-only if barcode exists
                                                 decoration: InputDecoration(
                                                   labelText: 'Shelf-life',
                                                   border: OutlineInputBorder(
@@ -850,8 +940,10 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                                     borderSide: const BorderSide(color: Color(0xFF2E7D32)),
                                                     borderRadius: BorderRadius.circular(8),
                                                   ),
+                                                  fillColor: (item.barcode != null && item.barcode!.isNotEmpty) ? Colors.grey[200] : null,
+                                                  filled: item.barcode != null && item.barcode!.isNotEmpty,
                                                 ),
-                                                onChanged: (value) {
+                                                onChanged: (item.barcode != null && item.barcode!.isNotEmpty) ? null : (value) {
                                                   int? shelfLifeValue = int.tryParse(value);
                                                   if (shelfLifeValue != null) {
                                                     setState(() {
@@ -876,55 +968,26 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
                                           ],
                                         ),
                                         const SizedBox(height: 10),
-                                        InkWell(
-                                          onTap: () async {
-                                            DateTime? pickedDate = await showDatePicker(
-                                              context: context,
-                                              initialDate: _expirationDate ?? DateTime.now(),
-                                              firstDate: DateTime.now(),
-                                              lastDate: DateTime(2100),
-                                              builder: (context, child) {
-                                                return Theme(
-                                                  data: Theme.of(context).copyWith(
-                                                    colorScheme: const ColorScheme.light(
-                                                      primary: Color(0xFF2E7D32), // Header background color
-                                                      onPrimary: Colors.white, // Header text color
-                                                      onSurface: Colors.black, // Body text color
-                                                    ),
-                                                    textButtonTheme: TextButtonThemeData(
-                                                      style: TextButton.styleFrom(
-                                                        foregroundColor: const Color(0xFF2E7D32), // Button text color
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  child: child!,
-                                                );
-                                              },
-                                            );
-                                            if (pickedDate != null) {
-                                              setState(() {
-                                                _expirationDate = pickedDate;
-                                                _scannedItems[_currentItemIndex].expirationDate = pickedDate;
-                                              });
-                                            }
-                                          },
-                                          child: InputDecorator(
-                                            decoration: InputDecoration(
-                                              labelText: 'Expiration Date',
-                                              border: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(8),
-                                              ),
-                                              focusedBorder: OutlineInputBorder(
-                                                borderSide: const BorderSide(color: Color(0xFF2E7D32)),
-                                                borderRadius: BorderRadius.circular(8),
-                                              ),
-                                              suffixIcon: const Icon(Icons.calendar_today),
+                                        // Expiration Date (View-Only)
+                                        InputDecorator(
+                                          decoration: InputDecoration(
+                                            labelText: 'Expiration Date',
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(8),
                                             ),
-                                            child: Text(
-                                              _expirationDate == null
-                                                  ? 'Select Date'
-                                                  : '${_expirationDate!.toLocal()}'.split(' ')[0],
+                                            focusedBorder: OutlineInputBorder(
+                                              borderSide: const BorderSide(color: Color(0xFF2E7D32)),
+                                              borderRadius: BorderRadius.circular(8),
                                             ),
+                                            suffixIcon: const Icon(Icons.calendar_today),
+                                            fillColor: Colors.grey[200], // Make it look read-only
+                                            filled: true,
+                                          ),
+                                          child: Text(
+                                            _expirationDate == null
+                                                ? 'Not Set'
+                                                : '${_expirationDate!.toLocal()}'.split(' ')[0],
+                                            style: TextStyle(color: Colors.black), // Ensure text is visible
                                           ),
                                         ),
                                       ],

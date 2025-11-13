@@ -4,7 +4,8 @@ class PantryItemModel {
   String? id; // Firestore document ID
   String householdId; // New field for household ID
   String name;
-  String category;
+  String category; // User's assigned category
+  List<String>? apiCategories; // Categories detected from API
   String? imageUrl;
   int qty;
   String? expiresText; // This might be replaced by actual DateTime later
@@ -34,6 +35,7 @@ class PantryItemModel {
     required this.householdId, // Add householdId to constructor
     required this.name,
     required this.category,
+    this.apiCategories, // Add apiCategories to constructor
     this.imageUrl,
     required this.qty,
     this.expiresText,
@@ -66,6 +68,7 @@ class PantryItemModel {
       householdId: data['householdId'] ?? '',
       name: data['name'] ?? '',
       category: data['category'] ?? 'Uncategorized',
+      apiCategories: (data['apiCategories'] as List?)?.map((e) => e.toString()).toList(), // Add apiCategories from Firestore
       imageUrl: data['imageUrl'],
       qty: data['qty'] ?? 1,
       expiresText: data['expiresText']?.toString(),
@@ -98,6 +101,7 @@ class PantryItemModel {
       householdId: data['householdId'] ?? '',
       name: data['name'] ?? '',
       category: data['category'] ?? 'Uncategorized',
+      apiCategories: (data['apiCategories'] as List?)?.map((e) => e.toString()).toList(), // Add apiCategories from map
       imageUrl: data['imageUrl'],
       qty: data['qty'] ?? 1,
       expiresText: data['expiresText'],
@@ -129,6 +133,7 @@ class PantryItemModel {
       'householdId': householdId,
       'name': name,
       'category': category,
+      'apiCategories': apiCategories, // Add apiCategories to Firestore
       'imageUrl': imageUrl,
       'qty': qty,
       'expiresText': expiresText,
@@ -161,6 +166,7 @@ class PantryItemModel {
       'householdId': householdId,
       'name': name,
       'category': category,
+      'apiCategories': apiCategories, // Add apiCategories to JSON
       'imageUrl': imageUrl,
       'qty': qty,
       'expiresText': expiresText,
@@ -193,6 +199,7 @@ class PantryItemModel {
       householdId: json['householdId'] ?? '',
       name: json['name'] ?? '',
       category: json['category'] ?? 'Uncategorized',
+      apiCategories: (json['apiCategories'] as List?)?.map((e) => e.toString()).toList(), // Add apiCategories from JSON
       imageUrl: json['imageUrl'],
       qty: json['qty'] ?? 1,
       expiresText: json['expiresText']?.toString(),
@@ -224,6 +231,7 @@ class PantryItemModel {
     String? householdId,
     String? name,
     String? category,
+    List<String>? apiCategories,
     String? imageUrl,
     int? qty,
     String? expiresText,
@@ -253,6 +261,7 @@ class PantryItemModel {
       householdId: householdId ?? this.householdId,
       name: name ?? this.name,
       category: category ?? this.category,
+      apiCategories: apiCategories ?? this.apiCategories,
       imageUrl: imageUrl ?? this.imageUrl,
       qty: qty ?? this.qty,
       expiresText: expiresText ?? this.expiresText,

@@ -50,7 +50,8 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     'Category',
     'Name',
     'Quantity',
-    'Expiry'
+    'Expiry',
+    'Expiry Month'
   ];
   final List<String> _filterOptions = const [
     'All Items',
@@ -271,6 +272,15 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       return true;
     }).toList();
 
+    // Filter for 'Expiry Month' before sorting
+    if (sortBy == 'Expiry Month') {
+      final currentYear = DateTime.now().year;
+      list = list.where((item) =>
+          item.expirationDate != null &&
+          item.expirationDate!.year == currentYear
+      ).toList();
+    }
+
     list.sort((a, b) {
       if (sortBy == 'Expiry') {
         final statusA = _getItemStatus(a);
@@ -300,6 +310,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
         case 'Quantity':
           return b.qty.compareTo(a.qty);
         case 'Expiry':
+        case 'Expiry Month': // Sort by expiry date even when grouping by month
           if (a.expirationDate == null && b.expirationDate == null) return 0;
           if (a.expirationDate == null) return 1;
           if (b.expirationDate == null) return -1;
@@ -310,6 +321,38 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
       }
     });
     return list;
+  }
+
+  Map<String, List<PantryItemModel>> _getGroupedPantryItemsByMonth(List<PantryItemModel> items) {
+    final Map<String, List<PantryItemModel>> groupedItems = {};
+    final currentYear = DateTime.now().year;
+    final monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    for (var item in items) {
+      if (item.expirationDate != null && item.expirationDate!.year == currentYear) {
+        final month = item.expirationDate!.month;
+        final monthName = monthNames[month - 1]; // Month is 1-indexed
+
+        if (!groupedItems.containsKey(monthName)) {
+          groupedItems[monthName] = [];
+        }
+        groupedItems[monthName]!.add(item);
+      }
+    }
+
+    // Sort months chronologically
+    final sortedMonthKeys = groupedItems.keys.toList()
+      ..sort((a, b) => monthNames.indexOf(a).compareTo(monthNames.indexOf(b)));
+
+    final Map<String, List<PantryItemModel>> sortedGroupedItems = {};
+    for (var monthKey in sortedMonthKeys) {
+      sortedGroupedItems[monthKey] = groupedItems[monthKey]!;
+    }
+
+    return sortedGroupedItems;
   }
 
   // Widget for the status chip
@@ -881,7 +924,54 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             }
 
             _items = snapshot.data ?? [];
-            final view = _filteredAndSorted();
+
+            Widget content;
+            if (sortBy == 'Expiry Month') {
+              final groupedItems = _getGroupedPantryItemsByMonth(_filteredAndSorted());
+              if (groupedItems.isEmpty) {
+                content = const Center(child: Text('No pantry items expiring this year match the current filter.'));
+              } else {
+                content = ListView.builder(
+                  itemCount: groupedItems.keys.length,
+                  itemBuilder: (context, monthIndex) {
+                    final monthName = groupedItems.keys.elementAt(monthIndex);
+                    final itemsInMonth = groupedItems[monthName]!;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                          child: Text(
+                            monthName,
+                            style: TextStyle(
+                              color: headerGreen,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        ListView.separated(
+                          shrinkWrap: true, // Important for nested ListViews
+                          physics: const NeverScrollableScrollPhysics(), // Disable scrolling for inner list
+                          itemCount: itemsInMonth.length,
+                          separatorBuilder: (_, __) => Divider(height: 1, thickness: 1, color: sep),
+                          itemBuilder: (_, i) => _dismissibleRow(itemsInMonth, i, firestoreService),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              }
+            } else {
+              final view = _filteredAndSorted();
+              content = view.isEmpty
+                  ? const Center(child: Text('No pantry items match the current filter.'))
+                  : ListView.separated(
+                      itemCount: view.length,
+                      separatorBuilder: (_, __) => Divider(height: 1, thickness: 1, color: sep),
+                      itemBuilder: (_, i) => _dismissibleRow(view, i, firestoreService),
+                    );
+            }
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -894,13 +984,7 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
                 ],
                 const Divider(height: 1, thickness: 1, color: Color(0xFFE9E1C7)),
                 Expanded(
-                  child: view.isEmpty
-                      ? const Center(child: Text('No pantry items match the current filter.'))
-                      : ListView.separated(
-                          itemCount: view.length,
-                          separatorBuilder: (_, __) => Divider(height: 1, thickness: 1, color: sep),
-                          itemBuilder: (_, i) => _dismissibleRow(view, i, firestoreService),
-                        ),
+                  child: content,
                 ),
               ],
             );
