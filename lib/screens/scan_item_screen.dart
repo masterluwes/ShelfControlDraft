@@ -6,6 +6,7 @@ import 'package:logger/logger.dart'; // Import the logger package
 import 'package:mobile_scanner/mobile_scanner.dart'; // Import the new scanner package
 import 'package:shelf_control/services/firestore_service.dart'; // Import FirestoreService
 import 'package:provider/provider.dart'; // Import provider
+import 'package:shelf_control/screens/addpantryitem.dart'; // Import AddPantryItem
 
 class ScanItemScreen extends StatefulWidget {
   final bool isGuest;
@@ -438,9 +439,11 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       });
 
     } else {
-      // If product not found, reset scanner
-      _resetScanner();
-      _logger.d('Scanner reset after product not found.');
+      // If product not found, show manual add dialog
+      _logger.d('Product not found for barcode: $barcode. Showing manual add dialog.');
+      if (mounted) {
+        _showManualAddDialog(context, barcode, firestoreService);
+      }
     }
   }
 
@@ -518,6 +521,92 @@ class _ScanItemScreenState extends State<ScanItemScreen> {
       _manufacturedDate = null;
       _expirationDate = null;
     });
+  }
+
+  Future<void> _showManualAddDialog(BuildContext context, String barcode, FirestoreService firestoreService) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // User must tap a button to dismiss
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          backgroundColor: Colors.white, // Match the delete dialog's background
+          title: Text(
+            'Product Not Found',
+            style: TextStyle(
+              color: headerGreen, // Use the defined headerGreen
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text(
+                  'Barcode "$barcode" not found in database. Would you like to add this item manually?',
+                  style: TextStyle(
+                    color: inputTextColor, // Use the defined inputTextColor
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.grey[400], // Grey for "No"
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(); // Dismiss dialog
+                _resetScanner(); // Reset scanner to allow new scans
+              },
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: headerGreen, // Green for "Yes"
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+              child: const Text(
+                'Add Manually',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(); // Dismiss dialog
+                // Navigate to AddPantryItemScreen
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AddPantryItem(
+                      householdId: firestoreService.selectedHouseholdId!,
+                      isGuest: widget.isGuest,
+                      onAddItem: (item) {
+                        // This callback is called when an item is added in AddPantryItem
+                        // We can choose to do something with the item here if needed
+                        // For now, we just pop the AddPantryItem screen
+                        Navigator.pop(context); // Pop AddPantryItem
+                      },
+                      onBack: () {
+                        // This callback is called when the user presses back in AddPantryItem
+                        Navigator.pop(context); // Pop AddPantryItem
+                        _resetScanner(); // Reset scanner after returning from manual add
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -1026,3 +1115,7 @@ extension StringExtension on String {
     return "${this[0].toUpperCase()}${substring(1)}";
   }
 }
+
+// Define UI Colors for consistency
+const Color headerGreen = Color(0xFF2E7D32);
+const Color inputTextColor = Color(0xFF222222);
