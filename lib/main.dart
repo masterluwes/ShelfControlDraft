@@ -6,12 +6,14 @@ import 'package:shelf_control/screens/login_page.dart';
 import 'package:shelf_control/screens/welcome_page.dart';
 import 'package:shelf_control/screens/feature_preview_screen.dart';
 import 'package:shelf_control/screens/dashboard_page.dart';
+import 'package:shelf_control/screens/guest_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:provider/provider.dart';
 import 'package:shelf_control/services/notification_service.dart'; // Import the new service
 import 'package:shelf_control/services/shopping_list_service.dart'; // Import ShoppingListService
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import dotenv
+import 'package:shelf_control/services/guest_auth_service.dart'; // Import GuestAuthService
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,7 +66,7 @@ class ShelfControlApp extends StatelessWidget {
       routes: {
         '/create-account': (context) => const CreateAccountPage(),
         '/login': (context) => const LoginPage(),
-        '/guest': (context) => const DashboardPage(isGuest: true),
+        '/guest': (context) => const GuestPage(),
         '/feature-preview': (context) => const FeaturePreviewScreen(),
         '/dashboard': (context) => const DashboardPage(),
         '/welcome': (context) => const WelcomePage(), // Add welcome route
@@ -82,10 +84,13 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
+  Future<User?>? _guestReauthFuture;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _guestReauthFuture = GuestAuthService.reauthenticateGuest();
   }
 
   @override
@@ -109,21 +114,41 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.active) {
-          final User? user = snapshot.data;
-          if (user == null) {
-            return const WelcomePage();
+    return FutureBuilder<User?>(
+      future: _guestReauthFuture,
+      builder: (context, guestSnapshot) {
+        if (guestSnapshot.connectionState == ConnectionState.done) {
+          final User? guestUser = guestSnapshot.data;
+          if (guestUser != null && guestUser.isAnonymous) {
+            // If guest re-authentication was successful, go to dashboard
+            return DashboardPage(isGuest: true);
           }
-          // Update lastLoginAt when user is authenticated (e.g., after login or app start)
-          if (!user.isAnonymous) {
-            Provider.of<FirestoreService>(context, listen: false)
-                .updateLastLoginAt(user.uid);
-          }
-          return const HouseholdSetupPage();
+
+          // Otherwise, proceed with normal auth state changes
+          return StreamBuilder<User?>(
+            stream: FirebaseAuth.instance.authStateChanges(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.active) {
+                final User? user = snapshot.data;
+                if (user == null) {
+                  return const WelcomePage();
+                }
+                // Update lastLoginAt when user is authenticated (e.g., after login or app start)
+                if (!user.isAnonymous) {
+                  Provider.of<FirestoreService>(context, listen: false)
+                      .updateLastLoginAt(user.uid);
+                }
+                return const HouseholdSetupPage();
+              }
+              return const Scaffold(
+                body: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            },
+          );
         }
+        // While guest re-authentication is in progress
         return const Scaffold(
           body: Center(
             child: CircularProgressIndicator(),

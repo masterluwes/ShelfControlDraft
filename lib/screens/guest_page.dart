@@ -4,6 +4,7 @@ import 'package:shelf_control/screens/dashboard_page.dart';
 import 'package:shelf_control/screens/privacy_policy_screen.dart'; // Import Privacy Policy screen
 import 'package:shelf_control/screens/terms_and_conditions_screen.dart'; // Import Terms and Conditions screen
 import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
+import 'package:shelf_control/services/guest_auth_service.dart'; // Import GuestAuthService
 
 class GuestPage extends StatefulWidget {
   const GuestPage({super.key});
@@ -149,7 +150,10 @@ class _GuestPageState extends State<GuestPage> {
                 child: ElevatedButton(
                   onPressed: (_agreedToPrivacyPolicy && _agreedToTermsAndConditions)
                       ? () async {
-                          await FirebaseAuth.instance.signInAnonymously();
+                          UserCredential userCredential = await FirebaseAuth.instance.signInAnonymously();
+                          if (userCredential.user != null) {
+                            await GuestAuthService.saveGuestUid(userCredential.user!.uid);
+                          }
                           if (!mounted) return;
                           Navigator.pushReplacement(
                             context,

@@ -89,38 +89,49 @@ class _WelcomePageState extends State<WelcomePage> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                TextButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => const CreateAccountPage()),
-                    );
-                  },
-                  child: const Text(
-                    'Create Account',
-                    style: TextStyle(
-                      color: Color(0xFF2E7D32), // Forest Green
-                      decoration: TextDecoration.underline,
-                      fontSize: 16,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (context) => const CreateAccountPage()),
+                        );
+                      },
+                      child: const Text(
+                        'Create Account',
+                        style: TextStyle(
+                          color: Color(0xFF2E7D32), // Forest Green
+                          decoration: TextDecoration.underline,
+                          fontSize: 16,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => const GuestPage()),
-                    );
-                  },
-                  child: const Text(
-                    'Continue as Guest',
-                    style: TextStyle(
-                      color: Color(0xFF2E7D32), // Forest Green
-                      decoration: TextDecoration.underline,
-                      fontSize: 16,
+                    const Text(
+                      ' / ',
+                      style: TextStyle(
+                        color: Color(0xFF2E7D32), // Forest Green
+                        fontSize: 16,
+                      ),
                     ),
-                  ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (context) => const GuestPage()),
+                        );
+                      },
+                      child: const Text(
+                        'Continue as Guest',
+                        style: TextStyle(
+                          color: Color(0xFF2E7D32), // Forest Green
+                          decoration: TextDecoration.underline,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

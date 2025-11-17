@@ -1721,16 +1721,17 @@ class _ShoppinglistState extends State<Shoppinglist> {
                         color: headerGreen,
                       ),
                       const SizedBox(width: 10),
-                      _GreenPillButton(
-                        label: 'View All List',
-                        color: darkGreen,
-                        onTap: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const Viewalllist()),
-                          );
-                          // No explicit refresh needed, StreamBuilder will handle it
-                        },
-                      ),
+                      if (!widget.isGuest)
+                        _GreenPillButton(
+                          label: 'View All List',
+                          color: darkGreen,
+                          onTap: () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const Viewalllist()),
+                            );
+                            // No explicit refresh needed, StreamBuilder will handle it
+                          },
+                        ),
                       const SizedBox(width: 10),
                       const Spacer(),
                       // === Clear Purchase button ===
@@ -1760,101 +1761,102 @@ class _ShoppinglistState extends State<Shoppinglist> {
             Divider(height: 1, thickness: 1, color: sep),
 
             // ------- Suggestions (collapsible) -------
-            StreamBuilder<List<_Suggestion>>(
-              stream: _suggestionsStream,
-              builder: (context, suggestionsSnapshot) {
-                if (suggestionsSnapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (suggestionsSnapshot.hasError) {
-                  return Center(child: Text('Error: ${suggestionsSnapshot.error}'));
-                }
+            if (!widget.isGuest) // Hide suggestions for guest users
+              StreamBuilder<List<_Suggestion>>(
+                stream: _suggestionsStream,
+                builder: (context, suggestionsSnapshot) {
+                  if (suggestionsSnapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (suggestionsSnapshot.hasError) {
+                    return Center(child: Text('Error: ${suggestionsSnapshot.error}'));
+                  }
 
-                final List<_Suggestion> suggestions = (suggestionsSnapshot.data ?? [])
-                    ..sort((a, b) {
-                      // "Out of stock" should come before "Low stock"
-                      if (a.note == 'Out of stock' && b.note != 'Out of stock') {
-                        return -1;
-                      } else if (a.note != 'Out of stock' && b.note == 'Out of stock') {
-                        return 1;
-                      }
-                      // For other cases or if both are "Out of stock" or "Low stock", maintain original order
-                      return 0;
-                    });
+                  final List<_Suggestion> suggestions = (suggestionsSnapshot.data ?? [])
+                      ..sort((a, b) {
+                        // "Out of stock" should come before "Low stock"
+                        if (a.note == 'Out of stock' && b.note != 'Out of stock') {
+                          return -1;
+                        } else if (a.note != 'Out of stock' && b.note == 'Out of stock') {
+                          return 1;
+                        }
+                        // For other cases or if both are "Out of stock" or "Low stock", maintain original order
+                        return 0;
+                      });
 
-                return Container(
-                  color: Colors.white,
-                  padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
-                  child: Column(
-                    children: [
-                      InkWell(
-                        onTap: () =>
-                            setState(() => _suggestionsOpen = !_suggestionsOpen),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Row(
-                          children: [
-                            Text(
-                              'Suggestions (${suggestions.length})',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: Colors.grey.shade800,
-                                fontSize: 15.5,
-                              ),
-                            ),
-                            const Spacer(),
-                            Icon(
-                              _suggestionsOpen
-                                  ? Icons.keyboard_arrow_up_rounded
-                                  : Icons.keyboard_arrow_down_rounded,
-                              color: Colors.grey.shade800,
-                            ),
-                          ],
-                        ),
-                      ),
-                      AnimatedCrossFade(
-                        firstChild: const SizedBox.shrink(),
-                        secondChild: Column(
-                          children: [
-                            const SizedBox(height: 8),
-                            Container(
-                              constraints: const BoxConstraints(
-                                maxHeight: 220, // Limit height for scrollability
-                              ),
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  children: suggestions.map( // Display all suggestions
-                                    (s) => _SuggestionCard(
-                                      suggestion: s,
-                                      sep: sep,
-                                      headerGreen: headerGreen,
-                                      firestoreService: Provider.of<FirestoreService>(context, listen: false),
-                                      onAdd: (addedSuggestion) async {
-                                        if (widget.isGuest && items.length >= _maxGuestItems) {
-                                          _showLimitDialog();
-                                          return;
-                                        }
-                                        if (activeList != null) {
-                                          await _addItemFromSuggestion(addedSuggestion, activeList, items);
-                                        }
-                                      },
-                                    ),
-                                  ).toList(),
+                  return Container(
+                    color: Colors.white,
+                    padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
+                    child: Column(
+                      children: [
+                        InkWell(
+                          onTap: () =>
+                              setState(() => _suggestionsOpen = !_suggestionsOpen),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Suggestions (${suggestions.length})',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.grey.shade800,
+                                  fontSize: 15.5,
                                 ),
                               ),
-                            ),
-                          ],
+                              const Spacer(),
+                              Icon(
+                                _suggestionsOpen
+                                    ? Icons.keyboard_arrow_up_rounded
+                                    : Icons.keyboard_arrow_down_rounded,
+                                color: Colors.grey.shade800,
+                              ),
+                            ],
+                          ),
                         ),
-                        crossFadeState: _suggestionsOpen
-                            ? CrossFadeState.showSecond
-                            : CrossFadeState.showFirst,
-                        duration: const Duration(milliseconds: 180),
-                        sizeCurve: Curves.easeInOut,
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                        AnimatedCrossFade(
+                          firstChild: const SizedBox.shrink(),
+                          secondChild: Column(
+                            children: [
+                              const SizedBox(height: 8),
+                              Container(
+                                constraints: const BoxConstraints(
+                                  maxHeight: 220, // Limit height for scrollability
+                                ),
+                                child: SingleChildScrollView(
+                                  child: Column(
+                                    children: suggestions.map( // Display all suggestions
+                                      (s) => _SuggestionCard(
+                                        suggestion: s,
+                                        sep: sep,
+                                        headerGreen: headerGreen,
+                                        firestoreService: Provider.of<FirestoreService>(context, listen: false),
+                                        onAdd: (addedSuggestion) async {
+                                          if (widget.isGuest && items.length >= _maxGuestItems) {
+                                            _showLimitDialog();
+                                            return;
+                                          }
+                                          if (activeList != null) {
+                                            await _addItemFromSuggestion(addedSuggestion, activeList, items);
+                                          }
+                                        },
+                                      ),
+                                    ).toList(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          crossFadeState: _suggestionsOpen
+                              ? CrossFadeState.showSecond
+                              : CrossFadeState.showFirst,
+                          duration: const Duration(milliseconds: 180),
+                          sizeCurve: Curves.easeInOut,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
 
             Divider(height: 1, thickness: 1, color: sep),
 

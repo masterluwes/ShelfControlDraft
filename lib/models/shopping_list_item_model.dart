@@ -96,7 +96,7 @@ class ShoppingListItemModel {
       'ecoscore': ecoscore,
       'suggestionStatus': suggestionStatus,
       'originalPantryItemId': originalPantryItemId,
-      'expirationDate': expirationDate != null ? Timestamp.fromDate(expirationDate!) : null,
+      'expirationDate': expirationDate?.toIso8601String(),
     };
   }
 
