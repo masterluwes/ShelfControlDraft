@@ -10,6 +10,7 @@ class Product {
   final String? nutriScore;
   final DateTime? manufacturedDate;
   final DateTime? expirationDate;
+  final List<String>? allowedDiets; // New field for allowed diets
 
   Product({
     this.id,
@@ -21,6 +22,7 @@ class Product {
     this.nutriScore,
     this.manufacturedDate,
     this.expirationDate,
+    this.allowedDiets, // Added allowedDiets to constructor
   });
 
   factory Product.fromFirestore(DocumentSnapshot doc) {
@@ -35,6 +37,7 @@ class Product {
       nutriScore: data['nutriScore'],
       manufacturedDate: (data['manufacturedDate'] as Timestamp?)?.toDate(),
       expirationDate: (data['expirationDate'] as Timestamp?)?.toDate(),
+      allowedDiets: (data['allowedDiets'] as List<dynamic>?)?.map((e) => e.toString()).toList(), // Added allowedDiets to fromFirestore
     );
   }
 
@@ -48,6 +51,7 @@ class Product {
       'nutriScore': nutriScore,
       'manufacturedDate': manufacturedDate != null ? Timestamp.fromDate(manufacturedDate!) : null,
       'expirationDate': expirationDate != null ? Timestamp.fromDate(expirationDate!) : null,
+      'allowedDiets': allowedDiets, // Added allowedDiets to toFirestore
     };
   }
 
@@ -62,6 +66,7 @@ class Product {
     String? nutriScore,
     DateTime? manufacturedDate,
     DateTime? expirationDate,
+    List<String>? allowedDiets, // Added allowedDiets to copyWith
   }) {
     return Product(
       id: id ?? this.id,
@@ -73,6 +78,7 @@ class Product {
       nutriScore: nutriScore ?? this.nutriScore,
       manufacturedDate: manufacturedDate ?? this.manufacturedDate,
       expirationDate: expirationDate ?? this.expirationDate,
+      allowedDiets: allowedDiets ?? this.allowedDiets, // Used provided allowedDiets or current allowedDiets
     );
   }
 }

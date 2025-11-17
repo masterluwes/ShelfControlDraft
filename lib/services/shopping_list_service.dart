@@ -234,6 +234,7 @@ class ShoppingListService {
     String? category,
     String? netWeight,
     double? unitPrice,
+    List<String>? allowedDiets,
   }) async {
     final String? activeListId = await _firestoreService.getActiveShoppingListId(householdId);
     if (activeListId == null) {
@@ -269,6 +270,7 @@ class ShoppingListService {
         netWeight: netWeight,
         unitPrice: unitPrice ?? 0.0,
         isPurchased: false,
+        allowedDiets: allowedDiets,
       );
       await addShoppingListItem(activeListId, newItem);
     }
@@ -439,6 +441,7 @@ class ShoppingListService {
     Map<String, String?> productNetWeights = {};
     Map<String, String?> productNutriScores = {};
     Map<String, String?> productEcoscores = {};
+    Map<String, List<String>?> productAllowedDiets = {};
 
     for (var doc in historySnapshot.docs) {
       final item = ShoppingHistoryItemModel.fromFirestore(doc);
@@ -464,6 +467,7 @@ class ShoppingListService {
       productNetWeights[productName] = item.netWeight;
       productNutriScores[productName] = item.nutrition;
       productEcoscores[productName] = item.ecoscore;
+      productAllowedDiets[productName] = item.allowedDiets;
     }
 
     // Collect product names that still need price lookup from local_products_ph
@@ -586,6 +590,7 @@ class ShoppingListService {
             DateTime.now(), // Assume manufactured date is now for generated items
           ),
           suggestionStatus: status, // Set the status here
+          allowedDiets: item.allowedDiets,
         ));
       }
     }
@@ -618,6 +623,7 @@ class ShoppingListService {
             DateTime.now(), // Assume manufactured date is now for generated items
           ),
           suggestionStatus: 'History-based', // Differentiate history items
+          allowedDiets: item.allowedDiets,
         ));
       }
     }
@@ -701,9 +707,10 @@ class ShoppingListService {
           data['category'] ?? 'Other',
           data['productName'],
           DateTime.now(), // Assume manufactured date is now for generated items
-        ),
-      );
-    }).where((item) => item.unitPrice > 0).toList();
+          ),
+          allowedDiets: (data['allowed_diets'] as List?)?.map((e) => e.toString()).toList(),
+        );
+      }).where((item) => item.unitPrice > 0).toList();
     debugPrint('[generateBudgetFriendlyList] Local product pool size: ${localProductPool.length}');
 
     // Combine and filter product pools
@@ -848,6 +855,7 @@ class ShoppingListService {
             data['productName'],
             DateTime.now(), // Assume manufactured date is now for generated items
           ),
+          allowedDiets: (data['allowed_diets'] as List?)?.map((e) => e.toString()).toList(),
         );
       }).where((item) => item.unitPrice > 0 && !(item.name.toLowerCase().contains('cup noodles'))).toList();
 

@@ -55,6 +55,7 @@ class _AddPantryItemState extends State<AddPantryItem> {
   late TextEditingController _notesCtrl;
   late TextEditingController _quantityCtrl;
   int _quantity = 1;
+  List<String> _allowedDiets = []; // New state variable for allowedDiets
 
   final FocusNode _nameFocusNode = FocusNode();
   final FocusNode _notesFocusNode = FocusNode();
@@ -416,6 +417,7 @@ class _AddPantryItemState extends State<AddPantryItem> {
           ? null
           : '${_netWeightCtrl.text.trim()} $_selectedUnit',
       notes: _notesCtrl.text.isEmpty ? null : _notesCtrl.text,
+      allowedDiets: _allowedDiets.isEmpty ? null : _allowedDiets, // Add allowedDiets
     );
 
     widget.onAddItem(newItem);
@@ -748,6 +750,7 @@ class _AddPantryItemState extends State<AddPantryItem> {
                             }
                             _priceCtrl.text = selection.price?.toStringAsFixed(2) ?? '0.00';
                             if (selection.netWeight != null) _parseNetWeight(selection.netWeight!);
+                            _allowedDiets = selection.allowedDiets ?? []; // Set allowedDiets from selected product
 
                             if (selection.manufacturedDate != null) {
                               _selectedDopDate = selection.manufacturedDate;

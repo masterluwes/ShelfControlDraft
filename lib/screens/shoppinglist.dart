@@ -151,6 +151,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                   unitPrice: item.unitPrice, // Pass unit price
                   originalPantryItemId: item.originalPantryItemId, // Pass original pantry item ID
                   expirationDate: item.expirationDate, // Pass expiration date
+                  allowedDiets: item.allowedDiets, // Pass allowedDiets
                 ))
             .toList();
       });
@@ -218,6 +219,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
       barcode: null,
       status: 'Available',
       nutrition: item.nutrition,
+      allowedDiets: item.allowedDiets, // Add allowedDiets
     );
 
     if (existingPantryItemsSnapshot.docs.isNotEmpty) {
@@ -243,6 +245,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
           // Update expiration/manufactured dates only if the existing item doesn't have them
           expirationDate: existingPantryItem.expirationDate ?? expirationDate,
           manufacturedDate: existingPantryItem.manufacturedDate ?? manufacturedDate,
+          allowedDiets: item.allowedDiets, // Prioritize allowedDiets from shopping list item
         );
         await firestoreService.db.collection('pantryItems').doc(existingPantryItem.id).update(updatedPantryItem.toFirestore());
         debugPrint('DEBUG: _addPurchasedItemToPantry - Combined item: ${item.name}, new quantity: ${updatedPantryItem.qty}');
@@ -270,6 +273,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
       purchaseDate: DateTime.now(),
       actionType: 'Purchased',
       priceAtAction: item.unitPrice, // Add priceAtAction
+      allowedDiets: item.allowedDiets, // Add allowedDiets
     ).toFirestore());
   }
 
@@ -711,6 +715,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
     String? selectedCategory;
     int itemQuantity = 1; // Initialize quantity to 1
     DateTime? _selectedExpDate; // To store the actual expiration date
+    List<String> _allowedDiets = []; // New state variable for allowedDiets in dialog
 
     InputDecoration deco() => InputDecoration(
       filled: true,
@@ -804,6 +809,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                               }
                               unitPriceCtrl.text = selection.price?.toStringAsFixed(2) ?? '0.00';
                               sizeCtrl.text = selection.netWeight ?? '';
+                              _allowedDiets = selection.allowedDiets ?? []; // Set allowedDiets from selected product
                               _updateExpirationDateFromCategory(forceUpdate: true);
                             });
                           },
@@ -1101,6 +1107,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                     unitPrice: double.parse(unitPriceCtrl.text.trim()),
                                     quantity: itemQuantity,
                                     expirationDate: _selectedExpDate, // Use the selected/generated expiration date
+                                    allowedDiets: _allowedDiets.isEmpty ? null : _allowedDiets, // Add allowedDiets
                                   );
 
                                   if (activeList != null) {
@@ -1601,6 +1608,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
         nutrition: suggestion.nutrition?.trim().isEmpty == true ? null : suggestion.nutrition?.trim(),
         originalPantryItemId: suggestion.originalPantryItemId, // Pass original pantry item ID
         expirationDate: suggestion.expirationDate, // Pass expiration date
+        allowedDiets: suggestion.allowedDiets, // Pass allowedDiets
       );
 
       if (widget.isGuest) {
@@ -2054,6 +2062,7 @@ class _Suggestion {
   final double unitPrice; // Add unitPrice to _Suggestion model
   final String? originalPantryItemId; // New: To link back to the original pantry item
   final DateTime? expirationDate; // New: Expiration date for the item
+  final List<String>? allowedDiets; // New: Add allowedDiets to _Suggestion model
 
   _Suggestion({
     required this.id,
@@ -2066,6 +2075,7 @@ class _Suggestion {
     this.unitPrice = 0.0, // Default to 0.0 if not provided
     this.originalPantryItemId,
     this.expirationDate,
+    this.allowedDiets,
   });
 }
 

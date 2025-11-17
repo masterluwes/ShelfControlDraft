@@ -29,6 +29,7 @@ class PantryItemModel {
   String? storageLocation; // New field for storage location
   final double? price;
   DateTime? timestamp; // New field for creation/update timestamp
+  List<String>? allowedDiets; // New field for allowed diets
 
   PantryItemModel({
     this.id,
@@ -59,6 +60,7 @@ class PantryItemModel {
     this.storageLocation, // Add storageLocation to constructor
     this.price,
     this.timestamp,
+    this.allowedDiets, // Add allowedDiets to constructor
   });
 
   factory PantryItemModel.fromFirestore(DocumentSnapshot doc) {
@@ -92,6 +94,7 @@ class PantryItemModel {
       storageLocation: data['storageLocation'],
       price: (data['price'] as num?)?.toDouble(),
       timestamp: (data['timestamp'] as Timestamp?)?.toDate(),
+      allowedDiets: (data['allowedDiets'] as List?)?.map((e) => e.toString()).toList(),
     );
   }
 
@@ -124,6 +127,7 @@ class PantryItemModel {
       storageLocation: data['storageLocation'],
       price: (data['price'] as num?)?.toDouble(),
       timestamp: (data['timestamp'] is Timestamp) ? (data['timestamp'] as Timestamp).toDate() : (data['timestamp'] is String ? DateTime.tryParse(data['timestamp']) : null),
+      allowedDiets: (data['allowedDiets'] as List?)?.map((e) => e.toString()).toList(),
     );
   }
 
@@ -157,6 +161,7 @@ class PantryItemModel {
       'storageLocation': storageLocation,
       'price': price,
       'timestamp': timestamp != null ? Timestamp.fromDate(timestamp!) : FieldValue.serverTimestamp(),
+      'allowedDiets': allowedDiets,
     };
   }
 
@@ -190,6 +195,7 @@ class PantryItemModel {
       'storageLocation': storageLocation,
       'price': price,
       'timestamp': timestamp?.toIso8601String(),
+      'allowedDiets': allowedDiets,
     };
   }
 
@@ -255,6 +261,7 @@ class PantryItemModel {
     String? storageLocation,
     double? price,
     DateTime? timestamp,
+    List<String>? allowedDiets,
   }) {
     return PantryItemModel(
       id: id ?? this.id,
@@ -285,6 +292,7 @@ class PantryItemModel {
       storageLocation: storageLocation ?? this.storageLocation,
       price: price ?? this.price,
       timestamp: timestamp ?? this.timestamp,
+      allowedDiets: allowedDiets ?? this.allowedDiets,
     );
   }
 }

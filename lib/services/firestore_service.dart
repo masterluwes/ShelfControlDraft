@@ -869,6 +869,7 @@ class FirestoreService extends ChangeNotifier {
             quantity: 1,
             nutrition: scores?['nutriScore'],
             ecoscore: scores?['ecoscore'],
+            allowedDiets: item.allowedDiets, // Include allowedDiets from pantry item
             suggestionStatus: status, // Set the status here
             expirationDate: item.expirationDate, // Include expiration date
           ));
@@ -895,6 +896,7 @@ class FirestoreService extends ChangeNotifier {
             quantity: 1,
             nutrition: scores?['nutriScore'],
             ecoscore: scores?['ecoscore'],
+            allowedDiets: item.allowedDiets, // Include allowedDiets from history item
             suggestionStatus: 'Out of stock', // History items are considered out of stock
             // Expiration date is not available for history items unless explicitly stored
           ));
@@ -1042,6 +1044,7 @@ class FirestoreService extends ChangeNotifier {
         productId: productId, // Use the fetched productId
         productName: item.name,
         category: item.category,
+        allowedDiets: item.allowedDiets, // Add allowedDiets
         quantity: item.qty, // Log the quantity that was deleted
         purchaseDate: DateTime.now(), // Represents deletion date
         actionType: 'Deleted', // Set action type to 'Deleted'
@@ -1085,7 +1088,8 @@ class FirestoreService extends ChangeNotifier {
       category: item.category,
       netWeight: item.netWeight,
       nutrition: item.nutrition,
-      ecoscore: item.ecoscore, // Assuming PantryItemModel will have ecoscore in the future or it's derived elsewhere
+      ecoscore: item.ecoscore,
+      allowedDiets: item.allowedDiets,
       quantity: consumedQty,
       purchaseDate: DateTime.now(),
       actionType: 'Consumed',
@@ -1193,6 +1197,7 @@ class FirestoreService extends ChangeNotifier {
         netWeight: item.netWeight,
         nutrition: item.nutrition,
         ecoscore: item.ecoscore,
+        allowedDiets: item.allowedDiets, // Add allowedDiets
         quantity: wastedQty,
         purchaseDate: DateTime.now(), // Represents wastage date
         actionType:
@@ -1733,6 +1738,7 @@ class FirestoreService extends ChangeNotifier {
           netWeight: item.netWeight, // Add netWeight
           nutrition: item.nutrition, // Add nutrition
           ecoscore: item.ecoscore,
+          allowedDiets: item.allowedDiets, // Add allowedDiets
           quantity: consumedQty,
           purchaseDate: DateTime.now(),
           actionType: 'Consumed',

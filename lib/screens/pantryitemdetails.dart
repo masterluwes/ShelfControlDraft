@@ -197,11 +197,14 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
                           fontWeight: FontWeight.bold,
                           fontSize: 18)),
                   const SizedBox(height: 16),
-                  _buildTipsTile(
+                  if (item.allowedDiets != null && item.allowedDiets!.isNotEmpty) ...[
+                    _buildTipsTile(
                       icon: Icons.restaurant_menu_outlined,
-                      title: 'Meal Plan Suggestions',
-                      subtitle:
-                          'This section provides meal ideas using ${item.name}.'),
+                      title: 'Dietary Preferences',
+                      subtitle: 'The allowed diets are: ${item.allowedDiets!.join(', ')}',
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   _buildTipsTile(
                     icon: Icons.inventory_2_outlined,
                     title: 'Proper Storage',
@@ -231,8 +234,7 @@ class _PantryItemDetailsState extends State<PantryItemDetails> {
                   if (item.nutrition != null && item.nutrition!.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     _buildTipsTile(
-                      icon: Icons
-                          .food_bank_outlined, // Using a generic food icon as nutrition_outlined is not available
+                      icon: Icons.food_bank_outlined,
                       title: 'Nutrition Information',
                       subtitle: item.nutrition!,
                     ),

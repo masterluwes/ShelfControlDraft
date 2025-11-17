@@ -16,6 +16,7 @@ class ShoppingListItemModel {
   String? suggestionStatus; // New: To indicate suggestion source ('Low on stock', 'Out of stock')
   String? originalPantryItemId; // New: To link back to the original pantry item for suggestions
   DateTime? expirationDate; // New: Expiration date for the item
+  List<String>? allowedDiets; // New: Allowed diets for the item
 
   ShoppingListItemModel({
     this.id,
@@ -33,6 +34,7 @@ class ShoppingListItemModel {
     this.suggestionStatus,
     this.originalPantryItemId,
     this.expirationDate,
+    this.allowedDiets,
   });
 
   factory ShoppingListItemModel.fromFirestore(DocumentSnapshot doc) {
@@ -53,6 +55,7 @@ class ShoppingListItemModel {
       suggestionStatus: data['suggestionStatus'],
       originalPantryItemId: data['originalPantryItemId'],
       expirationDate: (data['expirationDate'] as Timestamp?)?.toDate(),
+      allowedDiets: (data['allowedDiets'] as List?)?.map((e) => e.toString()).toList(),
     );
   }
 
@@ -77,6 +80,7 @@ class ShoppingListItemModel {
           : (data['expirationDate'] is String)
               ? DateTime.tryParse(data['expirationDate'])
               : null,
+      allowedDiets: (data['allowedDiets'] as List?)?.map((e) => e.toString()).toList(),
     );
   }
 
@@ -97,6 +101,7 @@ class ShoppingListItemModel {
       'suggestionStatus': suggestionStatus,
       'originalPantryItemId': originalPantryItemId,
       'expirationDate': expirationDate?.toIso8601String(),
+      'allowedDiets': allowedDiets,
     };
   }
 
@@ -116,6 +121,7 @@ class ShoppingListItemModel {
     String? suggestionStatus,
     String? originalPantryItemId,
     DateTime? expirationDate,
+    List<String>? allowedDiets,
   }) {
     return ShoppingListItemModel(
       id: id ?? this.id,
@@ -133,6 +139,7 @@ class ShoppingListItemModel {
       suggestionStatus: suggestionStatus ?? this.suggestionStatus,
       originalPantryItemId: originalPantryItemId ?? this.originalPantryItemId,
       expirationDate: expirationDate ?? this.expirationDate,
+      allowedDiets: allowedDiets ?? this.allowedDiets,
     );
   }
 }
