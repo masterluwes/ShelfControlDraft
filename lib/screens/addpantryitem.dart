@@ -65,6 +65,8 @@ class _AddPantryItemState extends State<AddPantryItem> {
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
   bool _isUploadingImage = false;
+  bool _isLoadingSave = false; // New loading state for the save button
+  bool _isLoadingCancel = false; // New loading state for the cancel button
 
   String? _selectedCategory;
   final List<String> _categories = <String>[
@@ -378,50 +380,61 @@ class _AddPantryItemState extends State<AddPantryItem> {
   }
 
   Future<void> _addItem() async {
-    final price = double.tryParse(_priceCtrl.text) ?? 0.0;
-    setState(() {
-      _isNameInvalid = _nameCtrl.text.isEmpty;
-      _isCategoryInvalid = _selectedCategory == null;
-      _isExpDateInvalid = _expCtrl.text.isEmpty;
-      _isPriceInvalid = price <= 0.0;
-    });
+    if (_isLoadingSave) return; // Prevent multiple submissions
+    setState(() => _isLoadingSave = true);
 
-    if (_isNameInvalid || _isCategoryInvalid || _isExpDateInvalid || _isPriceInvalid) {
-      // Optionally, show a dialog or other non-snackbar feedback here
-      return;
-    }
+    try {
+      final price = double.tryParse(_priceCtrl.text) ?? 0.0;
+      setState(() {
+        _isNameInvalid = _nameCtrl.text.isEmpty;
+        _isCategoryInvalid = _selectedCategory == null;
+        _isExpDateInvalid = _expCtrl.text.isEmpty;
+        _isPriceInvalid = price <= 0.0;
+      });
 
-    if (widget.isGuest) {
-      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
-      if (currentGuestPantry.length >= 10) { // Assuming a limit of 10 items for guests
-        if (!mounted) return;
-        // Optionally, show a dialog or other non-snackbar feedback here
+      if (_isNameInvalid || _isCategoryInvalid || _isExpDateInvalid || _isPriceInvalid) {
+        return; // Validation failed
+      }
+
+      if (widget.isGuest) {
+        final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+        List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
+        if (currentGuestPantry.length >= 10) {
+          if (!mounted) return;
+          // Optionally, show a dialog or other non-snackbar feedback here
+          return;
+        }
+      }
+
+      String? imageUrl = await _uploadImageToFirebase();
+      if (imageUrl == null && _selectedImage != null) {
+        // Image upload failed, but an image was selected.
         return;
       }
+
+      final newItem = PantryItemModel(
+        householdId: widget.householdId,
+        name: _nameCtrl.text,
+        category: _selectedCategory!,
+        price: price,
+        imageUrl: imageUrl,
+        qty: _quantity,
+        expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text),
+        manufacturedDate: _selectedDopDate,
+        netWeight: _netWeightCtrl.text.trim().isEmpty
+            ? null
+            : '${_netWeightCtrl.text.trim()} $_selectedUnit',
+        notes: _notesCtrl.text.isEmpty ? null : _notesCtrl.text,
+        allowedDiets: _allowedDiets.isEmpty ? null : _allowedDiets,
+      );
+
+      widget.onAddItem(newItem);
+      if (mounted) _showSuccessDialog();
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingSave = false);
+      }
     }
-
-    String? imageUrl = await _uploadImageToFirebase();
-    if (imageUrl == null && _selectedImage != null) return;
-
-    final newItem = PantryItemModel(
-      householdId: widget.householdId,
-      name: _nameCtrl.text,
-      category: _selectedCategory!,
-      price: price,
-      imageUrl: imageUrl,
-      qty: _quantity,
-      expirationDate: DateFormat('MMMM d, yyyy').parse(_expCtrl.text),
-      manufacturedDate: _selectedDopDate,
-      netWeight: _netWeightCtrl.text.trim().isEmpty
-          ? null
-          : '${_netWeightCtrl.text.trim()} $_selectedUnit',
-      notes: _notesCtrl.text.isEmpty ? null : _notesCtrl.text,
-      allowedDiets: _allowedDiets.isEmpty ? null : _allowedDiets, // Add allowedDiets
-    );
-
-    widget.onAddItem(newItem);
-    if (mounted) _showSuccessDialog();
   }
 
   void _showSuccessDialog() {
@@ -468,50 +481,66 @@ class _AddPantryItemState extends State<AddPantryItem> {
   void _showCancelConfirmationDialog() {
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: !_isLoadingCancel, // Prevent dismissal while loading
       builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 60),
-              const SizedBox(height: 16),
-              Text('Cancel Registration', style: TextStyle(
-                  color: inputTextColor, fontSize: 22, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
-              const SizedBox(height: 8),
-              Text('Are you sure you want to cancel? The details will not be saved.',
-                  style: TextStyle(color: labelTextColor, fontSize: 16, fontFamily: 'Inter'), textAlign: TextAlign.center),
-              const SizedBox(height: 24),
-              Row(
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: TextButton(
-                      style: TextButton.styleFrom(
-                          backgroundColor: const Color(0xFF9E9E9E),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(vertical: 14)),
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      child: const Text('No', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: TextButton(
-                      style: TextButton.styleFrom(
-                          backgroundColor: headerGreen,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(vertical: 14)),
-                      onPressed: () {
-                        Navigator.of(dialogContext).pop();
-                        widget.onBack();
-                      },
-                      child: const Text('Yes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
+                  const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 60),
+                  const SizedBox(height: 16),
+                  Text('Cancel Registration', style: TextStyle(
+                      color: inputTextColor, fontSize: 22, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+                  const SizedBox(height: 8),
+                  Text('Are you sure you want to cancel? The details will not be saved.',
+                      style: TextStyle(color: labelTextColor, fontSize: 16, fontFamily: 'Inter'), textAlign: TextAlign.center),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          style: TextButton.styleFrom(
+                              backgroundColor: const Color(0xFF9E9E9E),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(vertical: 14)),
+                          onPressed: _isLoadingCancel ? null : () => Navigator.of(dialogContext).pop(),
+                          child: const Text('No', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: TextButton(
+                          style: TextButton.styleFrom(
+                              backgroundColor: headerGreen,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(vertical: 14)),
+                          onPressed: _isLoadingCancel ? null : () async {
+                            setDialogState(() => _isLoadingCancel = true);
+                            // Simulate a short delay for visual feedback if needed, or just perform the action
+                            await Future.delayed(const Duration(milliseconds: 300));
+                            if (mounted) {
+                              Navigator.of(dialogContext).pop();
+                              widget.onBack();
+                            }
+                            // No need to set _isLoadingCancel to false as the dialog is gone
+                          },
+                          child: _isLoadingCancel
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                )
+                              : const Text('Yes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -680,10 +709,10 @@ class _AddPantryItemState extends State<AddPantryItem> {
           Padding(
             padding: const EdgeInsets.only(right: 12.0),
             child: IconButton(
-              icon: _isUploadingImage
+              icon: _isLoadingSave || _isUploadingImage
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : const Icon(Icons.save, color: Colors.white, size: 28),
-              onPressed: _isUploadingImage ? null : _addItem,
+              onPressed: _isLoadingSave || _isUploadingImage ? null : _addItem,
             ),
           ),
         ],

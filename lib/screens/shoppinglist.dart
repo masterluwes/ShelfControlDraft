@@ -51,6 +51,10 @@ class _ShoppinglistState extends State<Shoppinglist> {
   // Guest limit
   static const int _maxGuestItems = 15;
   bool _suggestionsOpen = false; // State for suggestions collapsible
+  bool _isLoadingAddItem = false; // New state variable for "Add new Item" button loading indicator
+  bool _isLoadingClearPurchased = false; // New state variable for "Clear Purchased Items" icon loading indicator
+  bool _isLoadingSuggestionAdd = false; // New state variable for _SuggestionCard "Add" button
+  bool _isLoadingDeleteItem = false; // New state variable for "Delete" SlidableAction loading indicator
 
   late FirestoreService _firestoreService; // Declare FirestoreService instance
   Stream<ShoppingListModel?>? _activeShoppingListStream; // Stream for the active shopping list
@@ -716,6 +720,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
     int itemQuantity = 1; // Initialize quantity to 1
     DateTime? _selectedExpDate; // To store the actual expiration date
     List<String> _allowedDiets = []; // New state variable for allowedDiets in dialog
+    bool _isLoadingAddDialog = false; // Local state for loading in add item dialog
 
     InputDecoration deco() => InputDecoration(
       filled: true,
@@ -1067,65 +1072,76 @@ class _ShoppinglistState extends State<Shoppinglist> {
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             InkWell(
-                              onTap: () async {
-                                if (!formKey.currentState!.validate()) return;
-                                if (currentItems.length >= _maxGuestItems) {
-                                  _showLimitDialog();
-                                  return;
-                                }
-                                // Check for duplicate item before adding
-                                final existingItemIndex = currentItems.indexWhere(
-                                  (item) =>
-                                      item.name.toLowerCase() == nameTextController.text.trim().toLowerCase() &&
-                                      (item.netWeight?.toLowerCase() ?? '') == (sizeCtrl.text.trim().toLowerCase()),
-                                );
-
-                                if (existingItemIndex != -1) {
-                                  // Duplicate found, increment quantity
-                                  final existingItem = currentItems[existingItemIndex];
-                                  final updatedItem = existingItem.copyWith(quantity: existingItem.quantity + itemQuantity);
-                                  if (activeList != null) {
-                                    if (widget.isGuest) {
-                                      List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
-                                      int activeListIndex = guestLists.indexWhere((list) => list.id == activeList.id);
-                                      if (activeListIndex != -1) {
-                                        guestLists[activeListIndex].items[existingItemIndex] = updatedItem;
-                                        await firestoreService.saveGuestShoppingLists(guestLists);
+                              onTap: _isLoadingAddDialog
+                                  ? null
+                                  : () async {
+                                      if (!formKey.currentState!.validate()) return;
+                                      if (currentItems.length >= _maxGuestItems) {
+                                        _showLimitDialog();
+                                        return;
                                       }
-                                    } else {
-                                      await _shoppingListService.updateShoppingListItem(activeList.id!, updatedItem);
-                                    }
-                                  }
-                                  // Item already on list. Quantity updated.
-                                } else {
-                                  // No duplicate, add new item
-                                  final newItem = ShoppingListItemModel(
-                                    id: widget.isGuest ? _uuid.v4() : null, // Generate ID for guest items
-                                    name: nameTextController.text.trim(),
-                                    netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
-                                    category: selectedCategory!,
-                                    unitPrice: double.parse(unitPriceCtrl.text.trim()),
-                                    quantity: itemQuantity,
-                                    expirationDate: _selectedExpDate, // Use the selected/generated expiration date
-                                    allowedDiets: _allowedDiets.isEmpty ? null : _allowedDiets, // Add allowedDiets
-                                  );
+                                      setLocal(() {
+                                        _isLoadingAddDialog = true;
+                                      });
+                                      try {
+                                        // Check for duplicate item before adding
+                                        final existingItemIndex = currentItems.indexWhere(
+                                          (item) =>
+                                              item.name.toLowerCase() == nameTextController.text.trim().toLowerCase() &&
+                                              (item.netWeight?.toLowerCase() ?? '') == (sizeCtrl.text.trim().toLowerCase()),
+                                        );
 
-                                  if (activeList != null) {
-                                    if (widget.isGuest) {
-                                      List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
-                                      int activeListIndex = guestLists.indexWhere((list) => list.id == activeList.id);
-                                      if (activeListIndex != -1) {
-                                        guestLists[activeListIndex].items.add(newItem);
-                                        await firestoreService.saveGuestShoppingLists(guestLists);
+                                        if (existingItemIndex != -1) {
+                                          // Duplicate found, increment quantity
+                                          final existingItem = currentItems[existingItemIndex];
+                                          final updatedItem = existingItem.copyWith(quantity: existingItem.quantity + itemQuantity);
+                                          if (activeList != null) {
+                                            if (widget.isGuest) {
+                                              List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+                                              int activeListIndex = guestLists.indexWhere((list) => list.id == activeList.id);
+                                              if (activeListIndex != -1) {
+                                                guestLists[activeListIndex].items[existingItemIndex] = updatedItem;
+                                                await firestoreService.saveGuestShoppingLists(guestLists);
+                                              }
+                                            } else {
+                                              await _shoppingListService.updateShoppingListItem(activeList.id!, updatedItem);
+                                            }
+                                          }
+                                          // Item already on list. Quantity updated.
+                                        } else {
+                                          // No duplicate, add new item
+                                          final newItem = ShoppingListItemModel(
+                                            id: widget.isGuest ? _uuid.v4() : null, // Generate ID for guest items
+                                            name: nameTextController.text.trim(),
+                                            netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
+                                            category: selectedCategory!,
+                                            unitPrice: double.parse(unitPriceCtrl.text.trim()),
+                                            quantity: itemQuantity,
+                                            expirationDate: _selectedExpDate, // Use the selected/generated expiration date
+                                            allowedDiets: _allowedDiets.isEmpty ? null : _allowedDiets, // Add allowedDiets
+                                          );
+
+                                          if (activeList != null) {
+                                            if (widget.isGuest) {
+                                              List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+                                              int activeListIndex = guestLists.indexWhere((list) => list.id == activeList.id);
+                                              if (activeListIndex != -1) {
+                                                guestLists[activeListIndex].items.add(newItem);
+                                                await firestoreService.saveGuestShoppingLists(guestLists);
+                                              }
+                                            } else {
+                                              await _shoppingListService.addShoppingListItem(activeList.id!, newItem);
+                                            }
+                                          }
+                                        }
+                                        if (!mounted) return;
+                                        Navigator.of(ctx).pop();
+                                      } finally {
+                                        setLocal(() {
+                                          _isLoadingAddDialog = false;
+                                        });
                                       }
-                                    } else {
-                                      await _shoppingListService.addShoppingListItem(activeList.id!, newItem);
-                                    }
-                                  }
-                                }
-                                if (!mounted) return;
-                                Navigator.of(ctx).pop();
-                              },
+                                    },
                               borderRadius: BorderRadius.circular(24),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
@@ -1136,14 +1152,23 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                   color: headerGreen,
                                   borderRadius: BorderRadius.circular(24),
                                 ),
-                                child: const Text(
-                                  'Add',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                  ),
-                                ),
+                                child: _isLoadingAddDialog
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                    : const Text(
+                                        'Add',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 16,
+                                        ),
+                                      ),
                               ),
                             ),
                             InkWell(
@@ -1197,6 +1222,7 @@ class _ShoppinglistState extends State<Shoppinglist> {
     String? selectedCategory = item.category;
     int itemQuantity = item.quantity; // Initialize quantity with existing item's quantity
     DateTime? _selectedExpDate = item.expirationDate; // To store the actual expiration date
+    bool _isLoadingEditDialog = false; // Local state for loading in edit item dialog
 
     InputDecoration deco() => InputDecoration(
       filled: true,
@@ -1474,38 +1500,49 @@ class _ShoppinglistState extends State<Shoppinglist> {
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             InkWell(
-                              onTap: () async {
-                                if (!formKey.currentState!.validate()) return;
+                              onTap: _isLoadingEditDialog
+                                  ? null
+                                  : () async {
+                                      if (!formKey.currentState!.validate()) return;
 
-                                final updatedItem = item.copyWith(
-                                  name: nameCtrl.text.trim(),
-                                  netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
-                                  category: selectedCategory!,
-                                  unitPrice: double.parse(unitPriceCtrl.text.trim()), // Update unit price
-                                  quantity: itemQuantity, // Update quantity
-                                  expirationDate: _selectedExpDate, // Update expiration date
-                                  isPurchased: item.isPurchased, // Preserve existing state
-                                  isBookmarked: item.isBookmarked, // Preserve existing state
-                                );
+                                      setLocal(() {
+                                        _isLoadingEditDialog = true;
+                                      });
+                                      try {
+                                        final updatedItem = item.copyWith(
+                                          name: nameCtrl.text.trim(),
+                                          netWeight: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
+                                          category: selectedCategory!,
+                                          unitPrice: double.parse(unitPriceCtrl.text.trim()), // Update unit price
+                                          quantity: itemQuantity, // Update quantity
+                                          expirationDate: _selectedExpDate, // Update expiration date
+                                          isPurchased: item.isPurchased, // Preserve existing state
+                                          isBookmarked: item.isBookmarked, // Preserve existing state
+                                        );
 
-                                if (activeList != null) {
-                                  if (widget.isGuest) {
-                                    List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
-                                    int activeListIndex = guestLists.indexWhere((list) => list.id == activeList.id);
-                                    if (activeListIndex != -1) {
-                                      int itemIndex = guestLists[activeListIndex].items.indexWhere((e) => e.id == item.id);
-                                      if (itemIndex != -1) {
-                                        guestLists[activeListIndex].items[itemIndex] = updatedItem;
-                                        await firestoreService.saveGuestShoppingLists(guestLists);
+                                        if (activeList != null) {
+                                          if (widget.isGuest) {
+                                            List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+                                            int activeListIndex = guestLists.indexWhere((list) => list.id == activeList.id);
+                                            if (activeListIndex != -1) {
+                                              int itemIndex = guestLists[activeListIndex].items.indexWhere((e) => e.id == item.id);
+                                              if (itemIndex != -1) {
+                                                guestLists[activeListIndex].items[itemIndex] = updatedItem;
+                                                await firestoreService.saveGuestShoppingLists(guestLists);
+                                              }
+                                            }
+                                          } else {
+                                            await _shoppingListService.updateShoppingListItem(activeList.id!, updatedItem);
+                                          }
+                                        }
+                                        if (!mounted) return;
+                                        Navigator.of(ctx).pop();
+                                      } finally {
+                                        setLocal(() {
+                                          _isLoadingEditDialog = false;
+                                        });
                                       }
-                                    }
-                                  } else {
-                                    await _shoppingListService.updateShoppingListItem(activeList.id!, updatedItem);
-                                  }
-                                }
-                                if (!mounted) return;
-                                Navigator.of(ctx).pop();
-                              },
+                                    },
                               borderRadius: BorderRadius.circular(24),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
@@ -1516,14 +1553,23 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                   color: headerGreen,
                                   borderRadius: BorderRadius.circular(24),
                                 ),
-                                child: const Text(
-                                  'Save',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                  ),
-                                ),
+                                child: _isLoadingEditDialog
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                    : const Text(
+                                        'Save',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 16,
+                                        ),
+                                      ),
                               ),
                             ),
                             InkWell(
@@ -1725,8 +1771,22 @@ class _ShoppinglistState extends State<Shoppinglist> {
                     children: [
                       _GreenPillButton(
                         label: 'Add new Item',
-                        onTap: () => _showAddItemDialog(activeList, items),
+                        onTap: _isLoadingAddItem
+                            ? null
+                            : () async {
+                                setState(() {
+                                  _isLoadingAddItem = true;
+                                });
+                                try {
+                                  await _showAddItemDialog(activeList, items);
+                                } finally {
+                                  setState(() {
+                                    _isLoadingAddItem = false;
+                                  });
+                                }
+                              },
                         color: headerGreen,
+                        isLoading: _isLoadingAddItem,
                       ),
                       const SizedBox(width: 10),
                       if (!widget.isGuest)
@@ -1744,11 +1804,33 @@ class _ShoppinglistState extends State<Shoppinglist> {
                       const Spacer(),
                       // === Clear Purchase button ===
                       InkWell(
-                        onTap: activeList != null ? () => _clearPurchasedItems(activeList) : null,
+                        onTap: (activeList != null && !_isLoadingClearPurchased)
+                            ? () async {
+                                setState(() {
+                                  _isLoadingClearPurchased = true;
+                                });
+                                try {
+                                  await _clearPurchasedItems(activeList);
+                                } finally {
+                                  setState(() {
+                                    _isLoadingClearPurchased = false;
+                                  });
+                                }
+                              }
+                            : null,
                         borderRadius: BorderRadius.circular(10),
-                        child: const Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: Icon(Icons.playlist_add_check, size: 22), // Icon for clear purchase
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: _isLoadingClearPurchased
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                                  ),
+                                )
+                              : const Icon(Icons.playlist_add_check, size: 22), // Icon for clear purchase
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -1843,10 +1925,20 @@ class _ShoppinglistState extends State<Shoppinglist> {
                                             _showLimitDialog();
                                             return;
                                           }
-                                          if (activeList != null) {
-                                            await _addItemFromSuggestion(addedSuggestion, activeList, items);
+                                          setState(() {
+                                            _isLoadingSuggestionAdd = true;
+                                          });
+                                          try {
+                                            if (activeList != null) {
+                                              await _addItemFromSuggestion(addedSuggestion, activeList, items);
+                                            }
+                                          } finally {
+                                            setState(() {
+                                              _isLoadingSuggestionAdd = false;
+                                            });
                                           }
                                         },
+                                        isLoading: _isLoadingSuggestionAdd,
                                       ),
                                     ).toList(),
                                   ),
@@ -1903,26 +1995,39 @@ class _ShoppinglistState extends State<Shoppinglist> {
                             borderRadius: BorderRadius.circular(0),
                           ),
                           SlidableAction(
-                            onPressed: (_) async { // Mark as async
-                              final removed = item;
-                              if (activeList != null) {
-                                if (widget.isGuest) {
-                                  List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
-                                  int activeListIndex = guestLists.indexWhere((list) => list.id == activeList.id);
-                                  if (activeListIndex != -1) {
-                                    guestLists[activeListIndex].items.removeWhere((e) => e.id == removed.id);
-                                    await firestoreService.saveGuestShoppingLists(guestLists);
-                                  }
-                                } else {
-                                  await _shoppingListService.removeShoppingListItem(activeList.id!, removed);
-                                }
-                              }
-                            },
+                            onPressed: _isLoadingDeleteItem
+                                ? null
+                                : (_) async {
+                                    setState(() {
+                                      _isLoadingDeleteItem = true;
+                                    });
+                                    try {
+                                      final removed = item;
+                                      if (activeList != null) {
+                                        if (widget.isGuest) {
+                                          List<ShoppingListModel> guestLists = await firestoreService.loadGuestShoppingLists();
+                                          int activeListIndex = guestLists.indexWhere((list) => list.id == activeList.id);
+                                          if (activeListIndex != -1) {
+                                            guestLists[activeListIndex].items.removeWhere((e) => e.id == removed.id);
+                                            await firestoreService.saveGuestShoppingLists(guestLists);
+                                          }
+                                        } else {
+                                          await _shoppingListService.removeShoppingListItem(activeList.id!, removed);
+                                        }
+                                      }
+                                    } finally {
+                                      setState(() {
+                                        _isLoadingDeleteItem = false;
+                                      });
+                                    }
+                                  },
                             icon: Icons.delete_outline,
                             label: 'Delete',
                             backgroundColor: Colors.red.shade600,
                             foregroundColor: Colors.white,
                             borderRadius: BorderRadius.circular(0),
+                            // You might want to add a loading indicator here if the SlidableAction supports it directly.
+                            // For now, the button will just be disabled.
                           ),
                         ],
                       ),
@@ -2086,6 +2191,7 @@ class _SuggestionCard extends StatelessWidget {
     required this.headerGreen,
     required this.onAdd,
     required this.firestoreService, // Add firestoreService parameter
+    required this.isLoading, // New parameter for loading state
   });
 
   final _Suggestion suggestion;
@@ -2093,6 +2199,7 @@ class _SuggestionCard extends StatelessWidget {
   final Color headerGreen;
   final Future<void> Function(_Suggestion) onAdd; // Modified to pass suggestion
   final FirestoreService firestoreService; // Declare firestoreService
+  final bool isLoading; // New parameter for loading state
   
   @override
   Widget build(BuildContext context) {
@@ -2171,10 +2278,21 @@ class _SuggestionCard extends StatelessWidget {
                 ),
               ),
               IconButton(
-                onPressed: () async {
-                  await onAdd(suggestion); // Pass the suggestion to onAdd
-                },
-                icon: const Icon(Icons.add_circle_outline_rounded),
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        await onAdd(suggestion); // Pass the suggestion to onAdd
+                      },
+                icon: isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                        ),
+                      )
+                    : const Icon(Icons.add_circle_outline_rounded),
                 color: headerGreen,
                 splashRadius: 20,
                 tooltip: 'Add',
@@ -2385,11 +2503,13 @@ class _GreenPillButton extends StatelessWidget {
     required this.label,
     required this.onTap,
     required this.color,
+    this.isLoading = false, // New parameter for loading state
   });
 
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap; // Make onTap nullable
   final Color color;
+  final bool isLoading; // New parameter
 
   @override
   Widget build(BuildContext context) {
@@ -2397,20 +2517,29 @@ class _GreenPillButton extends StatelessWidget {
       color: color,
       borderRadius: BorderRadius.circular(24),
       child: InkWell(
-        onTap: onTap,
+        onTap: isLoading ? null : onTap, // Disable onTap when loading
         borderRadius: BorderRadius.circular(24),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontFamily: 'Roboto',
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0.2,
-            ),
-          ),
+          child: isLoading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Roboto',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.2,
+                  ),
+                ),
         ),
       ),
     );

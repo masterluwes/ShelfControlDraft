@@ -31,6 +31,12 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
   late String _householdName;
   late String _currentUserId;
 
+  bool _isLoadingLeaveGroup = false;
+  bool _isLoadingDeleteGroup = false;
+  bool _isLoadingSaveHouseholdName = false;
+  bool _isLoadingAssignTask = false;
+  bool _isLoadingSaveNickname = false;
+
   @override
   void initState() {
     super.initState();
@@ -59,17 +65,24 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
           actionsAlignment: MainAxisAlignment.center,
           actions: [
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _showByeDialog();
-              },
+              onPressed: _isLoadingLeaveGroup
+                  ? null
+                  : () {
+                      setState(() {
+                        _isLoadingLeaveGroup = true;
+                      });
+                      Navigator.pop(context);
+                      _showByeDialog();
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: _green,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
-              child: const Text("Yes", style: TextStyle(color: Colors.white)),
+              child: _isLoadingLeaveGroup
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text("Yes", style: TextStyle(color: Colors.white)),
             ),
             const SizedBox(width: 30),
             ElevatedButton(
@@ -158,17 +171,24 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
           actionsAlignment: MainAxisAlignment.center,
           actions: [
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _showDeletedDialog();
-              },
+              onPressed: _isLoadingDeleteGroup
+                  ? null
+                  : () {
+                      setState(() {
+                        _isLoadingDeleteGroup = true;
+                      });
+                      Navigator.pop(context);
+                      _showDeletedDialog();
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: _green,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
-              child: const Text("Yes", style: TextStyle(color: Colors.white)),
+              child: _isLoadingDeleteGroup
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text("Yes", style: TextStyle(color: Colors.white)),
             ),
             const SizedBox(width: 30),
             ElevatedButton(
@@ -274,38 +294,51 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
             ),
             const SizedBox(width: 20),
             ElevatedButton(
-              onPressed: () async {
-                final newName = controller.text.trim();
-                if (newName.isNotEmpty) {
-                  try {
-                    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-                    await firestoreService.updateHouseholdName(widget.household.id, newName);
-                    if (!mounted) return;
-                    setState(() {
-                      _householdName = newName;
-                    });
-                    Navigator.pop(context);
-                  } catch (e) {
-                    // Handle error, e.g., show a snackbar
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to update household name: ${e.toString()}')),
-                    );
-                  }
-                } else {
-                  // Optionally show an error if the name is empty
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Household name cannot be empty.')),
-                  );
-                }
-              },
+              onPressed: _isLoadingSaveHouseholdName
+                  ? null
+                  : () async {
+                      setState(() {
+                        _isLoadingSaveHouseholdName = true;
+                      });
+                      try {
+                        final newName = controller.text.trim();
+                        if (newName.isNotEmpty) {
+                          try {
+                            final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+                            await firestoreService.updateHouseholdName(widget.household.id, newName);
+                            if (!mounted) return;
+                            setState(() {
+                              _householdName = newName;
+                            });
+                            Navigator.pop(context);
+                          } catch (e) {
+                            // Handle error, e.g., show a snackbar
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to update household name: ${e.toString()}')),
+                            );
+                          }
+                        } else {
+                          // Optionally show an error if the name is empty
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Household name cannot be empty.')),
+                          );
+                        }
+                      } finally {
+                        setState(() {
+                          _isLoadingSaveHouseholdName = false;
+                        });
+                      }
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: _green,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
-              child: const Text("Save", style: TextStyle(color: Colors.white)),
+              child: _isLoadingSaveHouseholdName
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text("Save", style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -393,55 +426,66 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                 ),
                 const SizedBox(width: 20),
                 ElevatedButton(
-                  onPressed: () async {
-                    String taskDescription = '';
-                    if (selectedTaskType == 'custom') {
-                      taskDescription = customTaskController.text.trim();
-                      if (taskDescription.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Custom task description cannot be empty.')),
-                        );
-                        return;
-                      }
-                    } else if (selectedTaskType != null) {
-                      taskDescription = "Please ${selectedTaskType!.replaceAll('_', ' ')}";
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please select a task type.')),
-                      );
-                      return;
-                    }
+                  onPressed: _isLoadingAssignTask
+                      ? null
+                      : () async {
+                          setState(() {
+                            _isLoadingAssignTask = true;
+                          });
+                          try {
+                            String taskDescription = '';
+                            if (selectedTaskType == 'custom') {
+                              taskDescription = customTaskController.text.trim();
+                              if (taskDescription.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Custom task description cannot be empty.')),
+                                );
+                                return;
+                              }
+                            } else if (selectedTaskType != null) {
+                              taskDescription = "Please ${selectedTaskType!.replaceAll('_', ' ')}";
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Please select a task type.')),
+                              );
+                              return;
+                            }
 
-                    try {
-                      final newTask = HouseholdTask(
-                        id: uuid.v4(),
-                        householdId: widget.household.id,
-                        assignedToUserId: assignedToUserId,
-                        assignedByUserId: _currentUserId,
-                        taskType: selectedTaskType!,
-                        description: taskDescription,
-                        createdAt: DateTime.now(),
-                      );
-                      await firestoreService.createHouseholdTask(newTask);
-                      if (!mounted) return;
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Task assigned to $assignedToUserName!')),
-                      );
-                    } catch (e) {
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to assign task: ${e.toString().replaceFirst('Exception: ', '')}')),
-                      );
-                    }
-                  },
+                            final newTask = HouseholdTask(
+                              id: uuid.v4(),
+                              householdId: widget.household.id,
+                              assignedToUserId: assignedToUserId,
+                              assignedByUserId: _currentUserId,
+                              taskType: selectedTaskType!,
+                              description: taskDescription,
+                              createdAt: DateTime.now(),
+                            );
+                            await firestoreService.createHouseholdTask(newTask);
+                            if (!mounted) return;
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Task assigned to $assignedToUserName!')),
+                            );
+                          } catch (e) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to assign task: ${e.toString().replaceFirst('Exception: ', '')}')),
+                            );
+                          } finally {
+                            setState(() {
+                              _isLoadingAssignTask = false;
+                            });
+                          }
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _green,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                  child: const Text("Assign", style: TextStyle(color: Colors.white)),
+                  child: _isLoadingAssignTask
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("Assign", style: TextStyle(color: Colors.white)),
                 ),
               ],
             );
@@ -506,31 +550,42 @@ class _HouseholdDetailPageState extends State<HouseholdDetailPage> {
                 ),
                 const SizedBox(width: 20),
                 ElevatedButton(
-                  onPressed: () async {
-                    final newNickname = controller.text.trim();
-                    if (newNickname.isEmpty) {
-                      dialogSetState(() {
-                        errorText = "Nickname cannot be empty.";
-                      });
-                      return;
-                    }
-                    try {
-                      await firestoreService.updateUserNickname(userId, newNickname);
-                      if (!mounted) return;
-                      Navigator.pop(context);
-                    } catch (e) {
-                      dialogSetState(() {
-                        errorText = e.toString().replaceFirst('Exception: ', '');
-                      });
-                    }
-                  },
+                  onPressed: _isLoadingSaveNickname
+                      ? null
+                      : () async {
+                          setState(() {
+                            _isLoadingSaveNickname = true;
+                          });
+                          try {
+                            final newNickname = controller.text.trim();
+                            if (newNickname.isEmpty) {
+                              dialogSetState(() {
+                                errorText = "Nickname cannot be empty.";
+                              });
+                              return;
+                            }
+                            await firestoreService.updateUserNickname(userId, newNickname);
+                            if (!mounted) return;
+                            Navigator.pop(context);
+                          } catch (e) {
+                            dialogSetState(() {
+                              errorText = e.toString().replaceFirst('Exception: ', '');
+                            });
+                          } finally {
+                            setState(() {
+                              _isLoadingSaveNickname = false;
+                            });
+                          }
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _green,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                  child: const Text("Save", style: TextStyle(color: Colors.white)),
+                  child: _isLoadingSaveNickname
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("Save", style: TextStyle(color: Colors.white)),
                 ),
               ],
             );

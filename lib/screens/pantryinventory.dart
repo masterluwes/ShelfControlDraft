@@ -45,6 +45,12 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
   static const String _lastNotificationCheckKey = 'lastNotificationCheck';
   static const Duration _notificationCheckInterval = Duration(hours: 24);
 
+  bool _isLoadingConsumeSelected = false; // New state variable for "Consume Selected" button
+  bool _isLoadingDeleteSelected = false; // New state variable for "Delete Selected" button
+  bool _isLoadingConsumeSlidable = false; // New state variable for "Consume" SlidableAction
+  bool _isLoadingWasteSlidable = false; // New state variable for "Waste" SlidableAction
+  bool _isLoadingConsumeDialog = false; // New state variable for "Consume" button in _showQuantityPickerDialog
+
   // Options
   final List<String> _sortOptions = const [
     'Category',
@@ -184,18 +190,90 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
     });
   }
 
-  Future<void> _deletePantryItem(
-      PantryItemModel item, FirestoreService firestoreService) async {
-    if (item.id != null) {
-      if (widget.isGuest) {
-        List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
-        currentGuestPantry.removeWhere((element) => element.id == item.id);
-        await firestoreService.saveGuestPantryItems(currentGuestPantry);
-      } else {
-        await firestoreService.deletePantryItem(item.id!);
-      }
-      if (!mounted) return;
+  Future<void> _deleteItem(PantryItemModel item, FirestoreService firestoreService) async {
+    if (item.id == null) return;
+
+    if (widget.isGuest) {
+      List<PantryItemModel> currentGuestPantry = await firestoreService.loadGuestPantryItems();
+      currentGuestPantry.removeWhere((pantryItem) => pantryItem.id == item.id);
+      await firestoreService.saveGuestPantryItems(currentGuestPantry);
+    } else {
+      await firestoreService.deletePantryItem(item.id!);
     }
+    if (mounted) {
+      setState(() {
+        _items.removeWhere((pantryItem) => pantryItem.id == item.id);
+        _selectedItemIds.remove(item.id);
+      });
+    }
+  }
+
+  Future<void> _showDeleteConfirmationDialog({
+    required String title,
+    required String content,
+    required VoidCallback onConfirm,
+  }) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // User must tap button!
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: softCream,
+          title: Text(title, style: TextStyle(color: headerGreen, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text(content),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('No', style: TextStyle(color: Colors.grey)),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: headerGreen),
+              child: const Text('Yes', style: TextStyle(color: Colors.white)),
+              onPressed: () {
+                Navigator.of(context).pop();
+                onConfirm();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteSelectedItems(FirestoreService firestoreService) async {
+    if (_selectedItemIds.isEmpty) return;
+
+    await _showDeleteConfirmationDialog(
+      title: 'Delete Selected Items?',
+      content: 'Are you sure you want to delete the ${_selectedItemIds.length} selected items?',
+      onConfirm: () async {
+        setState(() {
+          _isLoadingDeleteSelected = true;
+        });
+        try {
+          for (String itemId in _selectedItemIds) {
+            final item = _items.firstWhere((element) => element.id == itemId);
+            await _deleteItem(item, firestoreService);
+          }
+          setState(() {
+            _selectedItemIds.clear();
+            _inMultiSelectMode = false;
+          });
+        } finally {
+          setState(() {
+            _isLoadingDeleteSelected = false;
+          });
+        }
+      },
+    );
   }
 
   // Consume selected items
@@ -519,10 +597,24 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(selectedQuantity),
+              onPressed: _isLoadingConsumeDialog
+                  ? null
+                  : () async {
+                      setState(() {
+                        _isLoadingConsumeDialog = true;
+                      });
+                      try {
+                        Navigator.of(context).pop(selectedQuantity);
+                      } finally {
+                        setState(() {
+                          _isLoadingConsumeDialog = false;
+                        });
+                      }
+                    },
               style: ElevatedButton.styleFrom(backgroundColor: headerGreen),
-              child:
-                  const Text('Consume', style: TextStyle(color: Colors.white)),
+              child: _isLoadingConsumeDialog
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text('Consume', style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -850,14 +942,23 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             icon: Icons.restaurant_menu,
             label: 'Consume',
             flex: 1,
-            onPressed: (currentStatus == ItemStatus.consumed || currentStatus == ItemStatus.expired)
-                ? null // Disable if consumed or expired
+            onPressed: (currentStatus == ItemStatus.consumed || currentStatus == ItemStatus.expired || _isLoadingConsumeSlidable)
+                ? null // Disable if consumed, expired, or loading
                 : (_) async {
-                    if (item.qty > 1) {
-                      await _showQuantityPickerDialog(item);
-                    } else {
-                      // Directly call recordConsumedItem which handles both quantity update and history
-                      await firestoreService.recordConsumedItem(item, 1);
+                    setState(() {
+                      _isLoadingConsumeSlidable = true;
+                    });
+                    try {
+                      if (item.qty > 1) {
+                        await _showQuantityPickerDialog(item);
+                      } else {
+                        // Directly call recordConsumedItem which handles both quantity update and history
+                        await firestoreService.recordConsumedItem(item, 1);
+                      }
+                    } finally {
+                      setState(() {
+                        _isLoadingConsumeSlidable = false;
+                      });
                     }
                   },
           ),
@@ -875,17 +976,25 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
             label: 'Edit',
           ),
           SlidableAction(
-            onPressed: (_) async {
-              if (currentStatus == ItemStatus.expired) {
-                await _handleExpiredWaste(item, firestoreService);
-              } else {
-                await _deletePantryItem(item, firestoreService);
-              }
+            onPressed: (_) {
+              _showDeleteConfirmationDialog(
+                title: 'Delete Item?',
+                content: 'Are you sure you want to delete ${item.name}?',
+                onConfirm: () async {
+                  if (currentStatus == ItemStatus.expired) {
+                    await _handleExpiredWaste(item, firestoreService);
+                  } else {
+                    await _deleteItem(item, firestoreService);
+                  }
+                },
+              );
             },
             backgroundColor: currentStatus == ItemStatus.expired ? Colors.orange.shade700 : Colors.red.shade700,
             foregroundColor: Colors.white,
             icon: currentStatus == ItemStatus.expired ? Icons.delete_sweep : Icons.delete_outline,
-            label: currentStatus == ItemStatus.expired ? 'Waste' : 'Delete',
+            label: _isLoadingWasteSlidable
+                ? 'Loading...'
+                : (currentStatus == ItemStatus.expired ? 'Waste' : 'Delete'),
           ),
         ],
       ),
@@ -1031,18 +1140,10 @@ class _PantryInventoryBodyState extends State<Pantryinventory> {
           ),
           IconButton(
             tooltip: 'Delete Selected',
-            icon: const Icon(Icons.delete, color: Colors.white),
-            onPressed: () async {
-              for (String itemId in _selectedItemIds) {
-                final item =
-                    _items.firstWhere((element) => element.id == itemId);
-                await _deletePantryItem(item, firestoreService);
-              }
-              setState(() {
-                _selectedItemIds.clear();
-                _inMultiSelectMode = false; // Exit multi-select mode
-              });
-            },
+            icon: _isLoadingDeleteSelected
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Icon(Icons.delete, color: Colors.white),
+            onPressed: _isLoadingDeleteSelected ? null : () => _deleteSelectedItems(firestoreService),
           ),
         ],
       ),

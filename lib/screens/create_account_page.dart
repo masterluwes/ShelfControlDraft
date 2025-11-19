@@ -32,6 +32,7 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
   String? _confirmPasswordError;
   String? _policyError;
   String? _termsError;
+  bool _isLoading = false;
 
   final RegExp _emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
   late AuthService _authService; // Declare as late
@@ -46,7 +47,9 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
   }
 
   void _validateAndSubmit() async {
+    if (_isLoading) return;
     setState(() {
+      _isLoading = true;
       if (_emailController.text.isEmpty) {
         _emailError = "Email is required";
       } else if (!_emailRegex.hasMatch(_emailController.text)) {
@@ -104,39 +107,35 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
           _passwordController.text,
         );
 
-        // Save user details to Firestore and create personal household
         if (userCredential.user != null) {
           final String userId = userCredential.user!.uid;
           final String userEmail = userCredential.user!.email!;
 
-          // Create personal household
           await _firestoreService.createPersonalHousehold(userId, userEmail);
 
-          // Migrate guest data if any
           final List<PantryItemModel> guestPantryItems = await _firestoreService.loadGuestPantryItems();
           for (var item in guestPantryItems) {
-            // Assign the new personal household ID to the item
             item = item.copyWith(householdId: _firestoreService.selectedHouseholdId);
             await _firestoreService.addPantryItem(item);
           }
 
           final List<ShoppingListModel> guestShoppingLists = await _firestoreService.loadGuestShoppingLists();
           for (var list in guestShoppingLists) {
-            // Assign the new personal household ID to the list
             list = list.copyWith(householdId: _firestoreService.selectedHouseholdId);
             await _firestoreService.addShoppingList(list);
           }
 
-          // Clear guest data from local storage after migration
           await _firestoreService.clearGuestData();
         }
 
-        if (!mounted) return; // Check if the widget is still mounted before using context
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginPage()),
-        );
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const LoginPage()),
+          );
+        }
       } on FirebaseAuthException catch (e) {
+        if (!mounted) return;
         String errorMessage;
         if (e.code == 'weak-password') {
           errorMessage = 'The password provided is too weak.';
@@ -149,10 +148,21 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
           SnackBar(content: Text(errorMessage)),
         );
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('An unexpected error occurred: $e')),
         );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
+    } else {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -379,7 +389,7 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _validateAndSubmit,
+                  onPressed: _isLoading ? null : _validateAndSubmit,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2E7D32),
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -387,14 +397,23 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                  child: const Text(
-                    "Create Account",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text(
+                          "Create Account",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ),
 

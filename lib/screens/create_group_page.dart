@@ -23,6 +23,9 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   static const _green = Color(0xFF2E7D32);
   static const _cream = Color(0xFFFFFBE6);
 
+  bool _isLoadingCreateGroup = false; // New state variable for "Create Group" button
+  bool _isLoadingCancelConfirmation = false; // New state variable for "Yes" button in "Cancel Confirmation" dialog
+
   @override
   void initState() {
     super.initState();
@@ -110,10 +113,22 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                     _PopupButton(
                       text: 'Yes',
                       color: _green,
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _showCancelledPopup();
-                      },
+                      isLoading: _isLoadingCancelConfirmation,
+                      onPressed: _isLoadingCancelConfirmation
+                          ? null
+                          : () async {
+                              setState(() {
+                                _isLoadingCancelConfirmation = true;
+                              });
+                              try {
+                                Navigator.pop(context);
+                                _showCancelledPopup();
+                              } finally {
+                                setState(() {
+                                  _isLoadingCancelConfirmation = false;
+                                });
+                              }
+                            },
                     ),
                     const SizedBox(width: 20),
                     _PopupButton(
@@ -173,19 +188,33 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     });
   }
 
-  void _submit() {
+  void _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final newHousehold = {
-      "name": _nameCtrl.text.trim(),
-      "code": _generatedCode,
-      "members": ["You"],
-      "isAdmin": true,
-      "default": true,
-      "profileImage": _pickedImage?.path,
-    };
+    setState(() {
+      _isLoadingCreateGroup = true;
+    });
 
-    Navigator.of(context).pop(newHousehold);
+    try {
+      final newHousehold = {
+        "name": _nameCtrl.text.trim(),
+        "code": _generatedCode,
+        "members": ["You"],
+        "isAdmin": true,
+        "default": true,
+        "profileImage": _pickedImage?.path,
+      };
+
+      // Simulate an async operation, e.g., saving to a database
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (!mounted) return;
+      Navigator.of(context).pop(newHousehold);
+    } finally {
+      setState(() {
+        _isLoadingCreateGroup = false;
+      });
+    }
   }
 
   @override
@@ -334,7 +363,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                     width: 140,
                     height: 38,
                     child: ElevatedButton(
-                      onPressed: _submit,
+                      onPressed: _isLoadingCreateGroup ? null : _submit,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _green,
                         shape: RoundedRectangleBorder(
@@ -342,10 +371,19 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                         ),
                         elevation: 0,
                       ),
-                      child: const Text(
-                        'Create Group',
-                        style: TextStyle(color: Colors.white),
-                      ),
+                      child: _isLoadingCreateGroup
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Text(
+                              'Create Group',
+                              style: TextStyle(color: Colors.white),
+                            ),
                     ),
                   ),
                 ],
@@ -361,12 +399,14 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 class _PopupButton extends StatelessWidget {
   final String text;
   final Color color;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed; // Make onPressed nullable
+  final bool isLoading; // New parameter for loading state
 
   const _PopupButton({
     required this.text,
     required this.color,
     required this.onPressed,
+    this.isLoading = false, // Default to false
   });
 
   @override
@@ -374,7 +414,7 @@ class _PopupButton extends StatelessWidget {
     return SizedBox(
       height: 42,
       child: ElevatedButton(
-        onPressed: onPressed,
+        onPressed: isLoading ? null : onPressed, // Disable onPressed when loading
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           elevation: 0,
@@ -383,10 +423,19 @@ class _PopupButton extends StatelessWidget {
           ),
           padding: const EdgeInsets.symmetric(horizontal: 20),
         ),
-        child: Text(
-          text,
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Text(
+                text,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              ),
       ),
     );
   }

@@ -252,6 +252,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
     final parentContext = context;
     final nameCtrl = TextEditingController();
     IconData chosenIcon = Icons.list_alt_outlined;
+    bool isCreating = false;
 
     await showDialog<void>(
       context: parentContext,
@@ -331,7 +332,7 @@ class _ViewAllListsPageState extends State<Viewalllist> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () =>
+                  onPressed: isCreating ? null : () =>
                       Navigator.of(dialogCtx, rootNavigator: true).pop(),
                   child: Text('Cancel', style: TextStyle(color: headerGreen)),
                 ),
@@ -342,8 +343,9 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                         : Colors.grey.shade400,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: enabled
+                  onPressed: enabled && !isCreating
                       ? () async {
+                          setLocal(() => isCreating = true);
                           final name = nameCtrl.text.trim();
                           if (!mounted) return;
 
@@ -359,9 +361,8 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                               isActive: false,
                             );
                             DocumentReference docRef = await FirebaseFirestore.instance.collection('shoppingLists').add(newList.toFirestore());
-                            newList.id = docRef.id; // Assign the Firestore ID to the model
+                            newList.id = docRef.id;
 
-                            // Save items to subcollection
                             for (var item in newList.items) {
                               await _shoppingListService.addShoppingListItem(newList.id!, item);
                             }
@@ -369,8 +370,9 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                             _logger.e('Household ID is null, cannot create manual list.');
                           }
 
-                          Navigator.of(dialogCtx, rootNavigator: true).pop();
-                          if (!mounted) return;
+                          if (mounted) {
+                            Navigator.of(dialogCtx, rootNavigator: true).pop();
+                          }
 
                           if (newList != null) {
                             final result = await Navigator.of(parentContext).push(
@@ -380,9 +382,19 @@ class _ViewAllListsPageState extends State<Viewalllist> {
                             );
                             if (mounted) _handleListPageResult(result);
                           }
+                          setLocal(() => isCreating = false);
                         }
                       : null,
-                  child: const Text('Continue'),
+                  child: isCreating
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text('Continue'),
                 ),
               ],
             );
@@ -1348,7 +1360,7 @@ class _RadioTile<T> extends StatelessWidget {
 }
 
 /// ====== Dialogs styled like your mockups ======
-class _DeleteConfirmDialog extends StatelessWidget {
+class _DeleteConfirmDialog extends StatefulWidget {
   const _DeleteConfirmDialog({
     required this.headerGreen,
     required this.title,
@@ -1360,6 +1372,13 @@ class _DeleteConfirmDialog extends StatelessWidget {
   final String message;
 
   @override
+  State<_DeleteConfirmDialog> createState() => _DeleteConfirmDialogState();
+}
+
+class _DeleteConfirmDialogState extends State<_DeleteConfirmDialog> {
+  bool _isDeleting = false;
+
+  @override
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -1368,16 +1387,16 @@ class _DeleteConfirmDialog extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFFEDEDED),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: headerGreen, width: 6),
+          border: Border.all(color: widget.headerGreen, width: 6),
         ),
         padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              title,
+              widget.title,
               style: TextStyle(
-                color: headerGreen,
+                color: widget.headerGreen,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
@@ -1385,7 +1404,7 @@ class _DeleteConfirmDialog extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              message,
+              widget.message,
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 14.5, color: Colors.black87),
             ),
@@ -1395,16 +1414,22 @@ class _DeleteConfirmDialog extends StatelessWidget {
               children: [
                 _PillButton(
                   label: 'Yes',
-                  color: headerGreen,
+                  color: widget.headerGreen,
                   textColor: Colors.white,
-                  onTap: () => Navigator.of(context).pop(true),
+                  isLoading: _isDeleting,
+                  onTap: () {
+                    setState(() {
+                      _isDeleting = true;
+                    });
+                    Navigator.of(context).pop(true);
+                  },
                 ),
                 const SizedBox(width: 12),
                 _PillButton(
                   label: 'No',
                   color: const Color(0xFF9E9E9E),
                   textColor: Colors.white,
-                  onTap: () => Navigator.of(context).pop(false),
+                  onTap: _isDeleting ? null : () => Navigator.of(context).pop(false),
                 ),
               ],
             ),
@@ -1474,13 +1499,15 @@ class _PillButton extends StatelessWidget {
     required this.label,
     required this.color,
     required this.textColor,
-    required this.onTap,
+    this.onTap,
+    this.isLoading = false,
   });
 
   final String label;
   final Color color;
   final Color textColor;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -1492,10 +1519,19 @@ class _PillButton extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: Text(
-            label,
-            style: TextStyle(color: textColor, fontWeight: FontWeight.w700),
-          ),
+          child: isLoading
+              ? const SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : Text(
+                  label,
+                  style: TextStyle(color: textColor, fontWeight: FontWeight.w700),
+                ),
         ),
       ),
     );

@@ -21,6 +21,7 @@ class _LoginPageState extends State<LoginPage> {
   String? _emailError;
   String? _passwordError;
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -35,18 +36,20 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _validateAndLogin() async {
+    if (_isLoading) return;
     setState(() {
+      _isLoading = true;
       _emailError = _emailController.text.isEmpty
           ? 'Email is required'
           : (!isValidEmail(_emailController.text)
-                ? 'Invalid email format'
-                : null);
+              ? 'Invalid email format'
+              : null);
 
       _passwordError = _passwordController.text.isEmpty
           ? 'Password is required'
           : (_passwordController.text.length < 8
-                ? 'Password must be at least 8 characters'
-                : null);
+              ? 'Password must be at least 8 characters'
+              : null);
     });
 
     if (_emailError == null && _passwordError == null) {
@@ -56,22 +59,21 @@ class _LoginPageState extends State<LoginPage> {
           _passwordController.text,
         );
 
-        // Update user details in Firestore upon successful login
         if (userCredential.user != null) {
           await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set(
             {
               'email': userCredential.user!.email,
               'lastLoginAt': FieldValue.serverTimestamp(),
             },
-            SetOptions(merge: true), // Use merge: true to update existing fields without overwriting others
+            SetOptions(merge: true),
           );
         }
 
-        if (!mounted) return;
-        // Navigate to the dashboard screen upon successful login
-        if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/dashboard');
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/dashboard');
+        }
       } on FirebaseAuthException catch (e) {
+        if (!mounted) return;
         String errorMessage;
         if (e.code == 'user-not-found' || e.code == 'wrong-password') {
           errorMessage = 'Please check your email and password. The combination you entered is incorrect.';
@@ -86,24 +88,13 @@ class _LoginPageState extends State<LoginPage> {
         } else {
           errorMessage = e.message ?? 'An unexpected error occurred.';
         }
-
-        if (e.code == 'user-not-found' && FirebaseAuth.instance.currentUser != null && !FirebaseAuth.instance.currentUser!.emailVerified) {
-          // This case is unlikely to be hit with standard Firebase logic, but as a fallback
-          errorMessage = 'Please verify your email before logging in.';
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-              behavior: SnackBarBehavior.floating,
-              margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
-            ),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
+          ),
+        );
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -113,7 +104,17 @@ class _LoginPageState extends State<LoginPage> {
             margin: const EdgeInsets.only(top: 20, left: 20, right: 20),
           ),
         );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
+    } else {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -121,6 +122,7 @@ class _LoginPageState extends State<LoginPage> {
     final TextEditingController resetEmailController = TextEditingController();
     String? resetEmailError;
     bool emailSent = false;
+    bool isSending = false;
 
     showDialog(
       context: context,
@@ -135,7 +137,7 @@ class _LoginPageState extends State<LoginPage> {
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min, // Ensure column takes minimum space
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
                       'Enter the email you used to sign up. We’ll send you a link to reset your password.',
@@ -167,19 +169,17 @@ class _LoginPageState extends State<LoginPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         ElevatedButton(
-                          onPressed: () async {
+                          onPressed: isSending ? null : () async {
                             setState(() {
+                              isSending = true;
                               if (resetEmailController.text.isEmpty) {
                                 resetEmailError = 'Email is required';
                                 emailSent = false;
-                              } else if (!isValidEmail(
-                                resetEmailController.text,
-                              )) {
+                              } else if (!isValidEmail(resetEmailController.text)) {
                                 resetEmailError = 'Invalid email format';
                                 emailSent = false;
                               } else {
                                 resetEmailError = null;
-                                emailSent = true;
                               }
                             });
 
@@ -203,6 +203,9 @@ class _LoginPageState extends State<LoginPage> {
                                 });
                               }
                             }
+                            setState(() {
+                              isSending = false;
+                            });
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2E7D32),
@@ -210,16 +213,25 @@ class _LoginPageState extends State<LoginPage> {
                               borderRadius: BorderRadius.circular(30),
                             ),
                           ),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 12),
-                            child: Text(
-                              'Send',
-                              style: TextStyle(color: Colors.white),
-                            ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: isSending
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  )
+                                : const Text(
+                                    'Send',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
                           ),
                         ),
                         OutlinedButton(
-                          onPressed: () => Navigator.pop(context),
+                          onPressed: isSending ? null : () => Navigator.pop(context),
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(color: Color(0xFF2E7D32)),
                             shape: RoundedRectangleBorder(
@@ -363,7 +375,7 @@ class _LoginPageState extends State<LoginPage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _validateAndLogin,
+                  onPressed: _isLoading ? null : _validateAndLogin,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2E7D32),
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -371,14 +383,23 @@ class _LoginPageState extends State<LoginPage> {
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                  child: const Text(
-                    "Login",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text(
+                          "Login",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ),
 

@@ -16,6 +16,7 @@ class GuestPage extends StatefulWidget {
 class _GuestPageState extends State<GuestPage> {
   bool _agreedToPrivacyPolicy = false;
   bool _agreedToTermsAndConditions = false;
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -148,19 +149,33 @@ class _GuestPageState extends State<GuestPage> {
               const SizedBox(height: 20),
               Center(
                 child: ElevatedButton(
-                  onPressed: (_agreedToPrivacyPolicy && _agreedToTermsAndConditions)
+                  onPressed: (_agreedToPrivacyPolicy && _agreedToTermsAndConditions && !_isLoading)
                       ? () async {
-                          UserCredential userCredential = await FirebaseAuth.instance.signInAnonymously();
-                          if (userCredential.user != null) {
-                            await GuestAuthService.saveGuestUid(userCredential.user!.uid);
+                          setState(() {
+                            _isLoading = true;
+                          });
+                          try {
+                            UserCredential userCredential = await FirebaseAuth.instance.signInAnonymously();
+                            if (userCredential.user != null) {
+                              await GuestAuthService.saveGuestUid(userCredential.user!.uid);
+                            }
+                            if (mounted) {
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(builder: (context) => const DashboardPage(isGuest: true)),
+                              );
+                            }
+                          } catch (e) {
+                            // Handle error
+                          } finally {
+                            if (mounted) {
+                              setState(() {
+                                _isLoading = false;
+                              });
+                            }
                           }
-                          if (!mounted) return;
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (context) => const DashboardPage(isGuest: true)),
-                          );
                         }
-                      : null, // Disable button if not agreed
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2E7D32),
                     minimumSize: const Size(double.infinity, 48),
@@ -168,14 +183,23 @@ class _GuestPageState extends State<GuestPage> {
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                  child: const Text(
-                    "Proceed",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text(
+                          "Proceed",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
                 ),
               ),
 
