@@ -93,15 +93,6 @@ class _LoginPageState extends State<LoginPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(errorMessage),
-              action: SnackBarAction(
-                label: 'Resend',
-                onPressed: () async {
-                  await _authService.sendVerificationEmail();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Verification email sent!')),
-                  );
-                },
-              ),
             ),
           );
         } else {

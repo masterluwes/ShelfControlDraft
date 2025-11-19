@@ -132,26 +132,9 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
         }
 
         if (!mounted) return; // Check if the widget is still mounted before using context
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Text("Verification Email Sent"),
-              content: const Text("A verification link has been sent to your email address. Please verify your email to log in."),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => const LoginPage()),
-                    );
-                  },
-                  child: const Text("OK"),
-                ),
-              ],
-            );
-          },
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginPage()),
         );
       } on FirebaseAuthException catch (e) {
         String errorMessage;

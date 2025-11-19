@@ -341,7 +341,6 @@ class _DashboardPageState extends State<DashboardPage> {
             if (!widget.isGuest) ...[
               _drawerItem(Icons.person, "Profile", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfilePage()))),
               _drawerItem(Icons.notifications, "Notification Settings", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationSettingsPage()))),
-              _drawerItem(Icons.restaurant_menu, "Dietary Preferences", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DietaryPreferencesPage()))),
               _drawerItem(Icons.history, "History", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const HistoryScreen()))),
               _drawerItem(Icons.delete, "Waste Tracker", () => Navigator.push(context, MaterialPageRoute(builder: (context) => WasteTrackerPage()))),
               _drawerItem(Icons.info, "User Guide", () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UserGuidePage()))),

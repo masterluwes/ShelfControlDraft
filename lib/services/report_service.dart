@@ -10,6 +10,7 @@ class WasteWeeklyStats {
   final DateTime weekStart; // e.g., 2025-10-06
   final DateTime weekEnd; // e.g., 2025-10-12 (inclusive)
   final DateTime generatedAt; // now()
+  final int relativeWeekNumber; // New: Week number relative to user creation
 
   final int totalWastedItems; // e.g., 12
   final int totalItemsOut; // wasted + consumed that left pantry
@@ -29,6 +30,7 @@ class WasteWeeklyStats {
     required this.weekStart,
     required this.weekEnd,
     required this.generatedAt,
+    required this.relativeWeekNumber, // New: Add to constructor
     required this.totalWastedItems,
     required this.totalItemsOut,
     required this.totalWasteCost,
@@ -399,7 +401,7 @@ class WasteReportService {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Text("Household: ${stats.householdName}", style: const pw.TextStyle(fontSize: 11)),
-        pw.Text("Week: ${stats.weekStart.day == 1 ? 'Week 1' : 'Week ${((stats.weekStart.difference(stats.weekEnd).inDays / 7).round().abs() + 1)}'} ${_date.format(stats.weekStart)} – ${_date.format(stats.weekEnd)}", style: const pw.TextStyle(fontSize: 11)),
+        pw.Text("Week: Week ${stats.relativeWeekNumber} (${_date.format(stats.weekStart)} – ${_date.format(stats.weekEnd)})", style: const pw.TextStyle(fontSize: 11)),
         pw.Text("Generated: ${_dateTime.format(stats.generatedAt)}", style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
         spacer(10),
         pw.Text("Weekly Summary", style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),

@@ -18,22 +18,23 @@ import 'package:shelf_control/models/waste_report_model.dart'; // Import WasteRe
 import 'package:uuid/uuid.dart'; // For generating unique IDs
 import 'package:shelf_control/screens/view_reports_page.dart'; // Import the new page
 import 'package:shelf_control/models/household_model.dart'; // Import HouseholdModel
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import for Timestamp
 
 // for the week dropdown
 class WeekPeriod {
-  final int weekNumber;
+  final int relativeWeekNumber; // Week number relative to user creation
   final DateTime startDate;
   final DateTime endDate;
 
   WeekPeriod({
-    required this.weekNumber,
+    required this.relativeWeekNumber,
     required this.startDate,
     required this.endDate,
   });
 
-  String get label => "Week $weekNumber (${_formatDate(startDate)})";
+  String get label => "Week $relativeWeekNumber (${_formatDate(startDate)})";
   String get fullLabel =>
-      "Week $weekNumber (${_formatDate(startDate)} - ${_formatDate(endDate)})";
+      "Week $relativeWeekNumber (${_formatDate(startDate)} - ${_formatDate(endDate)})";
 
   static String _formatDate(DateTime date) {
     return "${_monthShort(date.month)} ${date.day}, ${date.year}";
@@ -148,11 +149,11 @@ class _WasteData {
         ? '—'
         : wastedByCategory.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
 
-    final List<int> weeklyWasteSeries = List.filled(8, 0);
-    final List<int> weeklyConsumedSeries = List.filled(8, 0);
+    final List<int> weeklyWasteSeries = List.filled(weeks.length, 0);
+    final List<int> weeklyConsumedSeries = List.filled(weeks.length, 0);
 
-    // Iterate through the last 8 weeks, from newest to oldest
-    for (int i = 0; i < 8; i++) {
+    // Iterate through the available weeks, from newest to oldest
+    for (int i = 0; i < weeks.length; i++) {
       final weekPeriod = weeks[i]; // Use the pre-calculated week periods (now newest to oldest)
       final start = weekPeriod.startDate;
       final end = weekPeriod.endDate.add(const Duration(hours: 23, minutes: 59, seconds: 59));
@@ -198,10 +199,11 @@ class _WasteData {
 }
 
 class _WasteTrackerPageState extends State<WasteTrackerPage> {
-  late final List<WeekPeriod> weeks = _generateWeeks();
+  DateTime? _userCreationDate; // New state variable to store user creation date
+  late List<WeekPeriod> weeks = []; // Initialize as empty, will be generated after fetching user data
   WeekPeriod? selectedWeek;
-  WeekPeriod? _startWeekForCustomRange; // New state variable
-  WeekPeriod? _endWeekForCustomRange;   // New state variable
+  WeekPeriod? _startWeekForCustomRange;
+  WeekPeriod? _endWeekForCustomRange;
 
   bool showWastedItems = false;
   bool showConsumedItems = false;
@@ -209,19 +211,110 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
   final _trendKey = GlobalKey();
   final _consumptionTrendKey = GlobalKey();
   List<ShoppingHistoryItemModel> _latestHistoryItems = [];
-  final Uuid _uuid = const Uuid(); // Instantiate Uuid
+  final Uuid _uuid = const Uuid();
+
+  // Removed duplicate initState. The one above is the correct one.
+
+  Future<void> _fetchUserCreationDateAndGenerateWeeks() async {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final userId = firestoreService.userId;
+    debugPrint('DEBUG: _fetchUserCreationDateAndGenerateWeeks called. userId: $userId');
+
+    if (userId != null) {
+      final userDoc = await firestoreService.db.collection('users').doc(userId).get();
+      if (userDoc.exists && userDoc.data() != null && userDoc.data()!['createdAt'] is Timestamp) {
+        setState(() {
+          _userCreationDate = (userDoc.data()!['createdAt'] as Timestamp).toDate();
+          weeks = _generateWeeks();
+          selectedWeek = weeks.firstOrNull;
+          _startWeekForCustomRange = weeks.lastOrNull;
+          _endWeekForCustomRange = weeks.firstOrNull;
+          debugPrint('DEBUG: User creation date fetched: $_userCreationDate, weeks generated: ${weeks.length}');
+        });
+      } else {
+        // Fallback if creation date is not found, use current date as "Week 1"
+        setState(() {
+          _userCreationDate = DateTime.now();
+          weeks = _generateWeeks();
+          selectedWeek = weeks.firstOrNull;
+          _startWeekForCustomRange = weeks.lastOrNull;
+          _endWeekForCustomRange = weeks.firstOrNull;
+          debugPrint('DEBUG: User creation date not found, falling back to DateTime.now(). Weeks generated: ${weeks.length}');
+        });
+      }
+    } else {
+      // For guest users or if userId is null, use current date as "Week 1"
+      setState(() {
+        _userCreationDate = DateTime.now();
+        weeks = _generateWeeks();
+        selectedWeek = weeks.firstOrNull;
+        _startWeekForCustomRange = weeks.lastOrNull;
+        _endWeekForCustomRange = weeks.firstOrNull;
+        debugPrint('DEBUG: userId is null, falling back to DateTime.now(). Weeks generated: ${weeks.length}');
+      });
+    }
+    // Ensure selectedWeek is always set, even if weeks is empty (though it shouldn't be if _userCreationDate is set)
+    if (selectedWeek == null && weeks.isNotEmpty) {
+      setState(() {
+        selectedWeek = weeks.first;
+        _startWeekForCustomRange = weeks.last;
+        _endWeekForCustomRange = weeks.first;
+        debugPrint('DEBUG: selectedWeek was null, set to weeks.first: ${selectedWeek?.label}');
+      });
+    } else if (selectedWeek == null && weeks.isEmpty) {
+      debugPrint('DEBUG: selectedWeek is null and weeks is empty. This might indicate an issue with _generateWeeks.');
+    }
+  }
 
   List<WeekPeriod> _generateWeeks() {
+    if (_userCreationDate == null) {
+      return []; // Should not happen if _fetchUserCreationDateAndGenerateWeeks is called
+    }
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     DateTime currentWeekStart = today.subtract(Duration(days: today.weekday - DateTime.monday));
 
-    return List.generate(8, (i) {
-      final start = currentWeekStart.subtract(Duration(days: 7 * i));
+    // Calculate the start of the week for the user's creation date
+    final normalizedUserCreationDate = DateTime(_userCreationDate!.year, _userCreationDate!.month, _userCreationDate!.day);
+    DateTime creationWeekStart = normalizedUserCreationDate.subtract(Duration(days: normalizedUserCreationDate.weekday - DateTime.monday));
+    debugPrint('DEBUG: _generateWeeks: raw creationWeekStart (normalized from user creation date): $creationWeekStart');
+
+    // Adjust creationWeekStart if it's in the future relative to currentWeekStart
+    // This handles cases where the device clock might be set in the past compared to Firestore's createdAt.
+    if (creationWeekStart.isAfter(currentWeekStart)) {
+      debugPrint('DEBUG: _generateWeeks: Adjusted creationWeekStart to currentWeekStart because it was in the future.');
+      creationWeekStart = currentWeekStart;
+    }
+    debugPrint('DEBUG: _generateWeeks: effective creationWeekStart: $creationWeekStart');
+
+    List<WeekPeriod> allPossibleWeeks = [];
+    DateTime tempWeekStart = creationWeekStart;
+    int weekCounter = 1;
+
+    debugPrint('DEBUG: _generateWeeks: Entering loop. Initial tempWeekStart: $tempWeekStart, currentWeekStart: $currentWeekStart');
+    // Generate all weeks from creation date up to and including the current week
+    while (tempWeekStart.isBefore(currentWeekStart) || tempWeekStart.isAtSameMomentAs(currentWeekStart)) {
+      final start = tempWeekStart;
       final end = start.add(const Duration(days: 6));
-      final weekNumber = 8 - i;
-      return WeekPeriod(weekNumber: weekNumber, startDate: start, endDate: end);
-    }).toList();
+      allPossibleWeeks.add(WeekPeriod(relativeWeekNumber: weekCounter, startDate: start, endDate: end));
+      debugPrint('DEBUG: _generateWeeks: Added Week $weekCounter (Start: $start, End: $end). tempWeekStart before increment: $tempWeekStart');
+      tempWeekStart = tempWeekStart.add(const Duration(days: 7));
+      weekCounter++;
+      debugPrint('DEBUG: _generateWeeks: tempWeekStart after increment: $tempWeekStart');
+    }
+
+    // The previous loop condition might miss the *exact* current week if creationWeekStart was already currentWeekStart.
+    // This check ensures the current week is always included if it's not already.
+    // No need for the additional check if (tempWeekStart.isAtSameMomentAs(currentWeekStart) && !allPossibleWeeks.any((w) => w.startDate.isAtSameMomentAs(currentWeekStart)))
+    // as the while loop condition should cover it now.
+    debugPrint('DEBUG: _generateWeeks: Loop finished. allPossibleWeeks count: ${allPossibleWeeks.length}');
+
+    // Sort weeks from newest to oldest
+    allPossibleWeeks.sort((a, b) => b.startDate.compareTo(a.startDate));
+
+    // Take the last 8 weeks (or fewer if the user account is less than 8 weeks old)
+    return allPossibleWeeks.take(8).toList();
   }
 
   Future<Uint8List?> _capturePng(GlobalKey key,
@@ -337,6 +430,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
       weekStart: rangeStart,
       weekEnd: rangeEnd,
       generatedAt: DateTime.now(),
+      relativeWeekNumber: selectedWeek?.relativeWeekNumber ?? 1, // Pass the relative week number
       totalWastedItems: totalWastedItems,
       totalItemsOut: totalItemsOut,
       totalWasteCost: totalWasteCost,
@@ -443,9 +537,8 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
   @override
   void initState() {
     super.initState();
-    selectedWeek = weeks.first;
-    _startWeekForCustomRange = weeks.last;
-    _endWeekForCustomRange = weeks.first;
+    debugPrint('DEBUG: _WasteTrackerPageState initState called.');
+    _fetchUserCreationDateAndGenerateWeeks(); // Call this to fetch user creation date and generate weeks
   }
 
   void _showInfoDialog(BuildContext context) {
@@ -672,6 +765,11 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
         final allHistoryItems = snap.data ?? [];
 
         _latestHistoryItems = allHistoryItems;
+
+        // If selectedWeek is null, data is still loading, show a progress indicator
+        if (selectedWeek == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
         // Compute all waste data once
         final wasteData = _WasteData.fromHistoryItems(allHistoryItems, selectedWeek!, weeks);
@@ -929,7 +1027,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                         getTitlesWidget: (value, meta) {
                                           final index = value.toInt();
                                           if (index >= 0 && index < weeks.length) {
-                                            return Text("W${8 - index}",
+                                            return Text("W${weeks[index].relativeWeekNumber}",
                                                 style: const TextStyle(
                                                     fontSize: 10));
                                           }
@@ -1255,7 +1353,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
                                         getTitlesWidget: (value, meta) {
                                           final index = value.toInt();
                                           if (index >= 0 && index < weeks.length) {
-                                            return Text("W${weeks[index].weekNumber}",
+                                            return Text("W${weeks[index].relativeWeekNumber}",
                                                 style: const TextStyle(
                                                     fontSize: 10));
                                           }
