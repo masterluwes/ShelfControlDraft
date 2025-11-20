@@ -199,7 +199,7 @@ class _WasteData {
 }
 
 class _WasteTrackerPageState extends State<WasteTrackerPage> {
-  DateTime? _userCreationDate; // New state variable to store user creation date
+  DateTime? _householdCreationDate; // New state variable to store household creation date
   late List<WeekPeriod> weeks = []; // Initialize as empty, will be generated after fetching user data
   WeekPeriod? selectedWeek;
   WeekPeriod? _startWeekForCustomRange;
@@ -217,43 +217,43 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
 
   Future<void> _fetchUserCreationDateAndGenerateWeeks() async {
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    final userId = firestoreService.userId;
-    debugPrint('DEBUG: _fetchUserCreationDateAndGenerateWeeks called. userId: $userId');
+    final householdId = firestoreService.selectedHouseholdId;
+    debugPrint('DEBUG: _fetchUserCreationDateAndGenerateWeeks called. householdId: $householdId');
 
-    if (userId != null) {
-      final userDoc = await firestoreService.db.collection('users').doc(userId).get();
-      if (userDoc.exists && userDoc.data() != null && userDoc.data()!['createdAt'] is Timestamp) {
+    if (householdId != null) {
+      final household = await firestoreService.getHousehold(householdId);
+      if (household != null && household.timestamp != null) {
         setState(() {
-          _userCreationDate = (userDoc.data()!['createdAt'] as Timestamp).toDate();
+          _householdCreationDate = household.timestamp;
           weeks = _generateWeeks();
           selectedWeek = weeks.firstOrNull;
           _startWeekForCustomRange = weeks.lastOrNull;
           _endWeekForCustomRange = weeks.firstOrNull;
-          debugPrint('DEBUG: User creation date fetched: $_userCreationDate, weeks generated: ${weeks.length}');
+          debugPrint('DEBUG: Household creation date fetched: $_householdCreationDate, weeks generated: ${weeks.length}');
         });
       } else {
-        // Fallback if creation date is not found, use current date as "Week 1"
+        // Fallback if household creation date is not found, use current date as "Week 1"
         setState(() {
-          _userCreationDate = DateTime.now();
+          _householdCreationDate = DateTime.now();
           weeks = _generateWeeks();
           selectedWeek = weeks.firstOrNull;
           _startWeekForCustomRange = weeks.lastOrNull;
           _endWeekForCustomRange = weeks.firstOrNull;
-          debugPrint('DEBUG: User creation date not found, falling back to DateTime.now(). Weeks generated: ${weeks.length}');
+          debugPrint('DEBUG: Household creation date not found, falling back to DateTime.now(). Weeks generated: ${weeks.length}');
         });
       }
     } else {
-      // For guest users or if userId is null, use current date as "Week 1"
+      // For guest users or if householdId is null, use current date as "Week 1"
       setState(() {
-        _userCreationDate = DateTime.now();
+        _householdCreationDate = DateTime.now();
         weeks = _generateWeeks();
         selectedWeek = weeks.firstOrNull;
         _startWeekForCustomRange = weeks.lastOrNull;
         _endWeekForCustomRange = weeks.firstOrNull;
-        debugPrint('DEBUG: userId is null, falling back to DateTime.now(). Weeks generated: ${weeks.length}');
+        debugPrint('DEBUG: householdId is null, falling back to DateTime.now(). Weeks generated: ${weeks.length}');
       });
     }
-    // Ensure selectedWeek is always set, even if weeks is empty (though it shouldn't be if _userCreationDate is set)
+    // Ensure selectedWeek is always set, even if weeks is empty (though it shouldn't be if _householdCreationDate is set)
     if (selectedWeek == null && weeks.isNotEmpty) {
       setState(() {
         selectedWeek = weeks.first;
@@ -267,7 +267,7 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
   }
 
   List<WeekPeriod> _generateWeeks() {
-    if (_userCreationDate == null) {
+    if (_householdCreationDate == null) {
       return []; // Should not happen if _fetchUserCreationDateAndGenerateWeeks is called
     }
 
@@ -275,10 +275,10 @@ class _WasteTrackerPageState extends State<WasteTrackerPage> {
     final today = DateTime(now.year, now.month, now.day);
     DateTime currentWeekStart = today.subtract(Duration(days: today.weekday - DateTime.monday));
 
-    // Calculate the start of the week for the user's creation date
-    final normalizedUserCreationDate = DateTime(_userCreationDate!.year, _userCreationDate!.month, _userCreationDate!.day);
-    DateTime creationWeekStart = normalizedUserCreationDate.subtract(Duration(days: normalizedUserCreationDate.weekday - DateTime.monday));
-    debugPrint('DEBUG: _generateWeeks: raw creationWeekStart (normalized from user creation date): $creationWeekStart');
+    // Calculate the start of the week for the household's creation date
+    final normalizedHouseholdCreationDate = DateTime(_householdCreationDate!.year, _householdCreationDate!.month, _householdCreationDate!.day);
+    DateTime creationWeekStart = normalizedHouseholdCreationDate.subtract(Duration(days: normalizedHouseholdCreationDate.weekday - DateTime.monday));
+    debugPrint('DEBUG: _generateWeeks: raw creationWeekStart (normalized from household creation date): $creationWeekStart');
 
     // Adjust creationWeekStart if it's in the future relative to currentWeekStart
     // This handles cases where the device clock might be set in the past compared to Firestore's createdAt.
