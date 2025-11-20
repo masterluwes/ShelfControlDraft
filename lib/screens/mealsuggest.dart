@@ -13,7 +13,6 @@ import 'package:shelf_control/models/suggested_recipe.dart';
 import 'package:shelf_control/services/shopping_list_service.dart'; // Import ShoppingListService
 import 'package:shelf_control/models/shopping_list_item_model.dart'; // Import ShoppingListItemModel
 
-
 // ===== CONFIG =====
 const double kMinCoverageToShow = 0.5; // 50% pantry coverage
 const List<String> kStaples = [
@@ -109,15 +108,20 @@ class Recipe {
     final ingredients = parseIngredients(data['ingredients']);
     final directions = parseDirections(data['directions']);
 
+    final rawImage = asString(data['imageUrl']);
+    final imageUrl =
+        rawImage.isNotEmpty ? rawImage : 'assets/meal.png'; // 🔹 fallback
+
     return Recipe(
       name: asString(data['name']),
-      imageUrl: asString(data['imageUrl']),
+      imageUrl: imageUrl,
       servingSize: asString(data['servingSize']),
       calories: asString(data['calories']),
       time: asString(data['time']),
       description: asString(data['description']),
       ingredients: ingredients,
       directions: directions,
+      missingIngredients: const [],
     );
   }
 }
@@ -201,8 +205,6 @@ class _MealSuggestState extends State<MealSuggest> {
     }
     print('uid=${FirebaseAuth.instance.currentUser?.uid}, hid=$householdId');
   }
-
-  
 
   // Normalization helpers
   String _norm(String s) => s
@@ -312,9 +314,7 @@ class _MealSuggestState extends State<MealSuggest> {
               );
             },
           ),
-          
         ],
-        
       ),
       body: StreamBuilder<List<PantryItemModel>>(
         stream: pantryStream,
@@ -391,7 +391,8 @@ class _MealSuggestState extends State<MealSuggest> {
                     directions: r.steps.isEmpty
                         ? const ['See steps in details']
                         : r.steps,
-                    missingIngredients: r.missingIngredients, // Pass missing ingredients
+                    missingIngredients:
+                        r.missingIngredients, // Pass missing ingredients
                   ))
               .toList();
 
@@ -399,18 +400,21 @@ class _MealSuggestState extends State<MealSuggest> {
           final atRiskItems = pantryItemModels
               .where((item) =>
                   item.expirationDate != null &&
-                  item.expirationDate!.isBefore(DateTime.now().add(const Duration(days: 3))))
+                  item.expirationDate!
+                      .isBefore(DateTime.now().add(const Duration(days: 3))))
               .toList();
 
           // Check if any suggested recipes use expiring items
-          final hasRecipesUsingExpiringItems = _recipes.any((recipe) => recipe.usesExpiring.isNotEmpty);
+          final hasRecipesUsingExpiringItems =
+              _recipes.any((recipe) => recipe.usesExpiring.isNotEmpty);
 
           return SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  if (atRiskItems.isNotEmpty && hasRecipesUsingExpiringItems) ...[
+                  if (atRiskItems.isNotEmpty &&
+                      hasRecipesUsingExpiringItems) ...[
                     _buildAtRiskBanner(atRiskItems),
                     const SizedBox(height: 16),
                   ],
@@ -512,13 +516,17 @@ class _MealSuggestState extends State<MealSuggest> {
     );
   }
 
-
   Widget _buildMealCard({
     required BuildContext context,
     required Recipe recipe,
   }) {
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    final shoppingListService = ShoppingListService(firestoreService: firestoreService);
+    final firestoreService =
+        Provider.of<FirestoreService>(context, listen: false);
+    final shoppingListService =
+        ShoppingListService(firestoreService: firestoreService);
+    final String img = (recipe.imageUrl).trim();
+    final bool isAsset = img.startsWith('assets/');
+    final bool isHttp = img.startsWith('http://') || img.startsWith('https://');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -547,41 +555,42 @@ class _MealSuggestState extends State<MealSuggest> {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8.0),
-                      child: recipe.imageUrl.startsWith('assets/')
+                      child: isAsset
                           ? Image.asset(
-                              recipe.imageUrl,
+                              img,
                               width: 70,
                               height: 70,
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) {
-                                return Container(
+                                return Image.asset(
+                                  'assets/meals.jpg',
                                   width: 70,
                                   height: 70,
-                                  color: Colors.grey.shade200,
-                                  child: const Icon(
-                                    Icons.image_not_supported,
-                                    color: Colors.grey,
-                                  ),
+                                  fit: BoxFit.cover,
                                 );
                               },
                             )
-                          : Image.network(
-                              recipe.imageUrl,
-                              width: 70,
-                              height: 70,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
+                          : isHttp
+                              ? Image.network(
+                                  img,
                                   width: 70,
                                   height: 70,
-                                  color: Colors.grey.shade200,
-                                  child: const Icon(
-                                    Icons.image_not_supported,
-                                    color: Colors.grey,
-                                  ),
-                                );
-                              },
-                            ),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Image.asset(
+                                      'assets/meals.jpg',
+                                      width: 70,
+                                      height: 70,
+                                      fit: BoxFit.cover,
+                                    );
+                                  },
+                                )
+                              : Image.asset(
+                                  'assets/meals.jpg',
+                                  width: 70,
+                                  height: 70,
+                                  fit: BoxFit.cover,
+                                ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -655,12 +664,14 @@ class _MealSuggestState extends State<MealSuggest> {
                           await shoppingListService.addOrUpdateItem(
                             householdId: householdId!,
                             itemName: item,
-                            quantity: 1, // Default to 1, user can adjust in shopping list
+                            quantity:
+                                1, // Default to 1, user can adjust in shopping list
                           );
                         }
                         if (!mounted) return;
                       },
-                      icon: const Icon(Icons.add_shopping_cart, color: Color(0xFF2E7D32)),
+                      icon: const Icon(Icons.add_shopping_cart,
+                          color: Color(0xFF2E7D32)),
                       label: const Text(
                         'Add to Shopping List',
                         style: TextStyle(

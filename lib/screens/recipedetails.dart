@@ -189,15 +189,43 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
         background: Stack(
           fit: StackFit.expand,
           children: [
-            Image.network(
-              recipe.imageUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return const Icon(
-                  Icons.image_not_supported,
-                  color: Colors.grey,
-                  size: 60,
-                );
+            Builder(
+              builder: (context) {
+                final String img = (recipe.imageUrl).trim();
+                const String fallbackAsset = 'assets/meals.jpg';
+
+                final bool isAsset = img.startsWith('assets/');
+                final bool isHttp =
+                    img.startsWith('http://') || img.startsWith('https://');
+
+                if (isAsset) {
+                  return Image.asset(
+                    img,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Image.asset(
+                        fallbackAsset,
+                        fit: BoxFit.cover,
+                      );
+                    },
+                  );
+                } else if (isHttp) {
+                  return Image.network(
+                    img,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Image.asset(
+                        fallbackAsset,
+                        fit: BoxFit.cover,
+                      );
+                    },
+                  );
+                } else {
+                  return Image.asset(
+                    fallbackAsset,
+                    fit: BoxFit.cover,
+                  );
+                }
               },
             ),
             const DecoratedBox(

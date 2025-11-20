@@ -53,6 +53,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
+    - assets/meals.jpg
     - assets/log_items.png
     - assets/track_pantry.png
     - assets/never_miss_expiry.png
