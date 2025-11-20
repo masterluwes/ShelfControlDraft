@@ -84,13 +84,25 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
-  Future<User?>? _guestReauthFuture;
+  late Future<User?> _initialAuthCheckFuture;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _guestReauthFuture = GuestAuthService.reauthenticateGuest();
+    _initialAuthCheckFuture = _checkInitialAuthState();
+  }
+
+  Future<User?> _checkInitialAuthState() async {
+    // Attempt to get the current user immediately
+    User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null && !currentUser.isAnonymous) {
+      // If an authenticated user exists, update last login and return
+      Provider.of<FirestoreService>(context, listen: false).updateLastLoginAt(currentUser.uid);
+      return currentUser;
+    }
+    // If no authenticated user, proceed with guest re-authentication check
+    return GuestAuthService.reauthenticateGuest();
   }
 
   @override
@@ -115,40 +127,44 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<User?>(
-      future: _guestReauthFuture,
-      builder: (context, guestSnapshot) {
-        if (guestSnapshot.connectionState == ConnectionState.done) {
-          final User? guestUser = guestSnapshot.data;
-          if (guestUser != null && guestUser.isAnonymous) {
-            // If guest re-authentication was successful, go to dashboard
-            return DashboardPage(isGuest: true);
-          }
+      future: _initialAuthCheckFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done) {
+          final User? user = snapshot.data;
 
-          // Otherwise, proceed with normal auth state changes
-          return StreamBuilder<User?>(
-            stream: FirebaseAuth.instance.authStateChanges(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.active) {
-                final User? user = snapshot.data;
-                if (user == null) {
-                  return const WelcomePage();
+          if (user != null && !user.isAnonymous) {
+            // If an authenticated user is found, proceed to HouseholdSetupPage
+            return const HouseholdSetupPage();
+          } else if (user != null && user.isAnonymous) {
+            // If guest re-authentication was successful, go to dashboard
+            return const DashboardPage(isGuest: true);
+          } else {
+            // If no user (neither authenticated nor re-authenticated guest),
+            // listen to authStateChanges for fresh login or initial guest creation
+            return StreamBuilder<User?>(
+              stream: FirebaseAuth.instance.authStateChanges(),
+              builder: (context, authStateSnapshot) {
+                if (authStateSnapshot.connectionState == ConnectionState.active) {
+                  final User? authUser = authStateSnapshot.data;
+                  if (authUser == null) {
+                    return const WelcomePage();
+                  }
+                  if (!authUser.isAnonymous) {
+                    Provider.of<FirestoreService>(context, listen: false)
+                        .updateLastLoginAt(authUser.uid);
+                  }
+                  return const HouseholdSetupPage();
                 }
-                // Update lastLoginAt when user is authenticated (e.g., after login or app start)
-                if (!user.isAnonymous) {
-                  Provider.of<FirestoreService>(context, listen: false)
-                      .updateLastLoginAt(user.uid);
-                }
-                return const HouseholdSetupPage();
-              }
-              return const Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              );
-            },
-          );
+                return const Scaffold(
+                  body: Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              },
+            );
+          }
         }
-        // While guest re-authentication is in progress
+        // While initial authentication check is in progress
         return const Scaffold(
           body: Center(
             child: CircularProgressIndicator(),

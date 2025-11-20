@@ -48,6 +48,7 @@ class WasteWeeklyStats {
   double get efficiencyRate => totalItemsOut == 0
       ? 0
       : ((totalItemsOut - totalWastedItems) / totalItemsOut) * 100.0;
+  int get totalConsumedItems => totalItemsOut - totalWastedItems;
 }
 
 class CategoryRow {
@@ -379,6 +380,7 @@ class WasteReportService {
 
     final summaryRows = <List<String>>[
       ["Total Wasted Items", "${stats.totalWastedItems}", "Items marked as wasted"],
+      ["Total Consumed Items", "${stats.totalConsumedItems}", "Items consumed from pantry"],
       ["Waste Percentage", "${stats.wastePercent.toStringAsFixed(1)}%", "Relative to all items leaving pantry"],
       ["Total Cost of Waste", _money.format(stats.totalWasteCost), "Estimated financial loss"],
       ["Efficiency Rate", "${stats.efficiencyRate.toStringAsFixed(1)}%", "Consumed vs wasted ratio"],

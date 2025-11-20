@@ -23,7 +23,7 @@ class _GuestPageState extends State<GuestPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFFEF9E7),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

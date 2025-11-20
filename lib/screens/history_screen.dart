@@ -15,13 +15,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    // Clean up old history items when the screen is initialized
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      if (firestoreService.selectedHouseholdId != null) {
-        firestoreService.cleanUpShoppingHistoryItems(firestoreService.selectedHouseholdId!);
-      }
-    });
   }
 
   Future<void> _confirmClearHistory(BuildContext context, FirestoreService firestoreService) async {

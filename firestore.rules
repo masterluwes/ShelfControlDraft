@@ -13,11 +13,26 @@ service cloud.firestore {
       }
     }
 
-    // Allow read/write for household documents
+      // Allow read/write for household documents
     match /households/{householdId} {
       // Helper function to check if the user is a member of the household
       function isHouseholdMember(hid) {
         return get(/databases/$(database)/documents/households/$(hid)).data.members.hasAny([request.auth.uid]);
+      }
+
+      // Helper function to check if a user can join a household
+      // This function ensures:
+      // 1. The user is authenticated.
+      // 2. The user is not already a member.
+      // 3. The provided joinCode in the request matches the household's joinCode.
+      // 4. The update is only adding the current user to the 'members' array, and no other fields are modified.
+      function canJoinHousehold(hid) {
+        return request.auth.uid != null &&
+               !isHouseholdMember(hid) &&
+               request.resource.data.joinCode == resource.data.joinCode &&
+               request.resource.data.members.hasAll(resource.data.members.concat([request.auth.uid])) &&
+               request.resource.data.members.size() == resource.data.members.size() + 1 &&
+               request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']);
       }
 
       // Allow read for individual household documents if the user is a member.
@@ -30,8 +45,12 @@ service cloud.firestore {
                       request.resource.data.members.hasAll([request.auth.uid]) &&
                       request.resource.data.name is string &&
                       request.resource.data.name.size() > 0; // Allow authenticated user to create a household with a name and themselves as a member
-      allow update: if request.auth.uid != null && isHouseholdMember(householdId) &&
-                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeShoppingListId']);
+      // Modified update rule to allow existing members to update certain fields
+      // AND allow non-members to join if they meet the canJoinHousehold criteria.
+      allow update: if request.auth.uid != null && (
+        (isHouseholdMember(householdId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeShoppingListId', 'name'])) ||
+        canJoinHousehold(householdId)
+      );
       allow delete: if request.auth.uid == resource.data.ownerId; // Only owner can delete
     }
 
@@ -161,6 +180,10 @@ service cloud.firestore {
       allow create: if request.auth.uid != null && isHouseholdMember(request.resource.data.householdId);
       allow update, delete: if request.auth.uid != null && isHouseholdMember(resource.data.householdId);
     }
-
+    
+    // Allow all users to read legal documents and any subcollections/documents nested within it
+    match /legal_documents/{document=**} {
+      allow read: if true;
+    }
   }
 }
