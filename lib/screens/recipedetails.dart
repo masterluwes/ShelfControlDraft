@@ -148,136 +148,140 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
   }
 
   Widget _buildSliverAppBar(Recipe recipe, BuildContext context) {
-    return SliverAppBar(
-      expandedHeight: 300.0,
-      pinned: true,
-      backgroundColor: const Color(0xFFFFFBE6),
-      elevation: 1,
-      iconTheme: const IconThemeData(color: Colors.white),
-      leading: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(50),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-            child: Container(
-              color: Colors.black.withOpacity(0.2),
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
+  return SliverAppBar(
+    expandedHeight: 300.0,
+    pinned: true,
+    backgroundColor: const Color(0xFFFFFBE6),
+    elevation: 1,
+    iconTheme: const IconThemeData(color: Colors.white),
+    leading: Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(50),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: Container(
+            color: Colors.black.withOpacity(0.2),
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+              onPressed: () => Navigator.of(context).pop(),
             ),
           ),
         ),
       ),
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
-        centerTitle: false,
-        title: AnimatedDefaultTextStyle(
-          duration: const Duration(milliseconds: 200),
-          style: TextStyle(
-            fontFamily: 'Inter',
-            fontWeight: FontWeight.bold,
-            fontSize: 32,
-            color: _titleColor,
-            shadows: _titleColor == Colors.white
-                ? [const Shadow(blurRadius: 2, color: Colors.black54)]
-                : null,
-          ),
-          child: Text(recipe.name),
+    ),
+    flexibleSpace: FlexibleSpaceBar(
+      titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
+      centerTitle: false,
+
+      // 🔹 This is the black backdrop with time + title
+      title: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.45), // backdrop for text
+          borderRadius: BorderRadius.circular(12),
         ),
-        background: Stack(
-          fit: StackFit.expand,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Builder(
-              builder: (context) {
-                final String img = (recipe.imageUrl).trim();
-                const String fallbackAsset = 'assets/meals.jpg';
-
-                final bool isAsset = img.startsWith('assets/');
-                final bool isHttp =
-                    img.startsWith('http://') || img.startsWith('https://');
-
-                if (isAsset) {
-                  return Image.asset(
-                    img,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Image.asset(
-                        fallbackAsset,
-                        fit: BoxFit.cover,
-                      );
-                    },
-                  );
-                } else if (isHttp) {
-                  return Image.network(
-                    img,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Image.asset(
-                        fallbackAsset,
-                        fit: BoxFit.cover,
-                      );
-                    },
-                  );
-                } else {
-                  return Image.asset(
-                    fallbackAsset,
-                    fit: BoxFit.cover,
-                  );
-                }
-              },
-            ),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black54],
-                  stops: [0.5, 1.0],
+            // duration row ABOVE the title
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.access_time,
+                  size: 16,
+                  color: _titleColor,
                 ),
-              ),
-            ),
-            Positioned(
-              left: 16,
-              bottom: 85,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    color: Colors.black.withOpacity(0.25),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.access_time,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${recipe.time} min',
-                          style: const TextStyle(
-                            fontFamily: 'Roboto',
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
+                const SizedBox(width: 4),
+                Text(
+                  '${recipe.time} min',
+                  style: TextStyle(
+                    fontFamily: 'Roboto',
+                    fontSize: 13,
+                    color: _titleColor,
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.bold,
+                fontSize: 32,
+                color: _titleColor,
+                shadows: _titleColor == Colors.white
+                    ? [const Shadow(blurRadius: 2, color: Colors.black54)]
+                    : null,
               ),
+              child: Text(recipe.name),
             ),
           ],
         ),
       ),
-    );
-  }
+
+      // Background image + gradient stay here, as siblings of `title`
+      background: Stack(
+        fit: StackFit.expand,
+        children: [
+          Builder(
+            builder: (context) {
+              final String img = (recipe.imageUrl).trim();
+              const String fallbackAsset = 'assets/meals.jpg';
+
+              final bool isAsset = img.startsWith('assets/');
+              final bool isHttp =
+                  img.startsWith('http://') || img.startsWith('https://');
+
+              if (isAsset) {
+                return Image.asset(
+                  img,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Image.asset(
+                      fallbackAsset,
+                      fit: BoxFit.cover,
+                    );
+                  },
+                );
+              } else if (isHttp) {
+                return Image.network(
+                  img,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Image.asset(
+                      fallbackAsset,
+                      fit: BoxFit.cover,
+                    );
+                  },
+                );
+              } else {
+                return Image.asset(
+                  fallbackAsset,
+                  fit: BoxFit.cover,
+                );
+              }
+            },
+          ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Colors.black54],
+                stops: [0.5, 1.0],
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 
   Widget _buildInfoBox(Recipe recipe) {
     const labelStyle = TextStyle(
@@ -322,7 +326,21 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
     );
   }
 
+  String _toTitleCase(String text) {
+    return text.split(' ').map((word) {
+      if (word.trim().isEmpty) return '';
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+  }
+
   Widget _buildIngredientItem(String name, String amount) {
+    // Format name to Title Case
+    final formattedName = _toTitleCase(name.trim());
+
+    // If amount exists → append "(amount)"
+    final displayText =
+        amount.trim().isNotEmpty ? "$formattedName ($amount)" : formattedName;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
@@ -334,27 +352,12 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                if (amount.isNotEmpty)
-                  Text(
-                    amount,
-                    style: const TextStyle(
-                      fontFamily: 'Roboto',
-                      color: Colors.grey,
-                      fontSize: 14,
-                    ),
-                  ),
-              ],
+            child: Text(
+              displayText,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 16,
+              ),
             ),
           ),
         ],
