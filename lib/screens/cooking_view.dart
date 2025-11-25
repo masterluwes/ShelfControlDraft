@@ -24,6 +24,15 @@ class CookingViewPage extends StatefulWidget {
   State<CookingViewPage> createState() => _CookingViewPageState();
 }
 
+String _toTitleCase(String text) {
+  return text
+      .split(' ')
+      .map((w) => w.isEmpty
+          ? w
+          : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}')
+      .join(' ');
+}
+
 class _CookingViewPageState extends State<CookingViewPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
@@ -52,6 +61,15 @@ class _CookingViewPageState extends State<CookingViewPage>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  String _toTitleCase(String text) {
+    return text
+        .split(' ')
+        .map((w) => w.isEmpty
+            ? w
+            : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}')
+        .join(' ');
   }
 
   bool _areAllRequiredIngredientsDone() {
@@ -113,8 +131,6 @@ class _CookingViewPageState extends State<CookingViewPage>
       },
     );
 
-    
-
     // After 3 seconds, close the dialog and navigate to the history page.
     Future.delayed(const Duration(seconds: 3), () {
       Navigator.of(context).pushAndRemoveUntil(
@@ -125,117 +141,147 @@ class _CookingViewPageState extends State<CookingViewPage>
   }
 
   @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    backgroundColor: const Color(0xFFFFFBE6),
-    bottomNavigationBar: _buildBottomCTA(), // <-- NEW
-    body: Stack(
-      children: [
-        Column(
-          children: [
-            _buildImageHeader(),
-            TabBar(
-              controller: _tabController,
-              labelColor: const Color(0xFF2E7D32),
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: const Color(0xFF2E7D32),
-              tabs: const [
-                Tab(text: 'Ingredients'),
-                Tab(text: 'Directions'),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFFFFBE6),
+      bottomNavigationBar: _buildBottomCTA(), // <-- NEW
+      body: Stack(
+        children: [
+          Column(
+            children: [
+              _buildImageHeader(),
+              TabBar(
                 controller: _tabController,
-                children: [_buildIngredientsList(), _buildDirectionsList()],
+                labelColor: const Color(0xFF2E7D32),
+                unselectedLabelColor: Colors.grey,
+                indicatorColor: const Color(0xFF2E7D32),
+                tabs: const [
+                  Tab(text: 'Ingredients'),
+                  Tab(text: 'Directions'),
+                ],
               ),
-            ),
-          ],
-        ),
-        _buildConfirmationOverlay(),
-      ],
-    ),
-  );
-}
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [_buildIngredientsList(), _buildDirectionsList()],
+                ),
+              ),
+            ],
+          ),
+          _buildConfirmationOverlay(),
+        ],
+      ),
+    );
+  }
 
   Widget _buildImageHeader() {
     return Stack(
       children: [
-        Image.network(
-          widget.recipe.imageUrl,
-          height: 250,
-          width: double.infinity,
-          fit: BoxFit.cover,
+        Builder(
+          builder: (context) {
+            final String img = (widget.recipe.imageUrl).trim();
+            const String fallbackAsset = 'assets/meals.jpg';
+
+            final bool isAsset = img.startsWith('assets/');
+            final bool isHttp =
+                img.startsWith('http://') || img.startsWith('https://');
+
+            if (isAsset) {
+              return Image.asset(
+                img,
+                height: 250,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Image.asset(
+                  fallbackAsset,
+                  height: 250,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              );
+            } else if (isHttp) {
+              return Image.network(
+                img,
+                height: 250,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Image.asset(
+                  fallbackAsset,
+                  height: 250,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              );
+            } else {
+              return Image.asset(
+                fallbackAsset,
+                height: 250,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              );
+            }
+          },
         ),
-        Container(
-          height: 250,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Colors.transparent, Colors.black54],
-              stops: [0.5, 1.0],
+
+        // --- keep your existing overlays below ---
+        Positioned.fill(
+          child: Container(
+            height: 250,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(0.0),
+                  Colors.black.withOpacity(0.6),
+                ],
+              ),
             ),
           ),
         ),
+
         Positioned(
-          top: 40,
           left: 16,
-          child: CircleAvatar(
-            backgroundColor: Colors.black.withOpacity(0.4),
-            child: IconButton(
-              icon: const Icon(
-                Icons.arrow_back_ios_new,
-                size: 20,
-                color: Colors.white,
-              ),
-              onPressed: () => Navigator.of(context).pop(),
+          top: 160, // adjust if you want higher/lower
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.45),
+              borderRadius: BorderRadius.circular(20),
             ),
-          ),
-        ),
-        Positioned(
-          bottom: 16,
-          left: 16,
-          right: 16,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.access_time,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${widget.recipe.time} min',
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                widget.recipe.name,
-                style: const TextStyle(
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.bold,
-                  fontSize: 32,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.access_time,
                   color: Colors.white,
+                  size: 16,
                 ),
-              ),
-            ],
+                const SizedBox(width: 6),
+                Text(
+                  '${widget.recipe.time}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        Positioned(
+          left: 16,
+          bottom: 16,
+          right: 16,
+          child: Text(
+            widget.recipe.name,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ],
@@ -248,10 +294,11 @@ Widget build(BuildContext context) {
       itemCount: widget.recipe.ingredients.length,
       itemBuilder: (context, index) {
         final ingredient = widget.recipe.ingredients[index];
+        final name = ingredient['name'] ?? '';
         return CheckboxListTile(
           controlAffinity: ListTileControlAffinity.leading,
           title: Text(
-            ingredient['name']!,
+            _toTitleCase(name.trim()),
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           subtitle: ingredient['amount']!.isNotEmpty
@@ -291,65 +338,65 @@ Widget build(BuildContext context) {
   }
 
   Widget _buildBottomCTA() {
-  final isDone = _areAllRequiredIngredientsDone();
-  return SafeArea(
-    top: false,
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: isDone ? const Color(0xFF2E7D32) : Colors.grey,
-          minimumSize: const Size(double.infinity, 50),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+    final isDone = _areAllRequiredIngredientsDone();
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: isDone ? const Color(0xFF2E7D32) : Colors.grey,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
-        ),
-        onPressed: isDone
-            ? () {
-                setState(() {
-                  _isConfirming = true; // <-- this will show the overlay
-                });
-              }
-            : null,
-        child: Text(
-          isDone ? 'Done Cooking' : 'Check required ingredients to continue',
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-            color: Colors.white,
+          onPressed: isDone
+              ? () {
+                  setState(() {
+                    _isConfirming = true; // <-- this will show the overlay
+                  });
+                }
+              : null,
+          child: Text(
+            isDone ? 'Done Cooking' : 'Check required ingredients to continue',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              color: Colors.white,
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
-
+    );
+  }
 
   Widget _buildConfirmationOverlay() {
-  if (!_isConfirming) return const SizedBox.shrink(); // <-- do not render at all
+    if (!_isConfirming)
+      return const SizedBox.shrink(); // <-- do not render at all
 
-  return Stack(
-    children: [
-      // Dim background
-      GestureDetector(
-        onTap: () {
-          setState(() {
-            _isConfirming = false;
-          });
-        },
-        child: Container(color: Colors.black.withOpacity(0.5)),
-      ),
-      // Bottom sheet-style card
-      Align(
-        alignment: Alignment.bottomCenter,
-        child: _ConfirmationCard(
-          recipe: widget.recipe,
-          onConfirm: _confirmAndUpdatePantry,
+    return Stack(
+      children: [
+        // Dim background
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isConfirming = false;
+            });
+          },
+          child: Container(color: Colors.black.withOpacity(0.5)),
         ),
-      ),
-    ],
-  );
-}
+        // Bottom sheet-style card
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: _ConfirmationCard(
+            recipe: widget.recipe,
+            onConfirm: _confirmAndUpdatePantry,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _ConfirmationCard extends StatefulWidget {
@@ -373,47 +420,57 @@ class _ConfirmationCardState extends State<_ConfirmationCard> {
     );
   }
 
+  String _toTitleCase(String text) {
+    return text
+        .split(' ')
+        .map((w) => w.isEmpty
+            ? w
+            : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}')
+        .join(' ');
+  }
+
+
   Future<void> _onDoneCooking() async {
-      final firestore = Provider.of<FirestoreService>(context, listen: false);
-      final householdId = firestore
-          .selectedHouseholdId; // use your existing source for active HID
+    final firestore = Provider.of<FirestoreService>(context, listen: false);
+    final householdId = firestore
+        .selectedHouseholdId; // use your existing source for active HID
 
-      if (householdId == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No household selected.')),
-        );
-        return;
-      }
-
-      // If your screen gets the OLD UI Recipe with ingredients as List<Map<String,dynamic>>
-      final ingredients =
-          (widget.recipe.ingredients ?? const <Map<String, dynamic>>[])
-              .map((m) => {
-                    'name': (m['name'] ?? '').toString(),
-                    'amount':
-                        (m['amount'] ?? '').toString(), // e.g. "200 g" or "2"
-                  })
-              .toList();
-
-      try {
-        await firestore.consumePantryForRecipe(
-          householdId: householdId,
-          ingredients: ingredients,
-        );
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Pantry updated — enjoy your meal!')),
-        );
-        Navigator.pop(context); // or your desired navigation
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update pantry: $e')),
-        );
-      }
+    if (householdId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No household selected.')),
+      );
+      return;
     }
+
+    // If your screen gets the OLD UI Recipe with ingredients as List<Map<String,dynamic>>
+    final ingredients =
+        (widget.recipe.ingredients ?? const <Map<String, dynamic>>[])
+            .map((m) => {
+                  'name': (m['name'] ?? '').toString(),
+                  'amount':
+                      (m['amount'] ?? '').toString(), // e.g. "200 g" or "2"
+                })
+            .toList();
+
+    try {
+      await firestore.consumePantryForRecipe(
+        householdId: householdId,
+        ingredients: ingredients,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pantry updated — enjoy your meal!')),
+      );
+      Navigator.pop(context); // or your desired navigation
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update pantry: $e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -453,7 +510,7 @@ class _ConfirmationCardState extends State<_ConfirmationCard> {
                       controlAffinity: ListTileControlAffinity.leading,
                       dense: true,
                       title: Text(
-                        ingredient['name']!,
+                        _toTitleCase((ingredient['name'] ?? '').trim()),
                         style: const TextStyle(
                           fontFamily: 'Inter',
                           fontWeight: FontWeight.bold,
