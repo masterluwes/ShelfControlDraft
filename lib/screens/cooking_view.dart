@@ -8,6 +8,7 @@ import 'package:shelf_control/services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shelf_control/screens/pantryinventory.dart';
 import 'package:shelf_control/models/meal_history_model.dart';
+import 'package:shelf_control/screens/dashboard_page.dart';
 
 // --- List of common ingredients that can be ignored for the "Done Cooking" button ---
 const List<String> optionalIngredients = [
@@ -500,7 +501,9 @@ class _ConfirmationCardState extends State<_ConfirmationCard> {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
-          builder: (_) => const Pantryinventory(), // INVENTORY TAB
+          builder: (_) => const DashboardPage(
+            initialIndex: 1, // 0 = DashboardHome, 1 = REAL Pantry tab
+          ),
         ),
         (route) => false,
       );
