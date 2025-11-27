@@ -6,28 +6,100 @@ import 'package:shelf_control/models/pantry_item_model.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+import 'package:shelf_control/services/ai_tip_service.dart';
 
 // --- Category normalization helpers ---
 String _norm(String? s) => (s ?? '').trim().toLowerCase();
 
 String _alias(String? s) {
   final x = _norm(s);
-  if (x.isEmpty) return 'uncategorized';
+  if (x.isEmpty) return 'others';
 
-  // unify your common variants here
-  if (x == 'beverage' || x == 'beverages' || x == 'drinks') return 'beverages';
-  if (x == 'canned' || x == 'canned goods' || x == 'canned-goods')
+  if (x.contains('bread') || x.contains('pastry') || x.contains('bake')) {
+    return 'bakery';
+  }
+
+  if (x.contains('drink') ||
+      x.contains('juice') ||
+      x.contains('beverage') ||
+      x.contains('coffee') ||
+      x.contains('tea')) {
+    return 'beverages';
+  }
+
+  if (x.contains('can') || x.contains('canned')) {
     return 'canned goods';
-  if (x == 'dairy' || x == 'milk' || x == 'milk/dairy') return 'dairy';
-  if (x == 'dry' || x == 'dry goods') return 'dry goods';
-  if (x == 'snack' || x == 'snacks') return 'snacks';
-  if (x == 'condiment' || x == 'condiments') return 'condiments';
-  if (x == 'produce' || x == 'fruits' || x == 'vegetables') return 'produce';
-  if (x == 'others' || x == 'other') return 'others';
-  if (x == 'uncategorized' || x == 'unclassified') return 'uncategorized';
+  }
 
-  // default: return normalized string
-  return x;
+  if (x.contains('condiment') ||
+      x.contains('sauce') ||
+      x.contains('seasoning') ||
+      x.contains('spice')) {
+    return 'condiments';
+  }
+
+  if (x.contains('milk') ||
+      x.contains('cheese') ||
+      x.contains('butter') ||
+      x.contains('yogurt') ||
+      x.contains('dairy')) {
+    return 'dairy';
+  }
+
+  if (x.contains('dry') ||
+      x.contains('pasta') ||
+      x.contains('noodle') ||
+      x.contains('rice') ||
+      x.contains('grain')) {
+    return 'dry goods';
+  }
+
+  if (x.contains('fruit') ||
+      x.contains('vegetable') ||
+      x.contains('produce') ||
+      x.contains('fresh')) {
+    return 'produce';
+  }
+
+  if (x.contains('snack') ||
+      x.contains('chips') ||
+      x.contains('biscuits') ||
+      x.contains('candy')) {
+    return 'snacks';
+  }
+
+  if (x.contains('general') || x.contains('misc')) {
+    return 'general';
+  }
+
+  return 'others';
+}
+
+String _group(String? raw) {
+  final cat = _alias(raw);
+
+  switch (cat) {
+    case 'general':
+      return 'General';
+    case 'bakery':
+      return 'Bakery';
+    case 'beverages':
+      return 'Beverages';
+    case 'canned goods':
+      return 'Canned Goods';
+    case 'condiments':
+      return 'Condiments';
+    case 'dairy':
+      return 'Dairy';
+    case 'dry goods':
+      return 'Dry Goods';
+    case 'produce':
+      return 'Produce';
+    case 'snacks':
+      return 'Snacks';
+    default:
+      return 'Others';
+  }
 }
 
 // --- NEW DATA MODEL ---
@@ -434,6 +506,8 @@ class ItemTipsDetailPage extends StatelessWidget {
     required this.item,
     this.alert,
   });
+
+  
 
   IconData _getIconForItem(String itemName) {
     switch (itemName.toLowerCase()) {
@@ -885,13 +959,12 @@ class _TipsPageState extends State<TipsPage> {
   }
 
   int _computeDaysUntil(DateTime? dt) {
-  if (dt == null) return 9999;
-  final now = DateTime.now();
-  // compare against start of today to avoid off-by-hours
-  final today = DateTime(now.year, now.month, now.day);
-  return dt.difference(today).inDays;
-}
-
+    if (dt == null) return 9999;
+    final now = DateTime.now();
+    // compare against start of today to avoid off-by-hours
+    final today = DateTime(now.year, now.month, now.day);
+    return dt.difference(today).inDays;
+  }
 
   Future<void> _bootstrap() async {
     // Ensure we are authenticated (anon is fine in dev)
@@ -998,14 +1071,14 @@ class _TipsPageState extends State<TipsPage> {
 
   final List<Map<String, dynamic>> categories = [
     {'name': 'General', 'icon': Icons.lightbulb},
+    {'name': 'Bakery', 'icon': Icons.bakery_dining},
     {'name': 'Beverages', 'icon': Icons.local_cafe},
-    {'name': 'Canned goods', 'icon': Icons.inventory},
-    {'name': 'Dairy', 'icon': Icons.local_drink},
-    {'name': 'Dry goods', 'icon': Icons.shopping_bag},
-    {'name': 'Snacks', 'icon': Icons.fastfood},
+    {'name': 'Canned Goods', 'icon': Icons.inventory},
     {'name': 'Condiments', 'icon': Icons.soup_kitchen},
+    {'name': 'Dairy', 'icon': Icons.local_drink},
+    {'name': 'Dry Goods', 'icon': Icons.shopping_bag},
     {'name': 'Produce', 'icon': Icons.local_florist},
-    {'name': 'Uncategorized', 'icon': Icons.help_outline},
+    {'name': 'Snacks', 'icon': Icons.fastfood},
     {'name': 'Others', 'icon': Icons.category},
   ];
 
