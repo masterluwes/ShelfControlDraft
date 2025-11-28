@@ -48,6 +48,14 @@ class Recipe {
     this.missingIngredients = const [], // Initialize as empty list
   });
 
+  String _formatRecipeName(String raw) {
+    return raw
+        .replaceAll('{', '')
+        .replaceAll('}', '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
   factory Recipe.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
 
@@ -124,6 +132,67 @@ class Recipe {
       missingIngredients: const [],
     );
   }
+}
+
+/// Simplify ingredient names (copied from recipedetails.dart)
+String simplifyIngredientNameMS(String? name) {
+  final original = (name ?? '').toLowerCase().trim();
+  if (original.isEmpty) return '';
+
+  final stopWords = <String>{
+    'brand',
+    'creamy',
+    'cream-filled',
+    'filled',
+    'bar',
+    'pcs',
+    'piece',
+    'pieces',
+    'pack',
+    'packet',
+    'cup',
+    'cups',
+    'ml',
+    'g',
+    'kg',
+    'bottle',
+    'can',
+    'slice',
+    'sliced',
+    'whole',
+    'loaf'
+  };
+
+  final words = original.split(RegExp(r'\s+'));
+  final noNumbers = words.where((w) => !RegExp(r'^\d').hasMatch(w)).toList();
+  final filtered = noNumbers.where((w) => !stopWords.contains(w)).toList();
+
+  List<String> shortened;
+  if (filtered.isNotEmpty) {
+    shortened = filtered.take(2).toList();
+  } else {
+    shortened = noNumbers.take(1).toList();
+  }
+
+  return shortened
+      .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+}
+
+/// Build the dynamic recipe title (copied from recipedetails.dart)
+String buildDynamicRecipeTitleMS(Recipe recipe) {
+  final ingredients = recipe.ingredients;
+  if (ingredients.isEmpty) return recipe.name;
+
+  final names = ingredients
+      .map((i) => simplifyIngredientNameMS(i['name']))
+      .where((n) => n.isNotEmpty)
+      .toList();
+
+  if (names.isEmpty) return recipe.name;
+  if (names.length == 1) return names.first;
+
+  return '${names[0]} with ${names[1]}';
 }
 
 // --- Main Widget (same UI as yours, but dynamic) ---
@@ -598,7 +667,7 @@ class _MealSuggestState extends State<MealSuggest> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            recipe.name,
+                            buildDynamicRecipeTitleMS(recipe),
                             style: const TextStyle(
                               fontFamily: 'Inter',
                               fontSize: 17,

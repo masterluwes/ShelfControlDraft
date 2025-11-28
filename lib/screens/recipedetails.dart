@@ -10,6 +10,83 @@ String _truncate(String? s, int max) {
   return (v.length <= max) ? v : v.substring(0, max);
 }
 
+/// Make long ingredient names shorter but still meaningful.
+String simplifyIngredientName(String? name) {
+  final original = (name ?? '').toLowerCase().trim();
+  if (original.isEmpty) return '';
+
+  final stopWords = <String>{
+    'brand',
+    'creamy',
+    'cream-filled',
+    'filled',
+    'bar',
+    'pcs',
+    'piece',
+    'pieces',
+    'pack',
+    'packet',
+    'cup',
+    'cups',
+    'ml',
+    'g',
+    'kg',
+    'bottle',
+    'can',
+    'slice',
+    'sliced',
+    'whole',
+    'loaf',
+  };
+
+  // Split into words
+  final words = original.split(RegExp(r'\s+'));
+
+  // Remove quantity values (numbers)
+  final noNumbers = words.where((w) => !RegExp(r'^\d').hasMatch(w)).toList();
+
+  // Remove generic + packaging words
+  final filtered = noNumbers.where((w) => !stopWords.contains(w)).toList();
+
+  // Prefer 1–2 meaningful words
+  List<String> shortened;
+  if (filtered.isNotEmpty) {
+    shortened = filtered.take(2).toList();
+  } else {
+    // Fallback: at least keep one word
+    shortened = noNumbers.take(1).toList();
+  }
+
+  // Convert back to Title Case
+  return shortened
+      .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+}
+
+/// Build a short, aesthetic recipe title from the first two ingredients.
+String buildDynamicRecipeTitle(Recipe recipe) {
+  final ingredients = recipe.ingredients;
+
+  if (ingredients.isEmpty) {
+    return recipe.name;
+  }
+
+  final names = ingredients
+      .map((i) => simplifyIngredientName(i['name'])) // i['name'] is String?
+      .where((n) => n.isNotEmpty)
+      .toList();
+
+  if (names.isEmpty) {
+    return recipe.name;
+  }
+
+  if (names.length == 1) {
+    return names.first;
+  }
+
+  return '${names[0]} with ${names[1]}';
+}
+
 class RecipeDetailsPage extends StatefulWidget {
   final Recipe recipe;
   const RecipeDetailsPage({super.key, required this.recipe});
@@ -84,7 +161,7 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
                       style: descriptionStyle,
                       children: [
                         TextSpan(
-                          text: '${widget.recipe.name} ',
+                          text: '${buildDynamicRecipeTitle(widget.recipe)} ',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         TextSpan(
@@ -148,140 +225,139 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
   }
 
   Widget _buildSliverAppBar(Recipe recipe, BuildContext context) {
-  return SliverAppBar(
-    expandedHeight: 300.0,
-    pinned: true,
-    backgroundColor: const Color(0xFFFFFBE6),
-    elevation: 1,
-    iconTheme: const IconThemeData(color: Colors.white),
-    leading: Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(50),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-          child: Container(
-            color: Colors.black.withOpacity(0.2),
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-              onPressed: () => Navigator.of(context).pop(),
+    return SliverAppBar(
+      expandedHeight: 300.0,
+      pinned: true,
+      backgroundColor: const Color(0xFFFFFBE6),
+      elevation: 1,
+      iconTheme: const IconThemeData(color: Colors.white),
+      leading: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(50),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            child: Container(
+              color: Colors.black.withOpacity(0.2),
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
             ),
           ),
         ),
       ),
-    ),
-    flexibleSpace: FlexibleSpaceBar(
-      titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
-      centerTitle: false,
+      flexibleSpace: FlexibleSpaceBar(
+        titlePadding: const EdgeInsets.only(bottom: 20),
+        centerTitle: true,
 
-      // 🔹 This is the black backdrop with time + title
-      title: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.45), // backdrop for text
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // duration row ABOVE the title
-            Row(
+        title: Align(
+          alignment: Alignment.bottomCenter,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.45),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.access_time,
-                  size: 16,
-                  color: _titleColor,
+                // Time row
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.access_time,
+                        size: 14, color: Colors.white),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${recipe.time}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.white,
+                        fontFamily: 'Roboto',
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  '${recipe.time} min',
+
+                const SizedBox(height: 6),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 200),
                   style: TextStyle(
-                    fontFamily: 'Roboto',
-                    fontSize: 13,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
                     color: _titleColor,
+                    shadows: _titleColor == Colors.white
+                        ? [const Shadow(blurRadius: 2, color: Colors.black54)]
+                        : null,
                   ),
+                  child: Text(buildDynamicRecipeTitle(recipe)),
+                  textAlign: TextAlign.center,
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontWeight: FontWeight.bold,
-                fontSize: 32,
-                color: _titleColor,
-                shadows: _titleColor == Colors.white
-                    ? [const Shadow(blurRadius: 2, color: Colors.black54)]
-                    : null,
+          ),
+        ),
+
+        // Background image + gradient stay here, as siblings of `title`
+        background: Stack(
+          fit: StackFit.expand,
+          children: [
+            Builder(
+              builder: (context) {
+                final String img = (recipe.imageUrl).trim();
+                const String fallbackAsset = 'assets/meals.jpg';
+
+                final bool isAsset = img.startsWith('assets/');
+                final bool isHttp =
+                    img.startsWith('http://') || img.startsWith('https://');
+
+                if (isAsset) {
+                  return Image.asset(
+                    img,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Image.asset(
+                        fallbackAsset,
+                        fit: BoxFit.cover,
+                      );
+                    },
+                  );
+                } else if (isHttp) {
+                  return Image.network(
+                    img,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Image.asset(
+                        fallbackAsset,
+                        fit: BoxFit.cover,
+                      );
+                    },
+                  );
+                } else {
+                  return Image.asset(
+                    fallbackAsset,
+                    fit: BoxFit.cover,
+                  );
+                }
+              },
+            ),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black54],
+                  stops: [0.5, 1.0],
+                ),
               ),
-              child: Text(recipe.name),
             ),
           ],
         ),
       ),
-
-      // Background image + gradient stay here, as siblings of `title`
-      background: Stack(
-        fit: StackFit.expand,
-        children: [
-          Builder(
-            builder: (context) {
-              final String img = (recipe.imageUrl).trim();
-              const String fallbackAsset = 'assets/meals.jpg';
-
-              final bool isAsset = img.startsWith('assets/');
-              final bool isHttp =
-                  img.startsWith('http://') || img.startsWith('https://');
-
-              if (isAsset) {
-                return Image.asset(
-                  img,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Image.asset(
-                      fallbackAsset,
-                      fit: BoxFit.cover,
-                    );
-                  },
-                );
-              } else if (isHttp) {
-                return Image.network(
-                  img,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Image.asset(
-                      fallbackAsset,
-                      fit: BoxFit.cover,
-                    );
-                  },
-                );
-              } else {
-                return Image.asset(
-                  fallbackAsset,
-                  fit: BoxFit.cover,
-                );
-              }
-            },
-          ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black54],
-                stops: [0.5, 1.0],
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
+    );
+  }
 
   Widget _buildInfoBox(Recipe recipe) {
     const labelStyle = TextStyle(

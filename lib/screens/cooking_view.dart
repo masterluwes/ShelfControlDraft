@@ -20,6 +20,51 @@ const List<String> optionalIngredients = [
   'garlic (optional)',
 ];
 
+/// Simplify ingredient names (same as recipedetails + mealsuggest)
+String simplifyIngredientNameCV(String? name) {
+  final original = (name ?? '').toLowerCase().trim();
+  if (original.isEmpty) return '';
+
+  final stopWords = <String>{
+    'brand','creamy','cream-filled','filled','bar','pcs','piece','pieces','pack',
+    'packet','cup','cups','ml','g','kg','bottle','can','slice','sliced',
+    'whole','loaf'
+  };
+
+  final words = original.split(RegExp(r'\s+'));
+  final noNumbers = words.where((w) => !RegExp(r'^\d').hasMatch(w)).toList();
+  final filtered = noNumbers.where((w) => !stopWords.contains(w)).toList();
+
+  List<String> shortened;
+  if (filtered.isNotEmpty) {
+    shortened = filtered.take(2).toList();
+  } else {
+    shortened = noNumbers.take(1).toList();
+  }
+
+  return shortened
+      .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+}
+
+/// Build a short “Fudgee Chocolate with Gardenia Butter” style title
+String buildDynamicRecipeTitleCV(Recipe recipe) {
+  final ingredients = recipe.ingredients;
+
+  if (ingredients.isEmpty) return recipe.name;
+
+  final names = ingredients
+      .map((i) => simplifyIngredientNameCV(i['name']))
+      .where((n) => n.isNotEmpty)
+      .toList();
+
+  if (names.isEmpty) return recipe.name;
+  if (names.length == 1) return names.first;
+
+  return '${names[0]} with ${names[1]}';
+}
+
+
 class CookingViewPage extends StatefulWidget {
   final Recipe recipe;
   const CookingViewPage({super.key, required this.recipe});
@@ -246,7 +291,7 @@ class _CookingViewPageState extends State<CookingViewPage>
 
         Positioned(
           left: 16,
-          top: 160, // adjust if you want higher/lower
+          top: 140, // adjust if you want higher/lower
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
@@ -280,7 +325,7 @@ class _CookingViewPageState extends State<CookingViewPage>
           bottom: 16,
           right: 16,
           child: Text(
-            widget.recipe.name,
+            buildDynamicRecipeTitleCV(widget.recipe),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 22,
