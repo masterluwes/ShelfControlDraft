@@ -9,6 +9,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shelf_control/screens/pantryinventory.dart';
 import 'package:shelf_control/models/meal_history_model.dart';
 import 'package:shelf_control/screens/dashboard_page.dart';
+import 'dart:ui';
+import 'package:shelf_control/screens/recipedetails.dart';
 
 // --- List of common ingredients that can be ignored for the "Done Cooking" button ---
 const List<String> optionalIngredients = [
@@ -26,9 +28,27 @@ String simplifyIngredientNameCV(String? name) {
   if (original.isEmpty) return '';
 
   final stopWords = <String>{
-    'brand','creamy','cream-filled','filled','bar','pcs','piece','pieces','pack',
-    'packet','cup','cups','ml','g','kg','bottle','can','slice','sliced',
-    'whole','loaf'
+    'brand',
+    'creamy',
+    'cream-filled',
+    'filled',
+    'bar',
+    'pcs',
+    'piece',
+    'pieces',
+    'pack',
+    'packet',
+    'cup',
+    'cups',
+    'ml',
+    'g',
+    'kg',
+    'bottle',
+    'can',
+    'slice',
+    'sliced',
+    'whole',
+    'loaf'
   };
 
   final words = original.split(RegExp(r'\s+'));
@@ -63,7 +83,6 @@ String buildDynamicRecipeTitleCV(Recipe recipe) {
 
   return '${names[0]} with ${names[1]}';
 }
-
 
 class CookingViewPage extends StatefulWidget {
   final Recipe recipe;
@@ -110,6 +129,50 @@ class _CookingViewPageState extends State<CookingViewPage>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  String detectCategory(String ingredientName) {
+    final n = ingredientName.toLowerCase();
+
+    if (n.contains('bread') ||
+        n.contains('loaf') ||
+        n.contains('cake') ||
+        n.contains('bun')) return 'bakery';
+
+    if (n.contains('milk') || n.contains('butter') || n.contains('cheese'))
+      return 'dairy';
+
+    if (n.contains('sugar') || n.contains('honey') || n.contains('sweet'))
+      return 'sweetener';
+
+    if (n.contains('egg')) return 'protein';
+
+    if (n.contains('chicken') || n.contains('beef') || n.contains('pork'))
+      return 'meat';
+
+    return 'others';
+  }
+
+  /// Replace placeholders like {Bakery Item} with actual ingredient names.
+  String replacePlaceholders(String step) {
+    final regex = RegExp(r'\{([^}]+)\}');
+
+    return step.replaceAllMapped(regex, (match) {
+      final placeholder = match.group(1)!.toLowerCase().trim();
+
+      // Find actual ingredient that matches category
+      for (final ing in widget.recipe.ingredients) {
+        final ingName = ing['name'] ?? '';
+        final category = detectCategory(ingName);
+
+        if (placeholder.contains(category)) {
+          return _toTitleCase(ingName);
+        }
+      }
+
+      // If no category matched → fallback to leaving the placeholder blank
+      return '';
+    });
   }
 
   String _toTitleCase(String text) {
@@ -271,6 +334,24 @@ class _CookingViewPageState extends State<CookingViewPage>
             }
           },
         ),
+        // --- BACK BUTTON (same style as recipedetails.dart) ---
+        Positioned(
+          top: 40,
+          left: 16,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(50),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+              child: Container(
+                color: Colors.black.withOpacity(0.2),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
+          ),
+        ),
 
         // --- keep your existing overlays below ---
         Positioned.fill(
@@ -380,7 +461,7 @@ class _CookingViewPageState extends State<CookingViewPage>
               color: Color(0xFF2E7D32),
             ),
           ),
-          title: Text(direction),
+          title: Text(replacePlaceholders(direction)),
         );
       },
     );
