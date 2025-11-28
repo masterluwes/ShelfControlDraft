@@ -564,37 +564,46 @@ class _ItemTipsDetailPageState extends State<ItemTipsDetailPage> {
 
   String _getAiTipOrFallback(String title) {
     if (aiLoading) return "Loading tips...";
+    if (aiTips == null) return _getTipDetails(title, widget.item);
 
-    if (aiTips == null) {
-      return _getTipDetails(title, widget.item);
-    }
-
-    // Normalize to catch variations like "Preservation & Food Safety"
     final t = title.toLowerCase().trim();
 
-    if (t.contains("weather")) {
+    // WEATHER — match ANY weather-related phrasing
+    if (t.contains("weather") || t.contains("climate") || t.contains("heat")) {
       return aiTips!["weather"]?["details"] ??
           _getTipDetails("Current Suggestion (Weather)", widget.item);
     }
 
-    if (t.contains("preservation") ||
-        t.contains("food safety") ||
-        t.contains("preservation & food safety")) {
+    // PRESERVATION — match ANY storage/safety/freshness keyword
+    if (t.contains("preserv") ||
+        t.contains("fresh") ||
+        t.contains("safety") ||
+        t.contains("store") ||
+        t.contains("storage") ||
+        t.contains("shelf life") ||
+        t.contains("long-lasting") ||
+        t.contains("freshness")) {
       return aiTips!["preservation"]?["details"] ??
           _getTipDetails("Food Preservation Tips", widget.item);
     }
 
-    if (t.contains("waste")) {
+    // WASTE — match ANY waste/reuse/repurpose keyword
+    if (t.contains("waste") || t.contains("reuse") || t.contains("use up")) {
       return aiTips!["waste"]?["details"] ??
           _getTipDetails("Waste Reduction Tips", widget.item);
     }
 
-    if (t.contains("label") || t.contains("definition")) {
+    // LABELING — match any labeling/meaning keywords
+    if (t.contains("label") ||
+        t.contains("definition") ||
+        t.contains("meaning")) {
       return aiTips!["labeling"]?["details"] ??
           _getTipDetails("Food Labeling & Definitions", widget.item);
     }
 
-    return _getTipDetails(title, widget.item);
+    // DEFAULT — force preservation instead of blank
+    return aiTips!["preservation"]?["details"] ??
+        _getTipDetails("Food Preservation Tips", widget.item);
   }
 
   // Fallback detailed content if AI fails or for offline use
