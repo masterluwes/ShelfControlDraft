@@ -1,10 +1,11 @@
-import 'package:google_generative_ai/google_generative_ai.dart';
 import 'dart:convert';
+import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AiTipService {
-  final _model = GenerativeModel(
-    model: 'gemini-2.5-flash',
-    apiKey: 'AIzaSyCaH-tn2-xwujUIN5M71d3UK04YSIEycgI',
+  final model = GenerativeModel(
+    model: "gemini-2.5-flash",
+    apiKey: "AIzaSyBOBjJK3CBhBnaQFY-y2uN-lwkXrJvkYOw",
   );
 
   Future<Map<String, dynamic>> getItemTips({
@@ -13,68 +14,42 @@ class AiTipService {
     required int expDays,
     required String weatherLevel,
   }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cacheKey = "ai_tips_${itemName.toLowerCase()}_${category.toLowerCase()}";
+
+    // 1) TRY CACHE FIRST
+    final cached = prefs.getString(cacheKey);
+    if (cached != null) {
+      return jsonDecode(cached);
+    }
+
+    // 2) CALL GEMINI IF NO CACHE
     final prompt = """
-You are an expert food safety assistant. Generate dynamic storage, safety, and labeling guidance for a single food item.
+Generate grocery item tips in JSON only.
+Item: $itemName
+Category: $category
+Days until expiration: $expDays
+Weather level: $weatherLevel
 
-ITEM NAME: $itemName  
-CATEGORY: $category  
-DAYS UNTIL EXPIRATION: $expDays  
-WEATHER LEVEL: $weatherLevel
-
-Return **ONLY pure JSON** (no explanations, no markdown, no backticks).
-
-The format MUST be:
-
-{
-  "weather": {
-    "title": "Current Suggestion (Weather)",
-    "subtitle": "Short subtitle about weather effects",
-    "details": "A paragraph explaining how current weather affects storage for this item."
-  },
-  "preservation": {
-    "title": "Food Preservation Tips",
-    "subtitle": "Short one-line summary",
-    "details": "A detailed paragraph explaining how to preserve this specific item."
-  },
-  "waste": {
-    "title": "Waste Reduction Tips",
-    "subtitle": "Short one-line summary",
-    "details": "Ideas for using up this item before it spoils."
-  },
-  "labeling": {
-    "title": "Food Labeling & Definitions",
-    "subtitle": "Short one-line summary",
-    "details": "Explain labeling terms relevant to this item (Best Before, Use By, etc)."
-  }
-}
+Return JSON with keys: weather, preservation, waste, labeling.
+Each section contains title, subtitle, details.
 """;
 
-    try {
-      final response = await _model.generateContent([
-        Content.text(prompt)
-      ]);
+    final response = await model.generateContent([
+      Content.text(prompt)
+    ]);
 
-      final raw = response.text;
+    final text = response.text;
+    if (text == null) return {};
 
-      if (raw == null) return {};
+    // Safe JSON extract
+    final Map<String, dynamic> data = jsonDecode(
+      text.replaceAll("```json", "").replaceAll("```", "")
+    );
 
-      // Gemini sometimes wraps JSON with extra text → clean it
-      final cleaned = _extractJson(raw);
+    // 3) SAVE TO LOCAL CACHE
+    prefs.setString(cacheKey, jsonEncode(data));
 
-      return jsonDecode(cleaned);
-    } catch (e) {
-      print("AI TIP ERROR: $e");
-      return {}; // Fail silently → let app use fallback rules
-    }
-  }
-
-  /// Cleans model output to extract ONLY JSON map.
-  String _extractJson(String input) {
-    final start = input.indexOf('{');
-    final end = input.lastIndexOf('}');
-    if (start != -1 && end != -1) {
-      return input.substring(start, end + 1);
-    }
-    return "{}";
+    return data;
   }
 }
