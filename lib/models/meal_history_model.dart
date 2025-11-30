@@ -1,3 +1,5 @@
+// lib/models/meal_history_model.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MealHistory {
@@ -5,10 +7,12 @@ class MealHistory {
   final String recipeName;
   final String difficulty;
   final int servings;
-  final String calories; // keep as string to match your UI
-  final int durationMinutes;
+  final String calories;            // numeric string, e.g. "520"
+  final int durationMinutes;        // 12, 15, etc.
   final DateTime cookedAt;
   final List<Map<String, String>> ingredients; // [{name, amount}]
+  final String imageUrl;
+  final String time;
 
   MealHistory({
     required this.householdId,
@@ -19,6 +23,8 @@ class MealHistory {
     required this.durationMinutes,
     required this.cookedAt,
     required this.ingredients,
+    required this.imageUrl,
+    required this.time,
   });
 
   Map<String, dynamic> toFirestore() {
@@ -30,7 +36,9 @@ class MealHistory {
       'calories': calories,
       'durationMinutes': durationMinutes,
       'cookedAt': Timestamp.fromDate(cookedAt),
-      'ingredients': ingredients, // each item: {name, amount}
+      'ingredients': ingredients,
+      'imageUrl': imageUrl,
+      'time': time, 
     };
   }
 
@@ -38,15 +46,11 @@ class MealHistory {
     final d = doc.data() as Map<String, dynamic>;
 
     final rawIngredients = (d['ingredients'] as List<dynamic>? ?? []);
-
-    // Normalize each ingredient into {name, amount}
     final ingredients = rawIngredients.map<Map<String, String>>((i) {
       final m = (i as Map<String, dynamic>);
-
       final name = (m['name'] ?? '').toString().trim();
-      // support either "amount" or "measurement" key from Firestore
-      final amount = (m['amount'] ?? m['measurement'] ?? '').toString().trim();
-
+      final amount =
+          (m['amount'] ?? m['measurement'] ?? '').toString().trim();
       return {
         'name': name,
         'amount': amount,
@@ -62,6 +66,8 @@ class MealHistory {
       durationMinutes: (d['durationMinutes'] ?? 0) as int,
       cookedAt: (d['cookedAt'] as Timestamp).toDate(),
       ingredients: ingredients,
+      imageUrl: d['imageUrl'] ?? '',
+      time: d['time'] ?? '',
     );
   }
 }
