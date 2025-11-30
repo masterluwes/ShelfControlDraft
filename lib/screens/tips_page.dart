@@ -549,17 +549,23 @@ class _ItemTipsDetailPageState extends State<ItemTipsDetailPage> {
   }
 
   Future<void> _loadAiTips() async {
-    aiTips = await AiTipService().getItemTips(
-      itemName: widget.item.name,
-      category: widget.item.category,
-      expDays: widget.item.daysUntilExpiration,
-      weatherLevel: widget.alert?.level.toString() ?? "green",
-    );
-
-    if (!mounted) return;
-    setState(() {
-      aiLoading = false;
-    });
+    try {
+      aiTips = await AiTipService().getItemTips(
+        itemName: widget.item.name,
+        category: widget.item.category,
+        expDays: widget.item.daysUntilExpiration,
+        weatherLevel: widget.alert?.level.toString() ?? "green",
+      );
+    } catch (e) {
+      // Handle potential errors from AiTipService (e.g., API key missing, network issues, malformed JSON)
+      print("Error loading AI tips: $e");
+      aiTips = {}; // Ensure aiTips is not null, so fallback logic can be used
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        aiLoading = false;
+      });
+    }
   }
 
   String _getAiTipOrFallback(String title) {
