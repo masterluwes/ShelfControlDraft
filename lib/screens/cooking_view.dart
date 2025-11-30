@@ -204,9 +204,6 @@ class _CookingViewPageState extends State<CookingViewPage>
       _isConfirming = false;
     });
 
-    // Add the meal to the history list
-    MealHistoryPage.mealHistory.add(widget.recipe);
-
     // Show the success dialog
     showDialog(
       context: context,
@@ -587,25 +584,32 @@ class _ConfirmationCardState extends State<_ConfirmationCard> {
       } else {
         await docRef.update({'qty': newQty});
       }
+
+      await firestore.recordConsumedItem(match, 1);
     }
   }
 
   Future<void> _saveMealHistory() async {
     final firestore = Provider.of<FirestoreService>(context, listen: false);
 
-    // Try to parse numbers, but fall back safely
     final servings = int.tryParse(widget.recipe.servingSize) ?? 1;
-    final duration = int.tryParse(widget.recipe.time) ?? 0;
+
+    // Extract numeric duration from "12 min" or "15 minutes"
+    final timeText = widget.recipe.time.toLowerCase().trim();
+    final match = RegExp(r'\d+').firstMatch(timeText);
+    final int durationMinutes = match != null ? int.parse(match.group(0)!) : 0;
 
     final meal = MealHistory(
       householdId: firestore.selectedHouseholdId ?? "",
       recipeName: widget.recipe.name,
-      difficulty: 'Not specified', // Recipe has no difficulty field
-      servings: servings, // from servingSize
-      calories: widget.recipe.calories, // already a String
-      durationMinutes: duration,
+      difficulty: 'Not specified',
+      servings: servings,
+      calories: widget.recipe.calories.replaceAll(RegExp(r'[^0-9]'), ''),
+      durationMinutes: durationMinutes,
+      time: widget.recipe.time, // 🔥🔥 REQUIRED FIELD
       cookedAt: DateTime.now(),
-      ingredients: widget.recipe.ingredients, // List<Map<String, String>>
+      ingredients: widget.recipe.ingredients,
+      imageUrl: widget.recipe.imageUrl,
     );
 
     await firestore.db.collection('mealHistory').add(meal.toFirestore());

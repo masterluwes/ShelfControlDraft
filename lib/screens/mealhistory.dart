@@ -1,185 +1,178 @@
-// lib/pages/mealhistory.dart
-
 import 'package:flutter/material.dart';
-import 'package:shelf_control/screens/mealsuggest.dart'; // Import the Recipe model
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shelf_control/services/firestore_service.dart';
+import 'package:provider/provider.dart';
 
-class MealHistoryPage extends StatefulWidget {
+class MealHistoryPage extends StatelessWidget {
   const MealHistoryPage({super.key});
-
-  // STATIC LIST TO STORE MEAL HISTORY
-  // This list will hold the recipes that the user has "cooked".
-  static final List<Recipe> mealHistory = [];
-
-  @override
-  State<MealHistoryPage> createState() => _MealHistoryPageState();
-}
-
-class _MealHistoryPageState extends State<MealHistoryPage> {
-  // State to track if we are in "delete mode"
-  bool _isDeleting = false;
-
-  // Function to handle deleting an item
-  void _deleteItem(int index) {
-    // Save the item and its original index before removing
-    final removedRecipe = MealHistoryPage.mealHistory.removeAt(index);
-    setState(() {}); // Update the UI to reflect the removal
-
-  }
 
   @override
   Widget build(BuildContext context) {
-    const Color pageBg = Color(0xFFFFFBE6);
-    const Color greenAccent = Color(0xFF2E7D32);
+    final firestore = Provider.of<FirestoreService>(context, listen: false);
+    final householdId = firestore.selectedHouseholdId;
 
     return Scaffold(
-      backgroundColor: pageBg,
+      backgroundColor: const Color(0xFFFFFBE6),
       appBar: AppBar(
-        backgroundColor: pageBg,
-        elevation: 1,
-        centerTitle: false,
-        titleSpacing: 0.0,
-        iconTheme: const IconThemeData(color: greenAccent),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        backgroundColor: const Color(0xFFFFFBE6),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Color(0xFF2E7D32)),
         title: const Text(
-          'Meal History',
+          "Meal History",
           style: TextStyle(
-            fontFamily: 'Inter',
-            color: greenAccent,
+            fontFamily: "Inter",
             fontWeight: FontWeight.bold,
-            fontSize: 20,
+            color: Color(0xFF2E7D32),
           ),
         ),
-        actions: [
-          // This button now toggles the delete mode
-          IconButton(
-            icon: Icon(_isDeleting ? Icons.close : Icons.delete_outline),
-            tooltip: _isDeleting ? 'Done' : 'Delete meals',
-            onPressed: () {
-              setState(() {
-                _isDeleting = !_isDeleting;
-              });
-            },
-          ),
-        ],
       ),
-      body: MealHistoryPage.mealHistory.isEmpty
-          ? const Center(
-              child: Text(
-                'No meals in your history yet.',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16.0),
-              itemCount: MealHistoryPage.mealHistory.length,
-              itemBuilder: (context, index) {
-                final recipe = MealHistoryPage.mealHistory[index];
-                return _buildHistoryItem(
-                  recipe: recipe,
-                  // Pass the delete function to the item card
-                  onDelete: () => _deleteItem(index),
+      body: householdId == null
+          ? const Center(child: Text("No household selected"))
+          : StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection("mealHistory")
+                  .where("householdId", isEqualTo: householdId)
+                  .orderBy("cookedAt", descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      "No meals in your history yet.",
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  );
+                }
+
+                final meals = snapshot.data!.docs;
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: meals.length,
+                  itemBuilder: (context, index) {
+                    final meal = meals[index].data() as Map<String, dynamic>;
+
+                    return _MealHistoryCard(meal: meal);
+                  },
                 );
               },
             ),
     );
   }
+}
 
-  Widget _buildHistoryItem({
-    required Recipe recipe,
-    required VoidCallback onDelete,
-  }) {
+class _MealHistoryCard extends StatelessWidget {
+  final Map<String, dynamic> meal;
+  const _MealHistoryCard({required this.meal});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9F9F9),
-        borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(color: const Color(0xFF2E7D32)),
+        border: Border.all(color: const Color(0xFF2E7D32), width: 1),
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          12,
-          12,
-          4,
-          12,
-        ), // Adjust right padding for icon
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8.0),
-              child: Image.network(
-                recipe.imageUrl,
-                width: 70,
-                height: 70,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 70,
-                    height: 70,
-                    color: Colors.grey.shade200,
-                    child: const Icon(
-                      Icons.image_not_supported,
-                      color: Colors.grey,
-                    ),
-                  );
-                },
-              ),
+      child: Row(
+        children: [
+          // Thumbnail
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(12),
+              bottomLeft: Radius.circular(12),
             ),
-            const SizedBox(width: 16),
-            Expanded(
+            child: Builder(
+              builder: (_) {
+                final img = (meal["imageUrl"] ?? "").toString().trim();
+
+                final isAsset = img.startsWith("assets/");
+                final isHttp =
+                    img.startsWith("http://") || img.startsWith("https://");
+
+                if (isAsset) {
+                  return Image.asset(
+                    img,
+                    width: 90,
+                    height: 90,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Image.asset("assets/meals.jpg", width: 90, height: 90),
+                  );
+                }
+
+                if (isHttp) {
+                  return Image.network(
+                    img,
+                    width: 90,
+                    height: 90,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Image.asset("assets/meals.jpg", width: 90, height: 90),
+                  );
+                }
+
+                // Fallback for unknown / empty image paths
+                return Image.asset(
+                  "assets/meals.jpg",
+                  width: 90,
+                  height: 90,
+                  fit: BoxFit.cover,
+                );
+              },
+            ),
+          ),
+
+          // Text info
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    recipe.name,
+                    meal["recipeName"] ?? "Unknown Meal",
                     style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 17,
-                      color: Colors.black,
+                      fontFamily: "Inter",
                       fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
-                    'Cooked on: ${DateTime.now().month}/${DateTime.now().day}/${DateTime.now().year}',
-                    style: const TextStyle(
-                      fontFamily: 'Roboto',
-                      fontSize: 14,
-                      color: Colors.black,
-                    ),
+                    "Serving Size: ${meal["servings"]} servings • ${meal["calories"]}",
+                    style: const TextStyle(fontSize: 12, color: Colors.black87),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(
-                        Icons.access_time,
-                        color: Colors.black,
-                        size: 16,
-                      ),
+                      const Icon(Icons.access_time,
+                          size: 14, color: Color(0xFF2E7D32)),
                       const SizedBox(width: 4),
-                      Text(
-                        '${recipe.time} min',
-                        style: const TextStyle(
-                          fontFamily: 'Roboto',
-                          fontSize: 14,
-                          color: Colors.black,
-                        ),
+                      Builder(
+                        builder: (_) {
+                          final raw = meal["durationMinutes"];
+                          final int duration = raw is int
+                              ? raw
+                              : int.tryParse(raw?.toString() ?? '') ?? 0;
+
+                          return Text(
+                            "$duration min",
+                            style: const TextStyle(fontSize: 12),
+                          );
+                        },
                       ),
                     ],
                   ),
                 ],
               ),
             ),
-            // Conditionally show the delete button if in delete mode
-            if (_isDeleting)
-              IconButton(
-                icon: const Icon(Icons.delete, color: Colors.red),
-                onPressed: onDelete,
-              ),
-          ],
-        ),
+          )
+        ],
       ),
     );
   }
