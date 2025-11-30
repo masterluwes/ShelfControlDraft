@@ -24,7 +24,7 @@ class _WelcomePageState extends State<WelcomePage> {
     {
       'title': 'Hi there!',
       'subtitle':
-          "Thanks for joining ShelfControl! Let's take smart teps toward smart food consumption and waste reduction.",
+          "Thanks for joining ShelfControl! Let's take smart steps toward smart food consumption and waste reduction.",
       'image': 'assets/welcome2.png',
     },
     {
