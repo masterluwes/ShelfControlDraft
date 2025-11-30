@@ -569,7 +569,8 @@ class _ItemTipsDetailPageState extends State<ItemTipsDetailPage> {
   }
 
   String _getAiTipOrFallback(String title) {
-    if (aiLoading) return "Loading tips...";
+    // Always attempt to get AI tips if available, otherwise use fallback immediately.
+    // The UI will rebuild when aiTips become available.
     if (aiTips == null) return _getTipDetails(title, widget.item);
 
     final t = title.toLowerCase().trim();
