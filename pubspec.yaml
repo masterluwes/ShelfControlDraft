@@ -43,7 +43,7 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_markdown_plus: ^1.0.5 # Updated version as per pub get suggestion
   collection: ^1.18.0 # For List extension methods like firstWhereOrNull
-
+  google_generative_ai: ^0.4.0
 
 dev_dependencies:
   flutter_test:
@@ -55,6 +55,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
+    - assets/meals.jpg
     - assets/log_items.png
     - assets/track_pantry.png
     - assets/never_miss_expiry.png

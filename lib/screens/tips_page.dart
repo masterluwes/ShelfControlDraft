@@ -6,28 +6,100 @@ import 'package:shelf_control/models/pantry_item_model.dart';
 import 'package:shelf_control/services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+import 'package:shelf_control/services/ai_tip_service.dart';
 
 // --- Category normalization helpers ---
 String _norm(String? s) => (s ?? '').trim().toLowerCase();
 
 String _alias(String? s) {
   final x = _norm(s);
-  if (x.isEmpty) return 'uncategorized';
+  if (x.isEmpty) return 'others';
 
-  // unify your common variants here
-  if (x == 'beverage' || x == 'beverages' || x == 'drinks') return 'beverages';
-  if (x == 'canned' || x == 'canned goods' || x == 'canned-goods')
+  if (x.contains('bread') || x.contains('pastry') || x.contains('bake')) {
+    return 'bakery';
+  }
+
+  if (x.contains('drink') ||
+      x.contains('juice') ||
+      x.contains('beverage') ||
+      x.contains('coffee') ||
+      x.contains('tea')) {
+    return 'beverages';
+  }
+
+  if (x.contains('can') || x.contains('canned')) {
     return 'canned goods';
-  if (x == 'dairy' || x == 'milk' || x == 'milk/dairy') return 'dairy';
-  if (x == 'dry' || x == 'dry goods') return 'dry goods';
-  if (x == 'snack' || x == 'snacks') return 'snacks';
-  if (x == 'condiment' || x == 'condiments') return 'condiments';
-  if (x == 'produce' || x == 'fruits' || x == 'vegetables') return 'produce';
-  if (x == 'others' || x == 'other') return 'others';
-  if (x == 'uncategorized' || x == 'unclassified') return 'uncategorized';
+  }
 
-  // default: return normalized string
-  return x;
+  if (x.contains('condiment') ||
+      x.contains('sauce') ||
+      x.contains('seasoning') ||
+      x.contains('spice')) {
+    return 'condiments';
+  }
+
+  if (x.contains('milk') ||
+      x.contains('cheese') ||
+      x.contains('butter') ||
+      x.contains('yogurt') ||
+      x.contains('dairy')) {
+    return 'dairy';
+  }
+
+  if (x.contains('dry') ||
+      x.contains('pasta') ||
+      x.contains('noodle') ||
+      x.contains('rice') ||
+      x.contains('grain')) {
+    return 'dry goods';
+  }
+
+  if (x.contains('fruit') ||
+      x.contains('vegetable') ||
+      x.contains('produce') ||
+      x.contains('fresh')) {
+    return 'produce';
+  }
+
+  if (x.contains('snack') ||
+      x.contains('chips') ||
+      x.contains('biscuits') ||
+      x.contains('candy')) {
+    return 'snacks';
+  }
+
+  if (x.contains('general') || x.contains('misc')) {
+    return 'general';
+  }
+
+  return 'others';
+}
+
+String _group(String? raw) {
+  final cat = _alias(raw);
+
+  switch (cat) {
+    case 'general':
+      return 'General';
+    case 'bakery':
+      return 'Bakery';
+    case 'beverages':
+      return 'Beverages';
+    case 'canned goods':
+      return 'Canned Goods';
+    case 'condiments':
+      return 'Condiments';
+    case 'dairy':
+      return 'Dairy';
+    case 'dry goods':
+      return 'Dry Goods';
+    case 'produce':
+      return 'Produce';
+    case 'snacks':
+      return 'Snacks';
+    default:
+      return 'Others';
+  }
 }
 
 // --- NEW DATA MODEL ---
@@ -425,7 +497,7 @@ class TipDetailPage extends StatelessWidget {
 
 // --- Item Tips Detail Page (WITH FOOTER) ---
 
-class ItemTipsDetailPage extends StatelessWidget {
+class ItemTipsDetailPage extends StatefulWidget {
   final PantryItem item;
   final WeatherAlert? alert;
 
@@ -434,6 +506,14 @@ class ItemTipsDetailPage extends StatelessWidget {
     required this.item,
     this.alert,
   });
+
+  @override
+  State<ItemTipsDetailPage> createState() => _ItemTipsDetailPageState();
+}
+
+class _ItemTipsDetailPageState extends State<ItemTipsDetailPage> {
+  Map<String, dynamic>? aiTips;
+  bool aiLoading = true;
 
   IconData _getIconForItem(String itemName) {
     switch (itemName.toLowerCase()) {
@@ -461,12 +541,76 @@ class ItemTipsDetailPage extends StatelessWidget {
     }
   }
 
-  // --- NEW ---
-  // Helper to provide detailed, structured text for different tip types
+  // --- NEW: AI loader with safe fallback ---
+  @override
+  void initState() {
+    super.initState();
+    _loadAiTips(); // Fetch immediately on page load
+  }
+
+  Future<void> _loadAiTips() async {
+    aiTips = await AiTipService().getItemTips(
+      itemName: widget.item.name,
+      category: widget.item.category,
+      expDays: widget.item.daysUntilExpiration,
+      weatherLevel: widget.alert?.level.toString() ?? "green",
+    );
+
+    if (!mounted) return;
+    setState(() {
+      aiLoading = false;
+    });
+  }
+
+  String _getAiTipOrFallback(String title) {
+    if (aiLoading) return "Loading tips...";
+    if (aiTips == null) return _getTipDetails(title, widget.item);
+
+    final t = title.toLowerCase().trim();
+
+    // WEATHER — match ANY weather-related phrasing
+    if (t.contains("weather") || t.contains("climate") || t.contains("heat")) {
+      return aiTips!["weather"]?["details"] ??
+          _getTipDetails("Current Suggestion (Weather)", widget.item);
+    }
+
+    // PRESERVATION — match ANY storage/safety/freshness keyword
+    if (t.contains("preserv") ||
+        t.contains("fresh") ||
+        t.contains("safety") ||
+        t.contains("store") ||
+        t.contains("storage") ||
+        t.contains("shelf life") ||
+        t.contains("long-lasting") ||
+        t.contains("freshness")) {
+      return aiTips!["preservation"]?["details"] ??
+          _getTipDetails("Food Preservation Tips", widget.item);
+    }
+
+    // WASTE — match ANY waste/reuse/repurpose keyword
+    if (t.contains("waste") || t.contains("reuse") || t.contains("use up")) {
+      return aiTips!["waste"]?["details"] ??
+          _getTipDetails("Waste Reduction Tips", widget.item);
+    }
+
+    // LABELING — match any labeling/meaning keywords
+    if (t.contains("label") ||
+        t.contains("definition") ||
+        t.contains("meaning")) {
+      return aiTips!["labeling"]?["details"] ??
+          _getTipDetails("Food Labeling & Definitions", widget.item);
+    }
+
+    // DEFAULT — force preservation instead of blank
+    return aiTips!["preservation"]?["details"] ??
+        _getTipDetails("Food Preservation Tips", widget.item);
+  }
+
+  // Fallback detailed content if AI fails or for offline use
   String _getTipDetails(String tipType, PantryItem item) {
     switch (tipType) {
       case 'Food Preservation Tips':
-        // Example for dairy/milk to match the screenshot
+        // Example for dairy/milk to match your sample
         if (item.category.toLowerCase() == 'dairy') {
           return '''
 Avoid the door. The refrigerator door is the warmest part of the fridge. It's best to store milk and other dairy products on the main shelves where the temperature is more consistent.
@@ -484,19 +628,20 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
         return 'Food preservation tips specific to ${item.name}, like optimal temperature, humidity, and location for storage.';
 
       case 'Waste Reduction Tips':
-        return 'Waste reduction ideas for ${item.name}, such as recipes for browning fruit or staling bread.';
+        return 'Waste reduction ideas for ${item.name}, such as recipes, repurposing leftovers, or using slightly stale items in new dishes.';
       case 'Food Labeling & Definitions':
-        return 'Definitions of common labels like "Best By" and "Use By" as they apply to products like ${item.name}.';
+        return 'Definitions of common labels like "Best Before" and "Use By" as they apply to products like ${item.name}.';
       default:
         return 'No details available for this topic.';
     }
   }
-  // -----------
 
   @override
   Widget build(BuildContext context) {
-    final weatherLevel = alert?.level ?? WeatherLevel.green;
+    final item = widget.item;
+    final weatherLevel = widget.alert?.level ?? WeatherLevel.green;
 
+    // Existing rule-based weather advice (for hybrid fallback)
     final allDynamicTips =
         TipsRules.adviceFor(item.category, item.name, weatherLevel);
     final currentSuggestion =
@@ -518,11 +663,103 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
     final expirationDays = item.daysUntilExpiration;
     final expColor = getExpirationColor(expirationDays);
 
+    // --- HYBRID AI + RULES: compute titles/subtitles/details for each card ---
+
+    Map<String, dynamic>? _section(String key) {
+      final raw = aiTips;
+      if (raw == null) return null;
+      final value = raw[key];
+      if (value is Map<String, dynamic>) return value;
+      return null;
+    }
+
+    String _orDefault(Map<String, dynamic>? m, String field, String fallback) {
+      if (m == null) return fallback;
+      final v = m[field];
+      if (v is String && v.trim().isNotEmpty) return v.trim();
+      return fallback;
+    }
+
+    // Weather suggestion
+    final weatherMap = _section('weather');
+    final weatherTitle = _orDefault(
+      weatherMap,
+      'title',
+      'Current Suggestion (Weather)',
+    );
+    final weatherSubtitle = _orDefault(
+      weatherMap,
+      'subtitle',
+      currentSuggestion?.subtitle ??
+          'Weather-based tips for optimal food storage.',
+    );
+    final weatherDetails = _orDefault(
+      weatherMap,
+      'details',
+      currentSuggestion?.details ??
+          'No specific weather tip for this item right now.',
+    );
+
+    // Preservation
+    final preservationMap = _section('preservation');
+    final preservationTitle = _orDefault(
+      preservationMap,
+      'title',
+      'Food Preservation Tips',
+    );
+    final preservationSubtitle = _orDefault(
+      preservationMap,
+      'subtitle',
+      'How to extend freshness & store items properly?',
+    );
+    final preservationDetails = _orDefault(
+      preservationMap,
+      'details',
+      _getTipDetails('Food Preservation Tips', item),
+    );
+
+    // Waste reduction
+    final wasteMap = _section('waste');
+    final wasteTitle = _orDefault(
+      wasteMap,
+      'title',
+      'Waste Reduction Tips',
+    );
+    final wasteSubtitle = _orDefault(
+      wasteMap,
+      'subtitle',
+      'Discover recipes & ideas to use up your food',
+    );
+    final wasteDetails = _orDefault(
+      wasteMap,
+      'details',
+      _getTipDetails('Waste Reduction Tips', item),
+    );
+
+    // Labeling / definitions
+    final labelingMap = _section('labeling');
+    final labelingTitle = _orDefault(
+      labelingMap,
+      'title',
+      'Food Labeling & Definitions',
+    );
+    final labelingSubtitle = _orDefault(
+      labelingMap,
+      'subtitle',
+      'Understand common food terms & what they mean.',
+    );
+    final labelingDetails = _orDefault(
+      labelingMap,
+      'details',
+      _getTipDetails('Food Labeling & Definitions', item),
+    );
+
     return Scaffold(
       extendBody: true,
       backgroundColor: const Color(0xFF2E7D32),
       body: Column(
         children: [
+          // 🔴 Existing header – untouched
           Padding(
             padding: EdgeInsets.only(
               top: MediaQuery.of(context).padding.top + 10,
@@ -568,6 +805,7 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 🔴 Existing item header + stats – untouched
                     Padding(
                       padding: const EdgeInsets.all(20.0),
                       child: Column(
@@ -711,38 +949,37 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
                       ),
                     ),
 
-                    // Smart Suggestions List
+                    // Smart Suggestions List – same layout, dynamic content
                     _buildSuggestionCard(
                       context,
                       item: item,
-                      title: 'Current Suggestion (Weather)',
-                      subtitle: currentSuggestion?.subtitle ??
-                          'Weather-based tips for optimal food storage.',
-                      details: currentSuggestion?.details ??
-                          'No specific weather tip for this item right now.',
+                      title: weatherTitle,
+                      subtitle: weatherSubtitle,
+                      details: weatherDetails,
                       icon: Icons.light_mode,
                     ),
                     _buildSuggestionCard(
                       context,
                       item: item,
-                      title: 'Food Preservation Tips',
-                      subtitle:
-                          'How to extend freshness & store items properly?',
+                      title: preservationTitle,
+                      subtitle: preservationSubtitle,
+                      details: preservationDetails,
                       icon: Icons.recycling,
                     ),
                     _buildSuggestionCard(
                       context,
                       item: item,
-                      title: 'Waste Reduction Tips',
-                      subtitle: 'Discover recipes & ideas to use up your food',
+                      title: wasteTitle,
+                      subtitle: wasteSubtitle,
+                      details: wasteDetails,
                       icon: Icons.eco,
                     ),
                     _buildSuggestionCard(
                       context,
                       item: item,
-                      title: 'Food Labeling & Definitions',
-                      subtitle:
-                          'Understand common food terms & what they mean.',
+                      title: labelingTitle,
+                      subtitle: labelingSubtitle,
+                      details: labelingDetails,
                       icon: Icons.label,
                     ),
                   ],
@@ -756,7 +993,7 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
         child: SizedBox(
           height: 180 + MediaQuery.of(context).padding.bottom,
           child: Image.asset(
-            'assets/footer1e27d32-trans.png', // <-- REPLACE WITH YOUR IMAGE PATH
+            'assets/footer1e27d32-trans.png',
             width: double.infinity,
             fit: BoxFit.cover,
           ),
@@ -770,7 +1007,7 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
     required PantryItem item,
     required String title,
     required String subtitle,
-    String? details, // Make details optional for dynamic fetching
+    String? details, // AI or fallback
     required IconData icon,
   }) {
     return Padding(
@@ -788,8 +1025,8 @@ Rotate your dairy. When you buy new dairy products, place them behind the older 
                 builder: (_) => TipDetailPage(
                   title: title,
                   subtitle: subtitle,
-                  // Use the provided details, or fetch dynamically based on title and item
-                  details: details ?? _getTipDetails(title, item),
+                  // If AI gave us details, use it; otherwise use rule-based fallback
+                  details: _getAiTipOrFallback(title),
                 ),
               ),
             );
@@ -885,13 +1122,12 @@ class _TipsPageState extends State<TipsPage> {
   }
 
   int _computeDaysUntil(DateTime? dt) {
-  if (dt == null) return 9999;
-  final now = DateTime.now();
-  // compare against start of today to avoid off-by-hours
-  final today = DateTime(now.year, now.month, now.day);
-  return dt.difference(today).inDays;
-}
-
+    if (dt == null) return 9999;
+    final now = DateTime.now();
+    // compare against start of today to avoid off-by-hours
+    final today = DateTime(now.year, now.month, now.day);
+    return dt.difference(today).inDays;
+  }
 
   Future<void> _bootstrap() async {
     // Ensure we are authenticated (anon is fine in dev)
@@ -998,14 +1234,14 @@ class _TipsPageState extends State<TipsPage> {
 
   final List<Map<String, dynamic>> categories = [
     {'name': 'General', 'icon': Icons.lightbulb},
+    {'name': 'Bakery', 'icon': Icons.bakery_dining},
     {'name': 'Beverages', 'icon': Icons.local_cafe},
-    {'name': 'Canned goods', 'icon': Icons.inventory},
-    {'name': 'Dairy', 'icon': Icons.local_drink},
-    {'name': 'Dry goods', 'icon': Icons.shopping_bag},
-    {'name': 'Snacks', 'icon': Icons.fastfood},
+    {'name': 'Canned Goods', 'icon': Icons.inventory},
     {'name': 'Condiments', 'icon': Icons.soup_kitchen},
+    {'name': 'Dairy', 'icon': Icons.local_drink},
+    {'name': 'Dry Goods', 'icon': Icons.shopping_bag},
     {'name': 'Produce', 'icon': Icons.local_florist},
-    {'name': 'Uncategorized', 'icon': Icons.help_outline},
+    {'name': 'Snacks', 'icon': Icons.fastfood},
     {'name': 'Others', 'icon': Icons.category},
   ];
 

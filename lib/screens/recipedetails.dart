@@ -10,6 +10,83 @@ String _truncate(String? s, int max) {
   return (v.length <= max) ? v : v.substring(0, max);
 }
 
+/// Make long ingredient names shorter but still meaningful.
+String simplifyIngredientName(String? name) {
+  final original = (name ?? '').toLowerCase().trim();
+  if (original.isEmpty) return '';
+
+  final stopWords = <String>{
+    'brand',
+    'creamy',
+    'cream-filled',
+    'filled',
+    'bar',
+    'pcs',
+    'piece',
+    'pieces',
+    'pack',
+    'packet',
+    'cup',
+    'cups',
+    'ml',
+    'g',
+    'kg',
+    'bottle',
+    'can',
+    'slice',
+    'sliced',
+    'whole',
+    'loaf',
+  };
+
+  // Split into words
+  final words = original.split(RegExp(r'\s+'));
+
+  // Remove quantity values (numbers)
+  final noNumbers = words.where((w) => !RegExp(r'^\d').hasMatch(w)).toList();
+
+  // Remove generic + packaging words
+  final filtered = noNumbers.where((w) => !stopWords.contains(w)).toList();
+
+  // Prefer 1–2 meaningful words
+  List<String> shortened;
+  if (filtered.isNotEmpty) {
+    shortened = filtered.take(2).toList();
+  } else {
+    // Fallback: at least keep one word
+    shortened = noNumbers.take(1).toList();
+  }
+
+  // Convert back to Title Case
+  return shortened
+      .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+}
+
+/// Build a short, aesthetic recipe title from the first two ingredients.
+String buildDynamicRecipeTitle(Recipe recipe) {
+  final ingredients = recipe.ingredients;
+
+  if (ingredients.isEmpty) {
+    return recipe.name;
+  }
+
+  final names = ingredients
+      .map((i) => simplifyIngredientName(i['name'])) // i['name'] is String?
+      .where((n) => n.isNotEmpty)
+      .toList();
+
+  if (names.isEmpty) {
+    return recipe.name;
+  }
+
+  if (names.length == 1) {
+    return names.first;
+  }
+
+  return '${names[0]} with ${names[1]}';
+}
+
 class RecipeDetailsPage extends StatefulWidget {
   final Recipe recipe;
   const RecipeDetailsPage({super.key, required this.recipe});
@@ -84,7 +161,7 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
                       style: descriptionStyle,
                       children: [
                         TextSpan(
-                          text: '${widget.recipe.name} ',
+                          text: '${buildDynamicRecipeTitle(widget.recipe)} ',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         TextSpan(
@@ -171,33 +248,99 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
         ),
       ),
       flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
-        centerTitle: false,
-        title: AnimatedDefaultTextStyle(
-          duration: const Duration(milliseconds: 200),
-          style: TextStyle(
-            fontFamily: 'Inter',
-            fontWeight: FontWeight.bold,
-            fontSize: 32,
-            color: _titleColor,
-            shadows: _titleColor == Colors.white
-                ? [const Shadow(blurRadius: 2, color: Colors.black54)]
-                : null,
+        titlePadding: const EdgeInsets.only(bottom: 20),
+        centerTitle: true,
+
+        title: Align(
+          alignment: Alignment.bottomCenter,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.45),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Time row
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.access_time,
+                        size: 14, color: Colors.white),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${recipe.time}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.white,
+                        fontFamily: 'Roboto',
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 6),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 200),
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    color: _titleColor,
+                    shadows: _titleColor == Colors.white
+                        ? [const Shadow(blurRadius: 2, color: Colors.black54)]
+                        : null,
+                  ),
+                  child: Text(buildDynamicRecipeTitle(recipe)),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
-          child: Text(recipe.name),
         ),
+
+        // Background image + gradient stay here, as siblings of `title`
         background: Stack(
           fit: StackFit.expand,
           children: [
-            Image.network(
-              recipe.imageUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return const Icon(
-                  Icons.image_not_supported,
-                  color: Colors.grey,
-                  size: 60,
-                );
+            Builder(
+              builder: (context) {
+                final String img = (recipe.imageUrl).trim();
+                const String fallbackAsset = 'assets/meals.jpg';
+
+                final bool isAsset = img.startsWith('assets/');
+                final bool isHttp =
+                    img.startsWith('http://') || img.startsWith('https://');
+
+                if (isAsset) {
+                  return Image.asset(
+                    img,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Image.asset(
+                        fallbackAsset,
+                        fit: BoxFit.cover,
+                      );
+                    },
+                  );
+                } else if (isHttp) {
+                  return Image.network(
+                    img,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Image.asset(
+                        fallbackAsset,
+                        fit: BoxFit.cover,
+                      );
+                    },
+                  );
+                } else {
+                  return Image.asset(
+                    fallbackAsset,
+                    fit: BoxFit.cover,
+                  );
+                }
               },
             ),
             const DecoratedBox(
@@ -207,41 +350,6 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
                   end: Alignment.bottomCenter,
                   colors: [Colors.transparent, Colors.black54],
                   stops: [0.5, 1.0],
-                ),
-              ),
-            ),
-            Positioned(
-              left: 16,
-              bottom: 85,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    color: Colors.black.withOpacity(0.25),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.access_time,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${recipe.time} min',
-                          style: const TextStyle(
-                            fontFamily: 'Roboto',
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ),
             ),
@@ -294,7 +402,21 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
     );
   }
 
+  String _toTitleCase(String text) {
+    return text.split(' ').map((word) {
+      if (word.trim().isEmpty) return '';
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+  }
+
   Widget _buildIngredientItem(String name, String amount) {
+    // Format name to Title Case
+    final formattedName = _toTitleCase(name.trim());
+
+    // If amount exists → append "(amount)"
+    final displayText =
+        amount.trim().isNotEmpty ? "$formattedName ($amount)" : formattedName;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
@@ -306,27 +428,12 @@ class _RecipeDetailsPageState extends State<RecipeDetailsPage> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                if (amount.isNotEmpty)
-                  Text(
-                    amount,
-                    style: const TextStyle(
-                      fontFamily: 'Roboto',
-                      color: Colors.grey,
-                      fontSize: 14,
-                    ),
-                  ),
-              ],
+            child: Text(
+              displayText,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 16,
+              ),
             ),
           ),
         ],
