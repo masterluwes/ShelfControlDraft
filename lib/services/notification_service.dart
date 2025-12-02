@@ -10,6 +10,7 @@ import 'package:intl/intl.dart'; // Import DateFormat
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Timestamp
 import 'package:shelf_control/models/pantry_item_model.dart'; // Import PantryItemModel
 import 'dart:convert'; // Import for jsonDecode
+import 'dart:io' show Platform;
 
 class NotificationService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
@@ -24,76 +25,82 @@ class NotificationService {
     _auth = FirebaseAuth.instance; // Initialize FirebaseAuth
   }
 
-  Future<void> initialize() async {
-    // Request permission for iOS and web
-    NotificationSettings settings = await _firebaseMessaging.requestPermission(
-      alert: true,
-      announcement: false,
-      badge: true,
-      carPlay: false,
-      criticalAlert: false,
-      provisional: false,
-      sound: true,
-    );
+Future<void> initialize() async {
+  // Request permission first (iOS needs this before APNS registration)
+  final settings = await _firebaseMessaging.requestPermission(
+    alert: true,
+    sound: true,
+    badge: true,
+  );
 
-    print('User granted permission: ${settings.authorizationStatus}');
+  print("🔔 Notification permission: ${settings.authorizationStatus}");
 
-    // Initialize flutter_local_notifications
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+  // Initialize local notifications
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    const DarwinInitializationSettings initializationSettingsIOS =
-        DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
+  const DarwinInitializationSettings initializationSettingsIOS =
+      DarwinInitializationSettings(
+    requestAlertPermission: true,
+    requestBadgePermission: true,
+    requestSoundPermission: true,
+  );
 
-    const InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsIOS,
-    );
+  const InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+    iOS: initializationSettingsIOS,
+  );
 
-    await _flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) async {
-        // Handle notification tap
-        print('Notification tapped: ${response.payload}');
-        if (response.payload != null) {
-          final Map<String, dynamic> payload = jsonDecode(response.payload!);
-          if (payload['action'] == 'consume_prompt' && payload['itemId'] != null) {
-            await _handleConsumeAction(payload['itemId']);
-          }
+  await _flutterLocalNotificationsPlugin.initialize(
+    initializationSettings,
+    onDidReceiveNotificationResponse: (NotificationResponse response) async {
+      if (response.payload != null) {
+        final payload = jsonDecode(response.payload!);
+        if (payload['action'] == 'consume_prompt' && payload['itemId'] != null) {
+          await _handleConsumeAction(payload['itemId']);
         }
-      },
-    );
-
-    // Get the device token and save it to Firestore
-    String? token = await _firebaseMessaging.getToken();
-    if (token != null) {
-      print('FCM Token: $token');
-      await _saveTokenToFirestore(token);
-    }
-
-    // Listen for token refreshes
-    _firebaseMessaging.onTokenRefresh.listen(_saveTokenToFirestore).onError((err) {
-      print('Error refreshing FCM token: $err');
-    });
-
-    // Handle foreground messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print('Got a message whilst in the foreground!');
-      print('Message data: ${message.data}');
-
-      if (message.notification != null) {
-        print('Message also contained a notification: ${message.notification}');
-        _showLocalNotification(message);
       }
-    });
+    },
+  );
 
-    // Handle background messages
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  // ---------- iOS: Wait for APNS token ----------
+if (Platform.isIOS &&
+    settings.authorizationStatus == AuthorizationStatus.authorized) {
+
+  print("📱 Waiting for APNS token...");
+
+  String? apnsToken;
+  int retries = 0;
+
+  while (apnsToken == null && retries < 10) {
+    try {
+      apnsToken = await _firebaseMessaging.getAPNSToken();
+    } catch (_) {}
+    await Future.delayed(const Duration(seconds: 1));
+    retries++;
   }
+
+  print("📱 APNS Token: $apnsToken");
+}
+
+
+  // ---------- NOW it's safe to get FCM token ----------
+  final fcmToken = await _firebaseMessaging.getToken();
+  print("🔥 FCM Token: $fcmToken");
+
+  if (fcmToken != null) {
+    await _saveTokenToFirestore(fcmToken);
+  }
+
+  // Token refresh listener
+  _firebaseMessaging.onTokenRefresh.listen(_saveTokenToFirestore);
+
+  // Foreground messages
+  FirebaseMessaging.onMessage.listen(_showLocalNotification);
+
+  // Background handler
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+}
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
     print('[_showLocalNotification] Received foreground message:');

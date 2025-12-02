@@ -14,21 +14,30 @@ import 'package:shelf_control/services/notification_service.dart'; // Import the
 import 'package:shelf_control/services/shopping_list_service.dart'; // Import ShoppingListService
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import dotenv
 import 'package:shelf_control/services/guest_auth_service.dart'; // Import GuestAuthService
+import 'firebase_options.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load dotenv (optional)
   try {
-    // ✅ load from assets
     await dotenv.load(fileName: "assets/env/.env");
   } catch (e) {
-    // Don’t crash the app if the file isn’t found; just log.
     debugPrint('dotenv load failed: $e');
   }
-  await Firebase.initializeApp();
+
+  // ❗ REQUIRED: Proper Firebase init with options
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Firebase App Check
   await FirebaseAppCheck.instance.activate(
     androidProvider: AndroidProvider.playIntegrity,
   );
 
+  // Notifications
   final notificationService = NotificationService();
   await notificationService.initialize();
 
@@ -36,8 +45,6 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => FirestoreService()),
-        // ShoppingListService depends on FirestoreService, so it should be created after it.
-        // We use ProxyProvider to access FirestoreService.
         Provider<ShoppingListService>(
           create: (context) => ShoppingListService(
             firestoreService: Provider.of<FirestoreService>(context, listen: false),
@@ -48,6 +55,7 @@ void main() async {
     ),
   );
 }
+
 
 class ShelfControlApp extends StatelessWidget {
   const ShelfControlApp({super.key});
