@@ -82,8 +82,7 @@ class RecipeSuggestService {
       String? img = await spoon.searchImage(r.title);
 
       // final open fallback if still none
-      img ??=
-          'https://source.unsplash.com/600x400/?${Uri.encodeComponent(r.title)}';
+      img ??= 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&h=400&fit=crop&q=80';
 
       out.add(SuggestedRecipe(
         id: r.id,

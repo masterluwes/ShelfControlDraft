@@ -1,7 +1,13 @@
 plugins {
   // ...
   // Add the dependency for the Google services Gradle plugin
-  id("com.google.gms.google-services") version "4.4.3" apply false
+  id("com.google.gms.google-services") version "4.3.15" apply false
+}
+
+tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
+    sourceCompatibility = JavaVersion.VERSION_17.toString()
+    targetCompatibility = JavaVersion.VERSION_17.toString()
+    options.release.set(17)
 }
 
 allprojects {
